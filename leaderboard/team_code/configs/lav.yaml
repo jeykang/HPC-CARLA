@@ -1,0 +1,3 @@
+agent_file: "/workspace/leaderboard/team_code/lav/lav_agent.py"
+agent_class: "LAVAgent"
+config_path: "/workspace/leaderboard/team_code/lav/config.yaml"
