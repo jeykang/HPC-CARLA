@@ -196,6 +196,32 @@ Then visit `http://localhost:8501`.
 
 ---
 
+## 4) Live progress dashboard
+
+For demonstrations you may want to show data as it is being generated. The
+`progress_dashboard.py` Streamlit app scans the `dataset/` directory and shows
+the most recent output from **each sensor** in a single window that updates
+automatically. The dataset should be organized as:
+
+```
+dataset/agent-{AGENT_TYPE}/weather-{W}/{route}/{sensor}/<frame>.<ext>
+```
+where ``<ext>`` may be ``png`` for camera images or ``npy`` for data such as LiDAR
+point clouds and depth maps. Every sensor folder is searched and the newest file
+inside is displayed so that all feeds appear at once, giving a quick visual cue
+that collection jobs are running correctly.
+
+```bash
+# In the repo root
+export CARLA_DATA_DIR=/path/to/mounted/dataset
+streamlit run progress_dashboard.py -- --data-dir "$CARLA_DATA_DIR"
+```
+
+Use the sidebar to adjust the refresh interval or disable auto-refresh if
+needed.
+
+---
+
 ## Acknowledgements
 
 This codebase reuses and adapts components from the following excellent open-source projects. Huge thanks to the authors and maintainers:
