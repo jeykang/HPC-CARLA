@@ -1,0 +1,9 @@
+# The Python file containing the agent's main class
+agent_file: "/workspace/leaderboard/team_code/interfuser/interfuser_agent.py"
+
+# The name of the class to instantiate from the agent_file
+agent_class: "InterfuserAgent"
+
+# The path to the agent's own configuration file that its setup() method expects
+# This can be a .py file, a model checkpoint, etc.
+config_path: "/workspace/leaderboard/team_code/interfuser/interfuser_config.py"

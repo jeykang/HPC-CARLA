@@ -1,0 +1,706 @@
+#!/usr/bin/env python3
+"""
+Management utility for continuous data collection system
+Provides control over job queue, retries, and collection parameters
+"""
+
+import json
+import os
+import sys
+import argparse
+import fcntl
+import re
+from pathlib import Path
+from datetime import datetime, timedelta
+from typing import List, Dict, Any, Tuple
+
+class ContinuousManager:
+    def __init__(self, state_dir: str = None):
+        if state_dir is None:
+            project_root = os.environ.get('PROJECT_ROOT', os.getcwd())
+            state_dir = os.path.join(project_root, 'collection_state')
+        
+        self.project_root = Path(os.environ.get('PROJECT_ROOT', os.getcwd()))
+        self.state_dir = Path(state_dir)
+        self.queue_file = self.state_dir / 'job_queue.json'
+        self.gpu_status_file = self.state_dir / 'gpu_status.json'
+        self.runtime_file = self.state_dir / 'runtime_estimates.json'
+        self.completed_file = self.state_dir / 'completed_jobs.json'
+        self.lock_file = self.state_dir / '.scheduler.lock'
+        
+        # Paths for discovering available routes and scenarios
+        self.routes_dir = self.project_root / 'leaderboard/data/training_routes'
+        self.scenarios_dir = self.project_root / 'leaderboard/data/scenarios'
+        
+        # Ensure state directory exists
+        self.state_dir.mkdir(parents=True, exist_ok=True)
+    
+    def _with_lock(self, func):
+        """Execute function with file lock"""
+        self.lock_file.parent.mkdir(parents=True, exist_ok=True)
+        with open(self.lock_file, 'w') as lock:
+            fcntl.flock(lock, fcntl.LOCK_EX)
+            try:
+                return func()
+            finally:
+                fcntl.flock(lock, fcntl.LOCK_UN)
+    
+    def _discover_routes_and_scenarios(self) -> Dict[str, List[str]]:
+        """
+        Discover available route files and their corresponding scenarios.
+        Returns a mapping of town -> list of route files for that town.
+        """
+        town_routes = {}
+        
+        if not self.routes_dir.exists():
+            print(f"Warning: Routes directory not found at {self.routes_dir}")
+            return {}
+        
+        # Find all route XML files
+        route_files = list(self.routes_dir.glob('*.xml'))
+        
+        for route_file in route_files:
+            # Extract town number from filename (e.g., routes_town01_short.xml -> 01)
+            match = re.search(r'routes_town(\d+)_', route_file.name)
+            if match:
+                town_num = match.group(1)
+                
+                # Check if corresponding scenario file exists
+                scenario_file = self.scenarios_dir / f'town{town_num}_all_scenarios.json'
+                if scenario_file.exists():
+                    if town_num not in town_routes:
+                        town_routes[town_num] = []
+                    town_routes[town_num].append(route_file.name)
+                else:
+                    print(f"Warning: No scenario file found for {route_file.name} "
+                          f"(expected {scenario_file})")
+        
+        # Sort routes within each town
+        for town in town_routes:
+            town_routes[town].sort()
+        
+        return town_routes
+    
+    def _get_valid_combinations(self, agents_list: List[str] = None, 
+                               weather_list: List[int] = None,
+                               routes_list: List[str] = None) -> List[Dict]:
+        """
+        Generate only valid combinations of agent/weather/route.
+        Ensures routes are matched with their correct town scenarios.
+        """
+        # Discover available routes grouped by town
+        town_routes = self._discover_routes_and_scenarios()
+        
+        if not town_routes:
+            print("ERROR: No valid route/scenario combinations found!")
+            print(f"  Checked routes dir: {self.routes_dir}")
+            print(f"  Checked scenarios dir: {self.scenarios_dir}")
+            return []
+        
+        # Default agents
+        if agents_list is None:
+            configs_dir = self.project_root / 'leaderboard/team_code/configs'
+            agents_list = []
+            if configs_dir.exists():
+                agents_list = [f.stem for f in configs_dir.glob('*.yaml')]
+            if not agents_list:
+                print("Warning: No agent configs found, using default")
+                agents_list = ['interfuser']
+        
+        # Default weather
+        if weather_list is None:
+            weather_list = list(range(15))  # 0-14
+        
+        # Filter routes if specific ones requested
+        if routes_list is not None:
+            # Filter town_routes to only include requested routes
+            filtered_town_routes = {}
+            for town, routes in town_routes.items():
+                filtered = [r for r in routes if r in routes_list]
+                if filtered:
+                    filtered_town_routes[town] = filtered
+            town_routes = filtered_town_routes
+        
+        # Generate combinations
+        combinations = []
+        
+        print(f"\nDiscovered routes by town:")
+        for town, routes in sorted(town_routes.items()):
+            print(f"  Town {town}: {len(routes)} routes")
+            for route in routes:
+                print(f"    - {route}")
+        
+        print(f"\nGenerating combinations:")
+        print(f"  Agents: {agents_list}")
+        print(f"  Weather conditions: {len(weather_list)} (indices: {min(weather_list)}-{max(weather_list)})")
+        print(f"  Towns with routes: {sorted(town_routes.keys())}")
+        
+        for agent in agents_list:
+            for weather_idx in weather_list:
+                for town, routes in sorted(town_routes.items()):
+                    for route in routes:
+                        combinations.append({
+                            'agent': agent,
+                            'weather': weather_idx,
+                            'route': route,
+                            'town': town,  # Store town for reference
+                        })
+        
+        print(f"\nTotal valid combinations: {len(combinations)}")
+        return combinations
+    
+    def reset_queue(self, agents: List[str] = None, weather: List[int] = None, 
+                   routes: List[str] = None):
+        """Reset the job queue with specified combinations"""
+        def _reset(agents_list, weather_list, routes_list):
+            # Get valid combinations
+            combinations = self._get_valid_combinations(agents_list, weather_list, routes_list)
+            
+            if not combinations:
+                print("ERROR: No valid combinations could be generated!")
+                return 0
+            
+            # Generate jobs from combinations
+            jobs = []
+            for job_id, combo in enumerate(combinations):
+                jobs.append({
+                    'id': job_id,
+                    'agent': combo['agent'],
+                    'weather': combo['weather'],
+                    'route': combo['route'],
+                    'town': combo['town'],  # Store town for debugging
+                    'status': 'pending',
+                    'attempts': 0,
+                    'gpu': None,
+                    'start_time': None,
+                    'end_time': None,
+                    'duration': None
+                })
+            
+            # Save new queue
+            queue_data = {'jobs': jobs, 'total': len(jobs), 'completed': 0}
+            with open(self.queue_file, 'w') as f:
+                json.dump(queue_data, f, indent=2)
+            
+            # Reset GPU status
+            gpu_status = {}
+            for i in range(8):
+                gpu_status[str(i)] = {
+                    'status': 'idle',
+                    'current_job': None,
+                    'jobs_completed': 0,
+                    'total_runtime': 0,
+                    'last_heartbeat': None
+                }
+            with open(self.gpu_status_file, 'w') as f:
+                json.dump(gpu_status, f, indent=2)
+            
+            # Reset completed jobs
+            with open(self.completed_file, 'w') as f:
+                json.dump({'jobs': []}, f, indent=2)
+            
+            # Initialize runtime estimates with better defaults
+            runtime_estimates = {
+                'default': 3600,
+                'combinations': {}
+            }
+            
+            # Create initial estimates based on route length
+            for job in jobs:
+                key = f"{job['agent']}_{job['route']}"
+                if key not in runtime_estimates['combinations']:
+                    # Shorter runtime for 'short' routes
+                    if 'short' in job['route']:
+                        runtime_estimates['combinations'][key] = 1800  # 30 min
+                    elif 'long' in job['route']:
+                        runtime_estimates['combinations'][key] = 5400  # 90 min
+                    else:
+                        runtime_estimates['combinations'][key] = 3600  # 60 min default
+            
+            with open(self.runtime_file, 'w') as f:
+                json.dump(runtime_estimates, f, indent=2)
+            
+            print(f"\nQueue reset with {len(jobs)} valid jobs")
+            
+            # Print summary by town
+            jobs_by_town = {}
+            for job in jobs:
+                town = job.get('town', 'unknown')
+                if town not in jobs_by_town:
+                    jobs_by_town[town] = 0
+                jobs_by_town[town] += 1
+            
+            print("\nJobs per town:")
+            for town in sorted(jobs_by_town.keys()):
+                print(f"  Town {town}: {jobs_by_town[town]} jobs")
+            
+            return len(jobs)
+        
+        return self._with_lock(lambda: _reset(agents, weather, routes))
+    
+    def retry_failed(self, max_attempts: int = 3):
+        """Reset failed jobs for retry"""
+        def _retry():
+            with open(self.queue_file, 'r') as f:
+                queue_data = json.load(f)
+            
+            retry_count = 0
+            for job in queue_data['jobs']:
+                if job['status'] == 'failed' and job['attempts'] < max_attempts:
+                    job['status'] = 'pending'
+                    retry_count += 1
+            
+            with open(self.queue_file, 'w') as f:
+                json.dump(queue_data, f, indent=2)
+            
+            print(f"Reset {retry_count} failed jobs for retry")
+            return retry_count
+        
+        return self._with_lock(_retry)
+    
+    def add_jobs(self, agent: str, weather: List[int] = None, routes: List[str] = None):
+        """Add new jobs to the queue"""
+        def _add(agent_name, weather_list, routes_list):
+            with open(self.queue_file, 'r') as f:
+                queue_data = json.load(f)
+            
+            # Get next job ID
+            max_id = max((j['id'] for j in queue_data['jobs']), default=-1)
+            job_id = max_id + 1
+            
+            # Get valid combinations for the new jobs
+            combinations = self._get_valid_combinations([agent_name], weather_list, routes_list)
+            
+            if not combinations:
+                print("ERROR: No valid combinations could be generated!")
+                return 0
+            
+            # Add new jobs
+            new_jobs = []
+            for combo in combinations:
+                new_jobs.append({
+                    'id': job_id,
+                    'agent': combo['agent'],
+                    'weather': combo['weather'],
+                    'route': combo['route'],
+                    'town': combo.get('town', 'unknown'),
+                    'status': 'pending',
+                    'attempts': 0,
+                    'gpu': None,
+                    'start_time': None,
+                    'end_time': None,
+                    'duration': None
+                })
+                job_id += 1
+            
+            queue_data['jobs'].extend(new_jobs)
+            queue_data['total'] = len(queue_data['jobs'])
+            
+            with open(self.queue_file, 'w') as f:
+                json.dump(queue_data, f, indent=2)
+            
+            # Update runtime estimates for new combinations
+            with open(self.runtime_file, 'r') as f:
+                runtime_data = json.load(f)
+            
+            for job in new_jobs:
+                key = f"{job['agent']}_{job['route']}"
+                if key not in runtime_data['combinations']:
+                    if 'short' in job['route']:
+                        runtime_data['combinations'][key] = 1800
+                    elif 'long' in job['route']:
+                        runtime_data['combinations'][key] = 5400
+                    else:
+                        runtime_data['combinations'][key] = 3600
+            
+            with open(self.runtime_file, 'w') as f:
+                json.dump(runtime_data, f, indent=2)
+            
+            print(f"Added {len(new_jobs)} new valid jobs for agent '{agent_name}'")
+            return len(new_jobs)
+        
+        return self._with_lock(lambda: _add(agent, weather, routes))
+    
+    def cancel_pending(self, agent: str = None):
+        """Cancel pending jobs"""
+        def _cancel(agent_name):
+            with open(self.queue_file, 'r') as f:
+                queue_data = json.load(f)
+            
+            cancel_count = 0
+            for job in queue_data['jobs']:
+                if job['status'] == 'pending':
+                    if agent_name is None or job['agent'] == agent_name:
+                        job['status'] = 'cancelled'
+                        cancel_count += 1
+            
+            with open(self.queue_file, 'w') as f:
+                json.dump(queue_data, f, indent=2)
+            
+            if agent_name:
+                print(f"Cancelled {cancel_count} pending jobs for agent '{agent_name}'")
+            else:
+                print(f"Cancelled all {cancel_count} pending jobs")
+            return cancel_count
+        
+        return self._with_lock(lambda: _cancel(agent))
+    
+    def get_status(self):
+        """Get current collection status"""
+        try:
+            with open(self.queue_file, 'r') as f:
+                queue_data = json.load(f)
+            with open(self.gpu_status_file, 'r') as f:
+                gpu_status = json.load(f)
+            with open(self.runtime_file, 'r') as f:
+                runtime_data = json.load(f)
+            
+            # Calculate statistics
+            status = {
+                'total': queue_data['total'],
+                'completed': queue_data['completed'],
+                'pending': sum(1 for j in queue_data['jobs'] if j['status'] == 'pending'),
+                'running': sum(1 for j in queue_data['jobs'] if j['status'] in ['assigned', 'running']),
+                'failed': sum(1 for j in queue_data['jobs'] if j['status'] == 'failed'),
+                'cancelled': sum(1 for j in queue_data['jobs'] if j['status'] == 'cancelled'),
+                'gpus_active': sum(1 for g in gpu_status.values() if g['status'] == 'busy'),
+                'gpus_idle': sum(1 for g in gpu_status.values() if g['status'] == 'idle')
+            }
+            
+            return status
+        except FileNotFoundError:
+            return None
+    
+    def export_results(self, output_file: str = 'collection_results.json'):
+        """Export completed job results"""
+        try:
+            with open(self.completed_file, 'r') as f:
+                completed_data = json.load(f)
+            
+            # Organize results
+            results = {
+                'summary': {
+                    'total_completed': len(completed_data['jobs']),
+                    'export_time': datetime.now().isoformat()
+                },
+                'jobs': completed_data['jobs'],
+                'statistics': {}
+            }
+            
+            # Calculate statistics
+            if completed_data['jobs']:
+                durations = [j['duration'] for j in completed_data['jobs'] if j.get('duration')]
+                if durations:
+                    results['statistics'] = {
+                        'total_runtime': sum(durations),
+                        'average_duration': sum(durations) / len(durations),
+                        'min_duration': min(durations),
+                        'max_duration': max(durations)
+                    }
+                
+                # Group by agent
+                by_agent = {}
+                for job in completed_data['jobs']:
+                    agent = job['agent']
+                    if agent not in by_agent:
+                        by_agent[agent] = []
+                    by_agent[agent].append(job['duration'] if job.get('duration') else 0)
+                
+                results['by_agent'] = {
+                    agent: {
+                        'count': len(times),
+                        'total_time': sum(times),
+                        'avg_time': sum(times) / len(times) if times else 0
+                    }
+                    for agent, times in by_agent.items()
+                }
+                
+                # Group by town to analyze failure patterns
+                by_town = {}
+                for job in completed_data['jobs']:
+                    town = job.get('town', 'unknown')
+                    if town not in by_town:
+                        by_town[town] = {'completed': 0, 'total_time': 0}
+                    by_town[town]['completed'] += 1
+                    by_town[town]['total_time'] += job.get('duration', 0)
+                
+                results['by_town'] = by_town
+            
+            # Save results
+            with open(output_file, 'w') as f:
+                json.dump(results, f, indent=2)
+            
+            print(f"Exported results to {output_file}")
+            return output_file
+        
+        except FileNotFoundError:
+            print("No completed jobs found")
+            return None
+    
+    def optimize_runtime_estimates(self):
+        """Optimize runtime estimates based on completed jobs"""
+        def _optimize():
+            with open(self.completed_file, 'r') as f:
+                completed_data = json.load(f)
+            with open(self.runtime_file, 'r') as f:
+                runtime_data = json.load(f)
+            
+            if not completed_data['jobs']:
+                print("No completed jobs to analyze")
+                return 0
+            
+            # Group completed jobs by agent-route combination
+            combinations = {}
+            for job in completed_data['jobs']:
+                if job.get('duration'):
+                    key = f"{job['agent']}_{job['route']}"
+                    if key not in combinations:
+                        combinations[key] = []
+                    combinations[key].append(job['duration'])
+            
+            # Update estimates using median of actual runtimes
+            updates = 0
+            for key, durations in combinations.items():
+                if len(durations) >= 2:  # Need at least 2 samples
+                    durations.sort()
+                    median = durations[len(durations)//2]
+                    old_estimate = runtime_data['combinations'].get(key, runtime_data['default'])
+                    
+                    # Weighted update
+                    new_estimate = 0.7 * median + 0.3 * old_estimate
+                    runtime_data['combinations'][key] = new_estimate
+                    updates += 1
+                    
+                    print(f"Updated {key}: {old_estimate:.0f}s -> {new_estimate:.0f}s")
+            
+            with open(self.runtime_file, 'w') as f:
+                json.dump(runtime_data, f, indent=2)
+            
+            print(f"Optimized {updates} runtime estimates")
+            return updates
+        
+        return self._with_lock(_optimize)
+    
+    def show_runtime_analysis(self):
+        """Show detailed runtime analysis"""
+        try:
+            with open(self.completed_file, 'r') as f:
+                completed_data = json.load(f)
+            with open(self.runtime_file, 'r') as f:
+                runtime_data = json.load(f)
+            with open(self.queue_file, 'r') as f:
+                queue_data = json.load(f)
+            
+            if not completed_data['jobs']:
+                print("No completed jobs to analyze")
+                return
+            
+            print("\nRUNTIME ANALYSIS")
+            print("="*60)
+            
+            # Analyze failure patterns
+            failed_jobs = [j for j in queue_data['jobs'] if j['status'] == 'failed']
+            if failed_jobs:
+                print("\nFAILURE ANALYSIS:")
+                print(f"Total failed jobs: {len(failed_jobs)}")
+                
+                # Group failures by town
+                failures_by_town = {}
+                for job in failed_jobs:
+                    town = job.get('town', 'unknown')
+                    if town not in failures_by_town:
+                        failures_by_town[town] = []
+                    failures_by_town[town].append(job)
+                
+                print("\nFailures by town:")
+                for town, jobs in sorted(failures_by_town.items()):
+                    print(f"  Town {town}: {len(jobs)} failures")
+                    # Show unique routes that failed
+                    failed_routes = set(j['route'] for j in jobs)
+                    for route in sorted(failed_routes):
+                        count = sum(1 for j in jobs if j['route'] == route)
+                        print(f"    - {route}: {count} failures")
+            
+            # Group by agent
+            by_agent = {}
+            for job in completed_data['jobs']:
+                if job.get('duration'):
+                    agent = job['agent']
+                    if agent not in by_agent:
+                        by_agent[agent] = {'durations': [], 'routes': {}}
+                    by_agent[agent]['durations'].append(job['duration'])
+                    
+                    route = job['route']
+                    if route not in by_agent[agent]['routes']:
+                        by_agent[agent]['routes'][route] = []
+                    by_agent[agent]['routes'][route].append(job['duration'])
+            
+            # Print analysis for each agent
+            for agent, data in sorted(by_agent.items()):
+                durations = data['durations']
+                avg_time = sum(durations) / len(durations)
+                min_time = min(durations)
+                max_time = max(durations)
+                
+                print(f"\n{agent}:")
+                print(f"  Jobs completed: {len(durations)}")
+                print(f"  Average time: {str(timedelta(seconds=int(avg_time)))}")
+                print(f"  Min/Max: {str(timedelta(seconds=int(min_time)))} - "
+                      f"{str(timedelta(seconds=int(max_time)))}")
+                
+                # Route breakdown
+                print("  By route:")
+                for route, route_times in sorted(data['routes'].items()):
+                    route_avg = sum(route_times) / len(route_times)
+                    estimate_key = f"{agent}_{route}"
+                    estimate = runtime_data['combinations'].get(estimate_key, 
+                                                               runtime_data['default'])
+                    accuracy = (1 - abs(route_avg - estimate) / route_avg) * 100
+                    
+                    print(f"    {route[:30]:30} Avg: {route_avg:6.0f}s "
+                          f"Est: {estimate:6.0f}s ({accuracy:.0f}% accurate)")
+            
+            print("="*60)
+            
+        except FileNotFoundError:
+            print("State files not found")
+    
+    def check_setup(self):
+        """Check if the environment is properly set up"""
+        print("\nCHECKING SETUP")
+        print("="*60)
+        
+        # Check routes directory
+        if self.routes_dir.exists():
+            route_files = list(self.routes_dir.glob('*.xml'))
+            print(f"✓ Routes directory exists: {self.routes_dir}")
+            print(f"  Found {len(route_files)} route files")
+        else:
+            print(f"✗ Routes directory not found: {self.routes_dir}")
+        
+        # Check scenarios directory
+        if self.scenarios_dir.exists():
+            scenario_files = list(self.scenarios_dir.glob('*.json'))
+            print(f"✓ Scenarios directory exists: {self.scenarios_dir}")
+            print(f"  Found {len(scenario_files)} scenario files")
+        else:
+            print(f"✗ Scenarios directory not found: {self.scenarios_dir}")
+        
+        # Check for matching route/scenario pairs
+        town_routes = self._discover_routes_and_scenarios()
+        if town_routes:
+            print(f"\n✓ Found {sum(len(r) for r in town_routes.values())} valid route/scenario combinations")
+            for town, routes in sorted(town_routes.items()):
+                print(f"  Town {town}: {len(routes)} routes")
+        else:
+            print("\n✗ No valid route/scenario combinations found!")
+        
+        # Check agent configs
+        configs_dir = self.project_root / 'leaderboard/team_code/configs'
+        if configs_dir.exists():
+            agent_configs = list(configs_dir.glob('*.yaml'))
+            print(f"\n✓ Agent configs directory exists: {configs_dir}")
+            print(f"  Found {len(agent_configs)} agent configurations:")
+            for config in agent_configs:
+                print(f"    - {config.stem}")
+        else:
+            print(f"\n✗ Agent configs directory not found: {configs_dir}")
+        
+        print("="*60)
+
+
+def main():
+    parser = argparse.ArgumentParser(description='Manage continuous data collection')
+    subparsers = parser.add_subparsers(dest='command', help='Commands')
+    
+    # Check command
+    subparsers.add_parser('check', help='Check setup and available combinations')
+    
+    # Status command
+    subparsers.add_parser('status', help='Show current status')
+    
+    # Reset command
+    reset_parser = subparsers.add_parser('reset', help='Reset job queue')
+    reset_parser.add_argument('--agents', nargs='+', help='Agents to include')
+    reset_parser.add_argument('--weather', nargs='+', type=int, help='Weather indices')
+    reset_parser.add_argument('--routes', nargs='+', help='Route files')
+    
+    # Retry command
+    retry_parser = subparsers.add_parser('retry', help='Retry failed jobs')
+    retry_parser.add_argument('--max-attempts', type=int, default=3, help='Maximum attempts')
+    
+    # Add jobs command
+    add_parser = subparsers.add_parser('add', help='Add new jobs')
+    add_parser.add_argument('agent', help='Agent name')
+    add_parser.add_argument('--weather', nargs='+', type=int, help='Weather indices')
+    add_parser.add_argument('--routes', nargs='+', help='Route files')
+    
+    # Cancel command
+    cancel_parser = subparsers.add_parser('cancel', help='Cancel pending jobs')
+    cancel_parser.add_argument('--agent', help='Cancel only for specific agent')
+    
+    # Export command
+    export_parser = subparsers.add_parser('export', help='Export results')
+    export_parser.add_argument('--output', default='collection_results.json', 
+                              help='Output file')
+    
+    # Optimize command
+    subparsers.add_parser('optimize', help='Optimize runtime estimates')
+    
+    # Analyze command
+    subparsers.add_parser('analyze', help='Show runtime analysis')
+    
+    # Parse arguments
+    default_state_dir = os.path.join(
+        os.environ.get('PROJECT_ROOT', os.getcwd()),
+        'collection_state'
+    )
+    parser.add_argument('--state-dir', default=default_state_dir,
+                       help='Path to state directory')
+    args = parser.parse_args()
+    
+    if not args.command:
+        parser.print_help()
+        return
+    
+    # Execute command
+    manager = ContinuousManager(args.state_dir)
+    
+    if args.command == 'check':
+        manager.check_setup()
+    
+    elif args.command == 'status':
+        status = manager.get_status()
+        if status:
+            print("\nCOLLECTION STATUS")
+            print("="*40)
+            for key, value in status.items():
+                print(f"{key:15}: {value}")
+            print("="*40)
+        else:
+            print("No active collection found")
+    
+    elif args.command == 'reset':
+        manager.reset_queue(args.agents, args.weather, args.routes)
+    
+    elif args.command == 'retry':
+        manager.retry_failed(args.max_attempts)
+    
+    elif args.command == 'add':
+        manager.add_jobs(args.agent, args.weather, args.routes)
+    
+    elif args.command == 'cancel':
+        manager.cancel_pending(args.agent)
+    
+    elif args.command == 'export':
+        manager.export_results(args.output)
+    
+    elif args.command == 'optimize':
+        manager.optimize_runtime_estimates()
+    
+    elif args.command == 'analyze':
+        manager.show_runtime_analysis()
+
+
+if __name__ == '__main__':
+    main()

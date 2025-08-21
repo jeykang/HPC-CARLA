@@ -1,0 +1,63 @@
+Bootstrap: docker
+From: carlasim/carla:0.9.10.1
+
+%post
+    apt-key del 7fa2af80
+    apt-key adv --fetch-keys http://developer.download.nvidia.com/compute/cuda/repos/ubuntu1804/x86_64/3bf863cc.pub
+    apt-key adv --keyserver keyserver.ubuntu.com --recv-keys A4B469963BF863CC
+    apt-key adv --keyserver keyserver.ubuntu.com --recv-keys F60F4B3D7FA2AF80
+
+    apt-get update && apt-get install -y \
+        wget curl git vim \
+        python3.7 python3.7-dev python3-pip \
+        libpng16-16 libjpeg8 libtiff5 \
+        && rm -rf /var/lib/apt/lists/*
+
+    update-alternatives --install /usr/bin/python python /usr/bin/python3.7 1
+    update-alternatives --install /usr/bin/pip pip /usr/bin/pip3 1
+
+    python -m pip install --upgrade pip
+
+    pip install \
+        torch==1.7.1+cu110 torchvision==0.8.2+cu110 -f https://download.pytorch.org/whl/torch_stable.html \
+        numpy tqdm tensorboard \
+        pytorch-lightning==1.5.10 timm==0.4.12 \
+        scipy scikit-image \
+        torch-scatter==2.0.7 -f https://data.pyg.org/whl/torch-1.7.1+cu110.html \
+        dictor \
+        lmdb==1.1.1 \
+        moviepy \
+        imageio \
+        imageio-ffmpeg \
+        ray==1.1.0 \
+        requests \
+        opencv-python \
+        pyyaml \
+        py_trees==0.8.3 \
+        shapely \
+        tabulate \
+        six \
+        wandb \
+        xmlschema \
+        einops==0.3.2 \
+        Pillow==5.4.1 \
+        imgaug==0.4.0 \
+        ephem \
+        matplotlib
+
+    wget https://raw.githubusercontent.com/opendilab/InterFuser/main/requirements.txt -O /tmp/requirements.txt
+    python -m pip install -r /tmp/requirements.txt || true
+
+    git clone https://github.com/opendilab/InterFuser
+    cd InterFuser/interfuser
+    python setup.py develop
+
+%environment
+    export SDL_AUDIODRIVER=dsp
+    export CARLA_ROOT=${CARLA_ROOT:-/home/carla}
+    # Expand the egg path via glob; if no match, echo returns literal and is ignored by Python.
+    export PYTHONPATH="$(echo ${CARLA_ROOT}/PythonAPI/carla/dist/carla-*-py*-linux-x86_64.egg):${PYTHONPATH}"
+    export PYTHONPATH="${CARLA_ROOT}/PythonAPI/carla:${PYTHONPATH}"
+
+%runscript
+    exec "${CARLA_ROOT}/CarlaUE4.sh" -nosound "$@"
