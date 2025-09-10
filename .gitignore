@@ -209,3 +209,6 @@ __marimo__/
 dataset/
 logs/
 collection_state/
+
+# Apptainer portable
+install-dir/
