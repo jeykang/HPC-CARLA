@@ -1,0 +1,149 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+STATE="$HOME/.slurm-shim/state"
+JOBDIR="$STATE/jobs"
+mkdir -p "$JOBDIR"
+
+script="$1"; shift || true
+if [[ ! -f "$script" ]]; then echo "sbatch: script not found: $script" >&2; exit 1; fi
+
+# Parse SBATCH headers
+declare -A SB
+SB[output]="logs/%x_%A.out"
+SB[error]="logs/%x_%A.err"
+SB[job-name]="job"
+SB[nodes]="1"
+SB[time]=""
+SB[gres]=""
+SB[gpus-per-node]=""
+SB[array]=""
+
+PROCS_PER_GPU=1
+GPU_LIST=""   # e.g. "0,1,2"
+
+while IFS= read -r line; do
+  [[ "$line" =~ ^#SBATCH\  ]] || continue
+  # normalize "--key=value" or "--key value"
+  opt="${line//#SBATCH /}"
+  key="${opt%%[ =]*}"; val="${opt#"$key"}"; val="${val# }"; val="${val#=}"
+  key="${key#--}"
+  SB["$key"]="$val"
+done < "$script"
+
+# Optional custom header for packing (ignored by real SLURM):
+#   #X-PROCS-PER-GPU: 2
+#   #X-GPU-LIST: 0,1
+while IFS= read -r line; do
+  [[ "$line" =~ ^#X- ]] || continue
+  k="${line%%:*}"; v="${line#*: }"
+  case "$k" in
+    "#X-PROCS-PER-GPU") PROCS_PER_GPU="${v}";;
+    "#X-GPU-LIST") GPU_LIST="${v}";;
+  esac
+done < "$script"
+
+jobname="${SB[job-name]}"
+# Choose GPUs: from gres or gpus-per-node or custom list
+NUM_GPUS=0
+if [[ -n "${GPU_LIST}" ]]; then
+  IFS=',' read -ra GARR <<< "$GPU_LIST"; NUM_GPUS="${#GARR[@]}"
+elif [[ -n "${SB[gpus-per-node]}" ]]; then
+  NUM_GPUS="${SB[gpus-per-node]}"
+elif [[ -n "${SB[gres]}" ]]; then
+  # expect forms like gpu:8 or gpu:a100:4
+  g="$(echo "${SB[gres]}" | awk -F: '{print $NF}')"; [[ "$g" =~ ^[0-9]+$ ]] && NUM_GPUS="$g" || NUM_GPUS=1
+else
+  NUM_GPUS=1
+fi
+
+# Resolve output/error paths
+ts="$(date +%Y%m%d_%H%M%S)"
+jobid="$RANDOM$RANDOM"
+out="${SB[output]//%x/$jobname}"; out="${out//%A/$jobid}"
+err="${SB[error]//%x/$jobname}"; err="${err//%A/$jobid}"
+mkdir -p "$(dirname "$out")" "$(dirname "$err")"
+
+# Array support (e.g., "0-3%2", "1,3,7")
+ARRAY_SPEC="${SB[array]}"
+expand_array () {
+  local spec="$1"; local -a items=()
+  [[ -z "$spec" ]] && { echo ""; return; }
+  # drop %maxconcurrency if present
+  spec="${spec%%%*}"
+  IFS=',' read -ra parts <<< "$spec"
+  for p in "${parts[@]}"; do
+    if [[ "$p" =~ ^([0-9]+)-([0-9]+)$ ]]; then
+      for ((i=${BASH_REMATCH[1]}; i<=${BASH_REMATCH[2]}; i++)); do items+=("$i"); done
+    elif [[ "$p" =~ ^[0-9]+$ ]]; then
+      items+=("$p")
+    fi
+  done
+  printf '%s\n' "${items[@]}"
+}
+
+ARRAY_ITEMS=()
+if [[ -n "$ARRAY_SPEC" ]]; then
+  mapfile -t ARRAY_ITEMS < <(expand_array "$ARRAY_SPEC")
+else
+  ARRAY_ITEMS=("")
+fi
+
+# Record job meta
+meta="$JOBDIR/$jobid.json"
+jq -n --arg id "$jobid" --arg name "$jobname" \
+      --arg out "$out" --arg err "$err" \
+      --argjson num_gpus "$NUM_GPUS" \
+      --argjson procs_per_gpu "$PROCS_PER_GPU" \
+      --arg script "$script" \
+      '{jobid:$id, name:$name, output:$out, error:$err, num_gpus:$num_gpus,
+        procs_per_gpu:$procs_per_gpu, script:$script, pids:[], start:now}' > "$meta" 2>/dev/null || true
+
+# Launch function
+launch_one () {
+  local arr_id="$1"
+  # Export SLURM-like env
+  export SLURM_JOB_ID="$jobid"
+  export SLURM_JOB_NAME="$jobname"
+  export SLURM_JOB_NUM_NODES="${SB[nodes]}"
+  export SLURM_ARRAY_TASK_ID="$arr_id"
+  export SLURM_NTASKS=1
+  export SLURM_CPUS_PER_TASK="${SLURM_CPUS_PER_TASK:-$(nproc)}"
+
+  # GPU pin plan
+  local gpu_list=""
+  if [[ -n "$GPU_LIST" ]]; then gpu_list="$GPU_LIST"
+  else
+    # default to 0..NUM_GPUS-1
+    for ((g=0; g<NUM_GPUS; g++)); do gpu_list+="${g},"; done
+    gpu_list="${gpu_list%,}"
+  fi
+  export SLURM_GPUS_PER_NODE="$NUM_GPUS"
+  export SLURM_GPU_LIST="$gpu_list"
+  export NUM_GPUS="$NUM_GPUS"
+  export PROCS_PER_GPU="$PROCS_PER_GPU"
+
+  # Base ports (override if your script sets them)
+  export BASE_RPC_PORT="${BASE_RPC_PORT:-2000}"
+  export BASE_TM_PORT="${BASE_TM_PORT:-8000}"
+  export PORT_STRIDE="${PORT_STRIDE:-20}"
+  export SLOT_STRIDE="${SLOT_STRIDE:-2}"
+
+  # Run the script
+  # Stream stdout/stderr into files (like SLURM %o/%e)
+  bash "$script" "$@" >>"$out" 2>>"$err" &
+  echo $! >> "$JOBDIR/$jobid.pids"
+}
+
+# Launch array
+for item in "${ARRAY_ITEMS[@]}"; do
+  launch_one "$item"
+done
+
+# Save PID list in meta
+if [[ -f "$JOBDIR/$jobid.pids" ]]; then
+  PIDS="$(tr '\n' ' ' < "$JOBDIR/$jobid.pids" | sed 's/ $//')"
+  jq --arg p "$PIDS" '.pids=($p|split(" "))' "$meta" > "$meta.tmp" && mv "$meta.tmp" "$meta" || true
+fi
+
+echo "$jobid"

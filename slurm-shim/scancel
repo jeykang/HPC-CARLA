@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+set -euo pipefail
+JOBDIR="$HOME/.slurm-shim/state/jobs"
+for jobid in "$@"; do
+  meta="$JOBDIR/$jobid.json"
+  [[ -f "$meta" ]] || { echo "scancel: unknown job $jobid" >&2; continue; }
+  mapfile -t PIDS < <(jq -r '.pids[]' "$meta" 2>/dev/null || true)
+  for pid in "${PIDS[@]}"; do
+    pgid=$(ps -o pgid= -p "$pid" | tr -d ' ')
+    # Terminate the whole group
+    kill -TERM -"$pgid"
+  done
+  echo "Cancelled $jobid"
+done

@@ -212,3 +212,6 @@ collection_state/
 
 # Apptainer portable
 install-dir/
+
+# wandb
+wandb/
