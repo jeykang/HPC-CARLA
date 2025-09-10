@@ -174,7 +174,7 @@ python ${WORKSPACE_DIR}/leaderboard/leaderboard/leaderboard_evaluator.py \\
     --trafficManagerPort=${TM_PORT} \\
     --host=localhost \\
     --timeout=60 \\
-    --debug=1 \\
+    --debug=0 \\
     --record="\$SAVE_PATH" || EXIT_CODE=\$?
 
 if [ \${EXIT_CODE:-0} -ne 0 ]; then

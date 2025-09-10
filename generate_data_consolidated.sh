@@ -210,7 +210,7 @@ python __WORKSPACE_DIR__/leaderboard/leaderboard/leaderboard_evaluator.py \
     --trafficManagerPort=__TM_PORT__ \
     --host=localhost \
     --timeout=60 \
-    --debug=1 \
+    --debug=0 \
     --record="$SAVE_PATH"
 
 echo "[GPU __GPU_ID__] Evaluation completed. Terminating CARLA..."
