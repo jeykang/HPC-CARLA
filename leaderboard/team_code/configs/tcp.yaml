@@ -1,3 +1,157 @@
-agent_file: "/workspace/leaderboard/team_code/tcp/tcp_agent.py"
-agent_class: "TCPAgent"
-config_path: "/workspace/leaderboard/team_code/tcp/tcp_model.ckpt"
+# TCP (Trajectory-guided Control Prediction) Agent Configuration
+# For use with the new consolidated_agent.py
+
+# Model configuration
+model_type: generic  # TCP uses custom architecture
+model_path: /workspace/leaderboard/team_code/tcp/checkpoints/tcp_model.ckpt
+
+# Alternative: Extract from original TCP agent
+# agent_config:
+#   agent_file: /workspace/leaderboard/team_code/tcp/tcp_agent.py
+#   agent_class: TCPAgent
+#   config_path: /workspace/leaderboard/team_code/tcp/config.py
+
+# External configuration (if TCP uses Python config)
+# external_config: /workspace/leaderboard/team_code/tcp/config.py
+
+# Model-specific configuration
+model_config:
+  # Architecture parameters
+  backbone: resnet34        # Visual backbone
+  pretrained: true          # Use pretrained backbone
+  
+  # Trajectory prediction
+  num_waypoints: 10         # Number of future waypoints to predict
+  waypoint_dim: 2          # 2D waypoints (x, y)
+  prediction_horizon: 3.0   # Seconds into future
+  
+  # Control prediction
+  control_dim: 3           # Steer, throttle, brake
+  use_pid: false           # Direct control prediction
+  
+  # Feature dimensions
+  hidden_dim: 512
+  feature_dim: 256
+  
+  # Training configuration (for reference)
+  seq_len: 1               # Sequence length for temporal models
+  pred_len: 4              # Prediction steps
+  
+  # Input configuration
+  use_depth: false         # Use depth images
+  use_semantic: false      # Use semantic segmentation
+  use_lidar: false        # Use LiDAR data
+  use_route: true         # Use route/waypoint information
+  
+  # Model instantiation (if needed)
+  # model_module: tcp.models.tcp_model
+  # model_class: TCPModel
+  # model_args:
+  #   config: default
+
+# Sensor configuration - TCP typically uses front camera and route info
+sensors:
+  # Main RGB camera
+  - type: sensor.camera.rgb
+    x: 1.3        # Forward of vehicle center
+    y: 0.0        # Centered laterally
+    z: 2.3        # Camera height
+    roll: 0.0
+    pitch: 0.0    # Level with horizon
+    yaw: 0.0      # Forward-facing
+    width: 900    # High resolution width
+    height: 256   # Wide aspect ratio
+    fov: 100      # Wide field of view
+    id: rgb_front
+    
+  # Optional: Additional cameras for better coverage
+  # - type: sensor.camera.rgb
+  #   x: 0.0
+  #   y: -0.7
+  #   z: 2.3
+  #   roll: 0.0
+  #   pitch: 0.0
+  #   yaw: -60.0
+  #   width: 900
+  #   height: 256
+  #   fov: 100
+  #   id: rgb_left
+  
+  # - type: sensor.camera.rgb
+  #   x: 0.0
+  #   y: 0.7
+  #   z: 2.3
+  #   roll: 0.0
+  #   pitch: 0.0
+  #   yaw: 60.0
+  #   width: 900
+  #   height: 256
+  #   fov: 100
+  #   id: rgb_right
+  
+  # GPS for localization
+  - type: sensor.other.gnss
+    x: 0.0
+    y: 0.0
+    z: 0.0
+    roll: 0.0
+    pitch: 0.0
+    yaw: 0.0
+    id: gps
+    
+  # IMU for vehicle dynamics
+  - type: sensor.other.imu
+    x: 0.0
+    y: 0.0
+    z: 0.0
+    roll: 0.0
+    pitch: 0.0
+    yaw: 0.0
+    id: imu
+    
+  # Speedometer
+  - type: sensor.speedometer
+    id: speed
+
+# Control parameters
+control:
+  target_speed: 25.0      # Target cruise speed (km/h)
+  brake_threshold: 0.4    # Threshold for brake activation
+  steer_damping: 0.25     # Steering smoothing factor
+  
+  # TCP-specific control parameters
+  trajectory_weight: 0.7   # Weight for trajectory following vs direct control
+  safety_margin: 2.0       # Safety distance margin (meters)
+  
+  # Speed control
+  speed_kp: 1.0           # Proportional gain for speed control
+  speed_ki: 0.1           # Integral gain for speed control
+  speed_kd: 0.0           # Derivative gain for speed control
+  
+  # Steering control  
+  steer_kp: 1.2           # Proportional gain for steering
+  steer_ki: 0.05          # Integral gain for steering
+  steer_kd: 0.3           # Derivative gain for steering
+  
+  # Limits
+  max_throttle: 0.75      # Maximum throttle
+  max_brake: 1.0          # Maximum brake
+  max_steer: 1.0          # Maximum steering angle
+
+# Runtime configuration
+runtime:
+  device: cuda            # Use GPU if available
+  precision: fp32         # Full precision for accuracy
+  batch_size: 1          # Single sample inference
+
+# Data collection settings
+data_collection:
+  enabled: true
+  save_frequency: 10      # Save metadata every N frames
+  save_trajectories: true # Save predicted trajectories
+
+# Debug settings (optional)
+debug:
+  verbose: false
+  visualize_trajectory: false  # Visualize predicted trajectory
+  save_debug_images: false     # Save debug visualizations
