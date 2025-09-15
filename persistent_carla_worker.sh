@@ -204,10 +204,18 @@ reset_carla_world() {
 
 # Function to run a single evaluation job
 run_evaluation_job() {
+
     local JOB_ID=$1
     local AGENT_TYPE=$2
     local WEATHER_IDX=$3
     local ROUTE_FILE=$4
+
+    ROUTE_NAME_NO_EXT="${ROUTE_FILE%.xml}"
+    ROUTE_NAME_NO_EXT=$(basename "$ROUTE_NAME_NO_EXT")
+    SAVE_PATH="${WORKSPACE_DIR}/dataset/agent-${AGENT_TYPE}/weather-${WEATHER_IDX}/${ROUTE_NAME_NO_EXT}"
+    mkdir -p "$SAVE_PATH"
+    export SAVE_PATH
+
     
     echo "[GPU $GPU_ID] Running job $JOB_ID: agent=$AGENT_TYPE weather=$WEATHER_IDX route=$ROUTE_FILE"
     
