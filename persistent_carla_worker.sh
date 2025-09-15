@@ -216,6 +216,11 @@ run_evaluation_job() {
     mkdir -p "$SAVE_PATH"
     export SAVE_PATH
 
+    # Construct a separate recorder file name
+    RECORD_PATH="${SAVE_PATH}/${ROUTE_NAME_NO_EXT}_${WEATHER_IDX}_${JOB_ID}.log"
+
+    export RECORD_PATH
+
     
     echo "[GPU $GPU_ID] Running job $JOB_ID: agent=$AGENT_TYPE weather=$WEATHER_IDX route=$ROUTE_FILE"
     
@@ -284,7 +289,7 @@ python ${WORKSPACE_DIR}/leaderboard/leaderboard/leaderboard_evaluator.py \
     --host=localhost \
     --timeout=60 \
     --debug=0 \
-    --record="\$SAVE_PATH"
+    --record="\$RECORD_PATH"
 
 EVAL_SCRIPT
     

@@ -127,6 +127,11 @@ SAVE_PATH="${WORKSPACE_DIR}/dataset/agent-${AGENT_TYPE}/weather-${WEATHER_IDX}/$
 mkdir -p "$SAVE_PATH"
 export SAVE_PATH
 
+# Construct a separate recorder file name
+RECORD_PATH="${SAVE_PATH}/${ROUTE_NAME_NO_EXT}_${WEATHER_IDX}_${JOB_ID}.log"
+
+export RECORD_PATH
+
 # Set environment variables
 export ROUTES=${WORKSPACE_DIR}/leaderboard/data/training_routes/${ROUTE_FILE}
 export SCENARIOS=${WORKSPACE_DIR}/leaderboard/data/scenarios/town${TOWN_NUM}_all_scenarios.json
@@ -177,7 +182,7 @@ python ${WORKSPACE_DIR}/leaderboard/leaderboard/leaderboard_evaluator.py \\
     --host=localhost \\
     --timeout=60 \\
     --debug=0 \\
-    --record="\$SAVE_PATH" || EXIT_CODE=\$?
+    --record="\$RECORD_PATH" || EXIT_CODE=\$?
 
 if [ \${EXIT_CODE:-0} -ne 0 ]; then
     echo "[GPU ${GPU_ID}] Evaluation failed with exit code: \${EXIT_CODE}" >&2
