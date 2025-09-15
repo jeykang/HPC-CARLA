@@ -951,9 +951,10 @@ class ConsolidatedAgent(AutonomousAgent):
     
     def _output_to_control(self, output):
         """Convert model output to CARLA vehicle control."""
-        from srunner.scenariomanager.carla_data_provider import CarlaDataProvider
+        import carla
         
-        control = CarlaDataProvider.get_world().get_blueprint_library().find('controller.ai.walker').make_control()
+        # Create VEHICLE control (not walker control!)
+        control = carla.VehicleControl()
         
         # Handle different output formats
         if isinstance(output, dict):
@@ -1030,7 +1031,7 @@ class ConsolidatedAgent(AutonomousAgent):
         control.manual_gear_shift = False
         
         return control
-    
+        
     def _waypoints_to_control(self, waypoints, control):
         """Convert predicted waypoints to control commands."""
         if len(waypoints.shape) == 3:
@@ -1052,9 +1053,10 @@ class ConsolidatedAgent(AutonomousAgent):
     
     def _rule_based_control(self, processed_data, timestamp):
         """Simple rule-based control as fallback."""
-        from srunner.scenariomanager.carla_data_provider import CarlaDataProvider
+        import carla
         
-        control = CarlaDataProvider.get_world().get_blueprint_library().find('controller.ai.walker').make_control()
+        # Create VEHICLE control (not walker control!)
+        control = carla.VehicleControl()
         
         # Get current speed
         current_speed = processed_data.get('speed', 0.0)
@@ -1092,56 +1094,82 @@ class ConsolidatedAgent(AutonomousAgent):
             # Get current transform
             transform = ego_vehicle.get_transform()
             location = transform.location
-            rotation = transform.rotation
             
-            # Find nearest waypoint
-            min_dist = float('inf')
+            # Find the target waypoint (look ahead)
             target_waypoint = None
+            look_ahead_distance = 5.0  # meters
             
-            for i, waypoint in enumerate(self._global_plan_world_coord):
-                if isinstance(waypoint, tuple):
-                    if len(waypoint) >= 2:
-                        wp_loc = waypoint[0] if isinstance(waypoint[0], object) else waypoint
-                        if hasattr(wp_loc, 'location'):
-                            wp_x, wp_y = wp_loc.location.x, wp_loc.location.y
-                        else:
-                            wp_x, wp_y = wp_loc[0], wp_loc[1]
+            for waypoint in self._global_plan_world_coord:
+                if isinstance(waypoint, tuple) and len(waypoint) >= 1:
+                    # Extract location from waypoint tuple
+                    wp_transform = waypoint[0]
+                    if hasattr(wp_transform, 'location'):
+                        wp_location = wp_transform.location
+                    elif hasattr(wp_transform, 'x'):
+                        # It's already a location
+                        wp_location = wp_transform
                     else:
                         continue
-                else:
-                    continue
-                
-                dist = np.sqrt((wp_x - location.x)**2 + (wp_y - location.y)**2)
-                
-                # Look for waypoint ahead
-                if dist < min_dist and dist > 2.0:  # At least 2m ahead
-                    min_dist = dist
-                    target_waypoint = (wp_x, wp_y)
+                    
+                    # Calculate distance
+                    dist = location.distance(wp_location)
+                    
+                    # Find a waypoint that's ahead but not too far
+                    if look_ahead_distance <= dist <= look_ahead_distance * 3:
+                        target_waypoint = wp_location
+                        break
+            
+            # If no suitable waypoint found, try to use the nearest one ahead
+            if target_waypoint is None and self._global_plan_world_coord:
+                min_dist = float('inf')
+                for waypoint in self._global_plan_world_coord[:10]:  # Check first 10 waypoints
+                    if isinstance(waypoint, tuple) and len(waypoint) >= 1:
+                        wp_transform = waypoint[0]
+                        if hasattr(wp_transform, 'location'):
+                            wp_location = wp_transform.location
+                        elif hasattr(wp_transform, 'x'):
+                            wp_location = wp_transform
+                        else:
+                            continue
+                        
+                        dist = location.distance(wp_location)
+                        if dist < min_dist and dist > 1.0:
+                            min_dist = dist
+                            target_waypoint = wp_location
             
             if target_waypoint is None:
                 return 0.0
             
             # Calculate steering angle
-            dx = target_waypoint[0] - location.x
-            dy = target_waypoint[1] - location.y
-            
-            # Convert to vehicle coordinate system
             forward_vec = transform.get_forward_vector()
-            right_vec = transform.get_right_vector()
             
-            dot_forward = dx * forward_vec.x + dy * forward_vec.y
-            dot_right = dx * right_vec.x + dy * right_vec.y
+            # Vector from vehicle to waypoint
+            v = target_waypoint - location
+            v_norm = v / (v.length() + 1e-10)
             
-            # Calculate angle
-            angle = np.arctan2(dot_right, dot_forward)
+            # Calculate cross product for steering direction
+            cross = forward_vec.x * v_norm.y - forward_vec.y * v_norm.x
             
-            # Convert to steering command (-1 to 1)
-            steer = np.clip(angle / 0.7, -1.0, 1.0)  # 0.7 rad ~ 40 degrees max
+            # Calculate dot product for angle magnitude
+            dot = forward_vec.x * v_norm.x + forward_vec.y * v_norm.y
+            
+            # Calculate steering angle
+            angle = np.arcsin(np.clip(cross, -1.0, 1.0))
+            
+            # Scale the steering based on angle and distance
+            steer = angle
+            if abs(angle) > 0.1:  # If turning significantly
+                steer = angle * 2.0  # Increase steering response
+            
+            # Clamp to valid range
+            steer = np.clip(steer, -1.0, 1.0)
             
             return float(steer)
             
         except Exception as e:
             print(f"Error computing steering: {e}")
+            import traceback
+            traceback.print_exc()
             return 0.0
     
     def _postprocess_control(self, control):
@@ -1432,6 +1460,32 @@ class ConsolidatedAgent(AutonomousAgent):
                 json.dump(metadata_copy, f, indent=2)
         except Exception as e:
             print(f"Warning: Failed to save metadata: {e}")
+
+    def set_global_plan(self, global_plan_gps, global_plan_world_coord):
+        """
+        Set the global plan for the agent to follow.
+        This is called by the leaderboard evaluator.
+        
+        Args:
+            global_plan_gps: List of GPS waypoints
+            global_plan_world_coord: List of world coordinate waypoints
+        """
+        self._global_plan_gps = global_plan_gps
+        self._global_plan_world_coord = global_plan_world_coord
+        
+        # Clear buffers for new route
+        self.waypoint_buffer.clear()
+        
+        # Store waypoints for navigation
+        for i, waypoint in enumerate(global_plan_world_coord):
+            self.waypoint_buffer.append(waypoint)
+        
+        print(f"ConsolidatedAgent: Global plan set with {len(global_plan_world_coord)} waypoints")
+        
+        # Log first and last waypoints for debugging
+        if global_plan_world_coord:
+            print(f"  First waypoint: {global_plan_world_coord[0]}")
+            print(f"  Last waypoint: {global_plan_world_coord[-1]}")
     
     def destroy(self):
         """Clean up and save final metadata."""
