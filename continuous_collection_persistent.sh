@@ -352,9 +352,17 @@ PYTHON_COMPLETE
 # Enhanced worker function with periodic health updates
 gpu_worker_persistent() {
     local gpu_id=$1
-    local worker_log="${LOG_DIR}/worker_gpu${gpu_id}_persistent.log"
+    local gpu_log="${LOG_DIR}/gpu${gpu_id}_consolidated.log"
     
-    echo "[GPU $gpu_id] Worker started with persistent server at $(date)" > "$worker_log"
+    # Initialize GPU log file with header
+    {
+        echo "=========================================="
+        echo "GPU $gpu_id Persistent Worker Started: $(date)"
+        echo "Node: $(hostname)"
+        echo "Using persistent CARLA server on port $((BASE_RPC_PORT + gpu_id * PORT_SPACING))"
+        echo "=========================================="
+        echo ""
+    } > "$gpu_log"
     
     # Write initial health status
     write_health_status $gpu_id "starting" "Worker initializing" null
@@ -362,6 +370,7 @@ gpu_worker_persistent() {
     # Count consecutive server errors
     local server_error_count=0
     local max_server_errors=3
+    local job_count=0
     
     while true; do
         # Update health status - waiting for job
@@ -370,18 +379,21 @@ gpu_worker_persistent() {
         JOB_INFO=$(get_next_job $gpu_id)
         
         if [ "$JOB_INFO" == "NO_MORE_JOBS" ]; then
-            echo "[GPU $gpu_id] No more jobs available" >> "$worker_log"
+            echo "[GPU $gpu_id] No more jobs available at $(date)" >> "$gpu_log"
             write_health_status $gpu_id "completed" "No more jobs" null
             break
         fi
         
         if [ "$JOB_INFO" == "SERVER_UNHEALTHY" ]; then
-            echo "[GPU $gpu_id] CARLA server unhealthy, waiting for restart..." >> "$worker_log"
+            {
+                echo "[GPU $gpu_id] WARNING: CARLA server unhealthy, waiting for restart..."
+                echo "Time: $(date)"
+            } >> "$gpu_log"
             write_health_status $gpu_id "unhealthy" "CARLA server unhealthy" null
             server_error_count=$((server_error_count + 1))
             
             if [ $server_error_count -ge $max_server_errors ]; then
-                echo "[GPU $gpu_id] Too many server errors, exiting worker" >> "$worker_log"
+                echo "[GPU $gpu_id] ERROR: Too many server errors, exiting worker" >> "$gpu_log"
                 write_health_status $gpu_id "error" "Too many server errors" null
                 break
             fi
@@ -392,10 +404,21 @@ gpu_worker_persistent() {
         
         # Reset error count on successful job retrieval
         server_error_count=0
+        job_count=$((job_count + 1))
         
         IFS='|' read -r JOB_ID AGENT WEATHER ROUTE <<< "$JOB_INFO"
         
-        echo "[GPU $gpu_id] Starting job $JOB_ID: agent=$AGENT weather=$WEATHER route=$ROUTE" >> "$worker_log"
+        # Add job header to consolidated log
+        {
+            echo ""
+            echo "=========================================="
+            echo "[GPU $gpu_id] Starting Job #$JOB_ID (Total: $job_count)"
+            echo "Time: $(date)"
+            echo "Agent: $AGENT"
+            echo "Weather: $WEATHER"
+            echo "Route: $ROUTE"
+            echo "=========================================="
+        } >> "$gpu_log"
         
         START_TIME=$(date +%s)
         
@@ -406,54 +429,12 @@ gpu_worker_persistent() {
         export ROUTE_FILE=$ROUTE
         export GPU_ID=$gpu_id
         
-        # Start the job in background
-        bash "${PROJECT_ROOT}/generate_single_job_persistent.sh" \
-            > "${LOG_DIR}/job_${JOB_ID}_gpu${gpu_id}.out" \
-            2> "${LOG_DIR}/job_${JOB_ID}_gpu${gpu_id}.err" &
-        
-        JOB_PID=$!
-        echo "[GPU $gpu_id] Job $JOB_ID started with PID $JOB_PID" >> "$worker_log"
-        
-        # Monitor the job and update health periodically
-        local update_counter=0
-        local health_update_interval=30  # Update health every 30 seconds
-        
-        while kill -0 $JOB_PID 2>/dev/null; do
-            # Calculate elapsed time
-            CURRENT_TIME=$(date +%s)
-            ELAPSED=$((CURRENT_TIME - START_TIME))
-            ELAPSED_HOURS=$((ELAPSED / 3600))
-            ELAPSED_MINS=$(((ELAPSED % 3600) / 60))
-            ELAPSED_SECS=$((ELAPSED % 60))
-            
-            # Format elapsed time string
-            ELAPSED_STR=$(printf "%02d:%02d:%02d" $ELAPSED_HOURS $ELAPSED_MINS $ELAPSED_SECS)
-            
-            # Update health status with progress
-            write_health_status $gpu_id "running_job" \
-                "Job $JOB_ID: $AGENT/$ROUTE (running ${ELAPSED_STR})" $JOB_ID
-            
-            # Log progress periodically
-            if [ $((update_counter % 10)) -eq 0 ]; then  # Log every 5 minutes
-                echo "[GPU $gpu_id] Job $JOB_ID still running (${ELAPSED_STR})" >> "$worker_log"
-                
-                # Check if output file is growing (sign of progress)
-                OUTPUT_FILE="${LOG_DIR}/job_${JOB_ID}_gpu${gpu_id}.out"
-                if [ -f "$OUTPUT_FILE" ]; then
-                    FILE_SIZE=$(stat -c%s "$OUTPUT_FILE" 2>/dev/null || echo 0)
-                    echo "[GPU $gpu_id] Job $JOB_ID output size: $FILE_SIZE bytes" >> "$worker_log"
-                fi
-            fi
-            
-            update_counter=$((update_counter + 1))
-            
-            # Wait before next update
-            sleep $health_update_interval
-        done
-        
-        # Job has finished, get exit code
-        wait $JOB_PID
-        EXIT_CODE=$?
+        # Run the job and append output to consolidated log
+        {
+            bash "${PROJECT_ROOT}/generate_single_job_persistent.sh" 2>&1
+            EXIT_CODE=$?
+            echo "Exit code: $EXIT_CODE"
+        } >> "$gpu_log"
         
         END_TIME=$(date +%s)
         DURATION=$((END_TIME - START_TIME))
@@ -463,40 +444,48 @@ gpu_worker_persistent() {
         DURATION_MINS=$(((DURATION % 3600) / 60))
         DURATION_STR=$(printf "%02d:%02d" $DURATION_HOURS $DURATION_MINS)
         
-        if [ $EXIT_CODE -eq 0 ]; then
-            mark_job_complete $JOB_ID $gpu_id $DURATION "completed"
-            echo "[GPU $gpu_id] Job $JOB_ID completed successfully in ${DURATION_STR}" >> "$worker_log"
-            write_health_status $gpu_id "job_completed" \
-                "Job $JOB_ID completed successfully (took ${DURATION_STR})" null
-        elif [ $EXIT_CODE -eq 99 ]; then
-            # Server crashed
-            mark_job_complete $JOB_ID $gpu_id $DURATION "failed"
-            echo "[GPU $gpu_id] Job $JOB_ID failed due to server crash after ${DURATION_STR}" >> "$worker_log"
-            write_health_status $gpu_id "server_crashed" \
-                "CARLA server crashed during job $JOB_ID (after ${DURATION_STR})" null
-            
-            # Wait for server to be restarted by manager
-            echo "[GPU $gpu_id] Waiting for server restart..." >> "$worker_log"
-            sleep 60
-        else
-            mark_job_complete $JOB_ID $gpu_id $DURATION "failed"
-            echo "[GPU $gpu_id] Job $JOB_ID failed with code $EXIT_CODE after ${DURATION_STR}" >> "$worker_log"
-            write_health_status $gpu_id "job_failed" \
-                "Job $JOB_ID failed with code $EXIT_CODE (after ${DURATION_STR})" null
-            
-            # Try to extract error from log tail
-            ERROR_LOG="${LOG_DIR}/job_${JOB_ID}_gpu${gpu_id}.err"
-            if [ -f "$ERROR_LOG" ] && [ -s "$ERROR_LOG" ]; then
-                LAST_ERROR=$(tail -n 5 "$ERROR_LOG" | head -n 1)
-                echo "[GPU $gpu_id] Last error: $LAST_ERROR" >> "$worker_log"
+        # Add job footer to consolidated log
+        {
+            echo "----------------------------------------"
+            echo "[GPU $gpu_id] Job #$JOB_ID completed"
+            echo "Duration: $DURATION_STR ($DURATION seconds)"
+            if [ $EXIT_CODE -eq 0 ]; then
+                echo "Status: SUCCESS"
+                mark_job_complete $JOB_ID $gpu_id $DURATION "completed"
+                write_health_status $gpu_id "job_completed" \
+                    "Job $JOB_ID completed successfully (took $DURATION_STR)" null
+            elif [ $EXIT_CODE -eq 99 ]; then
+                echo "Status: FAILED (Server crash)"
+                mark_job_complete $JOB_ID $gpu_id $DURATION "failed"
+                write_health_status $gpu_id "server_crashed" \
+                    "CARLA server crashed during job $JOB_ID (after $DURATION_STR)" null
+                echo "Waiting 60s for server restart..." >> "$gpu_log"
+                sleep 60
+            else
+                echo "Status: FAILED (Exit code: $EXIT_CODE)"
+                mark_job_complete $JOB_ID $gpu_id $DURATION "failed"
+                write_health_status $gpu_id "job_failed" \
+                    "Job $JOB_ID failed with code $EXIT_CODE (after $DURATION_STR)" null
             fi
-        fi
+            echo "Time: $(date)"
+            echo "Total jobs processed: $job_count"
+            echo "=========================================="
+            echo ""
+        } >> "$gpu_log"
         
         # Brief pause between jobs
         sleep 2
     done
     
-    echo "[GPU $gpu_id] Worker finished at $(date)" >> "$worker_log"
+    # Add worker completion footer
+    {
+        echo ""
+        echo "=========================================="
+        echo "GPU $gpu_id Persistent Worker Finished: $(date)"
+        echo "Total jobs processed: $job_count"
+        echo "=========================================="
+    } >> "$gpu_log"
+    
     write_health_status $gpu_id "stopped" "Worker terminated" null
 }
 

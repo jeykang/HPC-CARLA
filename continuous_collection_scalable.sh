@@ -389,23 +389,44 @@ PYTHON_SCRIPT $1 $2 $3 $4 $5
 # GPU worker for scalable system
 gpu_worker_scalable() {
     local local_gpu_id=$1
-    local worker_log="${LOG_DIR}/worker_node${NODE_ID}_gpu${local_gpu_id}.log"
+    local gpu_log="${LOG_DIR}/node${NODE_ID}_gpu${local_gpu_id}_consolidated.log"
     
-    echo "[Node $NODE_ID GPU $local_gpu_id] Worker started at $(date)" > "$worker_log"
+    # Initialize GPU log file with header
+    {
+        echo "=========================================="
+        echo "Node $NODE_ID GPU $local_gpu_id Worker Started: $(date)"
+        echo "Hostname: $(hostname)"
+        echo "RPC Port Base: $((BASE_RPC_PORT + local_gpu_id * 10))"
+        echo "=========================================="
+        echo ""
+    } > "$gpu_log"
+    
+    local job_count=0
     
     while true; do
         # Get next job
         JOB_INFO=$(get_next_job_scalable $NODE_ID $local_gpu_id)
         
         if [ "$JOB_INFO" == "NO_MORE_JOBS" ]; then
-            echo "[Node $NODE_ID GPU $local_gpu_id] No more jobs available" >> "$worker_log"
+            echo "[Node $NODE_ID GPU $local_gpu_id] No more jobs available at $(date)" >> "$gpu_log"
             break
         fi
         
         # Parse job info
         IFS='|' read -r JOB_ID AGENT WEATHER ROUTE <<< "$JOB_INFO"
+        job_count=$((job_count + 1))
         
-        echo "[Node $NODE_ID GPU $local_gpu_id] Starting job $JOB_ID: agent=$AGENT weather=$WEATHER route=$ROUTE" >> "$worker_log"
+        # Add job header to consolidated log
+        {
+            echo ""
+            echo "=========================================="
+            echo "[Node $NODE_ID GPU $local_gpu_id] Starting Job #$JOB_ID (Total: $job_count)"
+            echo "Time: $(date)"
+            echo "Agent: $AGENT"
+            echo "Weather: $WEATHER"
+            echo "Route: $ROUTE"
+            echo "=========================================="
+        } >> "$gpu_log"
         
         # Calculate ports for this GPU on this node
         RPC_PORT=$((BASE_RPC_PORT + local_gpu_id * 10))
@@ -422,27 +443,45 @@ gpu_worker_scalable() {
         export RPC_PORT=$RPC_PORT
         export TM_PORT=$TM_PORT
         
-        # Run single job
-        bash "${PROJECT_ROOT}/generate_single_job.sh" \
-            > "${LOG_DIR}/job_${JOB_ID}_node${NODE_ID}_gpu${local_gpu_id}.out" \
-            2> "${LOG_DIR}/job_${JOB_ID}_node${NODE_ID}_gpu${local_gpu_id}.err"
+        # Run single job and append to consolidated log
+        {
+            bash "${PROJECT_ROOT}/generate_single_job.sh" 2>&1
+            EXIT_CODE=$?
+            echo "Exit code: $EXIT_CODE"
+        } >> "$gpu_log"
         
-        EXIT_CODE=$?
         END_TIME=$(date +%s)
         DURATION=$((END_TIME - START_TIME))
         
-        if [ $EXIT_CODE -eq 0 ]; then
-            mark_job_complete_scalable $JOB_ID $NODE_ID $local_gpu_id $DURATION "completed"
-            echo "[Node $NODE_ID GPU $local_gpu_id] Job $JOB_ID completed in ${DURATION}s" >> "$worker_log"
-        else
-            mark_job_complete_scalable $JOB_ID $NODE_ID $local_gpu_id $DURATION "failed"
-            echo "[Node $NODE_ID GPU $local_gpu_id] Job $JOB_ID failed with code $EXIT_CODE" >> "$worker_log"
-        fi
+        # Add job footer to consolidated log
+        {
+            echo "----------------------------------------"
+            echo "[Node $NODE_ID GPU $local_gpu_id] Job #$JOB_ID completed"
+            echo "Duration: ${DURATION} seconds"
+            if [ $EXIT_CODE -eq 0 ]; then
+                echo "Status: SUCCESS"
+                mark_job_complete_scalable $JOB_ID $NODE_ID $local_gpu_id $DURATION "completed"
+            else
+                echo "Status: FAILED (Exit code: $EXIT_CODE)"
+                mark_job_complete_scalable $JOB_ID $NODE_ID $local_gpu_id $DURATION "failed"
+            fi
+            echo "Time: $(date)"
+            echo "Total jobs processed: $job_count"
+            echo "=========================================="
+            echo ""
+        } >> "$gpu_log"
         
         sleep 5
     done
     
-    echo "[Node $NODE_ID GPU $local_gpu_id] Worker finished at $(date)" >> "$worker_log"
+    # Add worker completion footer
+    {
+        echo ""
+        echo "=========================================="
+        echo "Node $NODE_ID GPU $local_gpu_id Worker Finished: $(date)"
+        echo "Total jobs processed: $job_count"
+        echo "=========================================="
+    } >> "$gpu_log"
 }
 
 # Node heartbeat (for monitoring)

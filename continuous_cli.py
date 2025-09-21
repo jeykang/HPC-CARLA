@@ -499,7 +499,6 @@ class ContinuousCLI:
     
     def status(self):
         """Show current status"""
-        # This works the same for both modes
         subprocess.run(['python3', str(self.manager_script), 'status'])
         
         # Show current SLURM job if exists
@@ -508,16 +507,16 @@ class ContinuousCLI:
             job_id = job_file.read_text().strip()
             print(f"\nCurrent SLURM job: {job_id}")
             
-            # Get job details
+            # Get job details including node info
             result = subprocess.run(['scontrol', 'show', 'job', job_id],
-                                  capture_output=True, text=True)
+                                capture_output=True, text=True)
             if result.returncode == 0:
                 # Parse and show key details
                 for line in result.stdout.split('\n'):
-                    if 'JobState=' in line or 'RunTime=' in line or 'TimeLimit=' in line:
+                    if any(keyword in line for keyword in ['JobState=', 'RunTime=', 'TimeLimit=', 'NodeList=']):
                         print(f"  {line.strip()}")
         
-        # For persistent mode, also show health status
+        # For persistent mode, also show health status with nodes
         if self.persistent_mode:
             print("\n" + "="*40)
             print("CARLA INSTANCE HEALTH:")
@@ -604,56 +603,59 @@ class ContinuousCLI:
             print("Health manager not found")
     
     def logs(self, tail: bool = False, job_id: Optional[int] = None, 
-            gpu_id: Optional[int] = None):
+        gpu_id: Optional[int] = None):
         """View logs"""
         if job_id is not None:
-            # Show specific job log
-            pattern = f'job_{job_id}_gpu*.out'
-            logs = list(self.log_dir.glob(pattern))
-            if logs:
-                for log in logs:
-                    print(f"\n=== {log.name} ===")
-                    print(log.read_text()[-2000:])  # Last 2000 chars
+            # For specific job, grep from consolidated log
+            if gpu_id is not None:
+                log = self.log_dir / f'gpu{gpu_id}_consolidated.log'
+                if log.exists():
+                    # Search for specific job in the consolidated log
+                    import subprocess
+                    result = subprocess.run(
+                        ['grep', '-A', '50', f'Job #{job_id}', str(log)],
+                        capture_output=True, text=True
+                    )
+                    if result.stdout:
+                        print(f"\n=== Job {job_id} from GPU {gpu_id} log ===")
+                        print(result.stdout)
+                    else:
+                        print(f"Job {job_id} not found in GPU {gpu_id} log")
+                else:
+                    print(f"No consolidated log found for GPU {gpu_id}")
             else:
-                print(f"No logs found for job {job_id}")
+                print("Please specify GPU ID to search for job")
         
         elif gpu_id is not None:
-            # Show GPU worker log - different for persistent mode
-            if self.persistent_mode:
+            # Show GPU consolidated log
+            log = self.log_dir / f'gpu{gpu_id}_consolidated.log'
+            if not log.exists():
+                # Fallback to persistent mode naming
                 log = self.log_dir / f'persistent_worker_gpu{gpu_id}.log'
-            else:
-                log = self.log_dir / f'worker_gpu{gpu_id}.log'
             
             if log.exists():
                 if tail:
                     subprocess.run(['tail', '-f', str(log)])
                 else:
-                    print(log.read_text()[-5000:])  # Last 5000 chars
+                    # Show last portion of log
+                    subprocess.run(['tail', '-n', '100', str(log)])
             else:
                 print(f"No log found for GPU {gpu_id}")
         
         else:
-            # Show main coordinator log
-            if self.persistent_mode:
-                pattern = 'collection_persistent_*.out'
-            else:
-                pattern = 'collection_original_*.out'
+            # Show summary of all GPU logs
+            gpu_logs = sorted(self.log_dir.glob('gpu*_consolidated.log'))
+            if not gpu_logs:
+                gpu_logs = sorted(self.log_dir.glob('*gpu*.log'))
             
-            # Also check for continuous_* pattern for backward compatibility
-            logs = sorted(self.log_dir.glob(pattern))
-            if not logs:
-                pattern = 'continuous_*.out'
-                logs = sorted(self.log_dir.glob(pattern))
-            
-            if logs:
-                latest = logs[-1]
-                print(f"Showing: {latest.name}")
-                if tail:
-                    subprocess.run(['tail', '-f', str(latest)])
-                else:
-                    print(latest.read_text()[-5000:])  # Last 5000 chars
+            if gpu_logs:
+                print("Available GPU logs:")
+                for log in gpu_logs:
+                    size = log.stat().st_size / (1024 * 1024)  # Size in MB
+                    print(f"  {log.name}: {size:.1f} MB")
+                print("\nUse --gpu <id> to view a specific GPU log")
             else:
-                print("No coordinator logs found")
+                print("No GPU logs found")
     
     def summary(self):
         """Generate and display summary report"""

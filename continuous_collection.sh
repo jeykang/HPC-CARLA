@@ -292,21 +292,38 @@ PYTHON_COMPLETE
 # Worker function for each GPU
 gpu_worker() {
     local gpu_id=$1
-    local worker_log="${LOG_DIR}/worker_gpu${gpu_id}.log"
+    local gpu_log="${LOG_DIR}/gpu${gpu_id}_consolidated.log"
     
-    echo "[GPU $gpu_id] Worker started at $(date)" > "$worker_log"
+    # Initialize GPU log file with header
+    {
+        echo "=========================================="
+        echo "GPU $gpu_id Worker Started: $(date)"
+        echo "Node: $(hostname)"
+        echo "=========================================="
+        echo ""
+    } > "$gpu_log"
     
     while true; do
         JOB_INFO=$(get_next_job $gpu_id)
         
         if [ "$JOB_INFO" == "NO_MORE_JOBS" ]; then
-            echo "[GPU $gpu_id] No more jobs available" >> "$worker_log"
+            echo "[GPU $gpu_id] No more jobs available at $(date)" >> "$gpu_log"
             break
         fi
         
         IFS='|' read -r JOB_ID AGENT WEATHER ROUTE <<< "$JOB_INFO"
         
-        echo "[GPU $gpu_id] Starting job $JOB_ID: agent=$AGENT weather=$WEATHER route=$ROUTE" >> "$worker_log"
+        # Add job header to consolidated log
+        {
+            echo ""
+            echo "=========================================="
+            echo "[GPU $gpu_id] Starting Job #$JOB_ID"
+            echo "Time: $(date)"
+            echo "Agent: $AGENT"
+            echo "Weather: $WEATHER"
+            echo "Route: $ROUTE"
+            echo "=========================================="
+        } >> "$gpu_log"
         
         START_TIME=$(date +%s)
         
@@ -319,32 +336,49 @@ gpu_worker() {
         
         # Check if single job script exists
         if [ ! -f "${PROJECT_ROOT}/generate_single_job.sh" ]; then
-            echo "[GPU $gpu_id] ERROR: generate_single_job.sh not found" >> "$worker_log"
+            echo "[GPU $gpu_id] ERROR: generate_single_job.sh not found" >> "$gpu_log"
             mark_job_complete $JOB_ID $gpu_id 0 "failed"
             continue
         fi
         
-        # Run the job
-        bash "${PROJECT_ROOT}/generate_single_job.sh" \
-            > "${LOG_DIR}/job_${JOB_ID}_gpu${gpu_id}.out" \
-            2> "${LOG_DIR}/job_${JOB_ID}_gpu${gpu_id}.err"
+        # Run the job and append output to consolidated log
+        # Add a subshell to capture both stdout and stderr together
+        {
+            bash "${PROJECT_ROOT}/generate_single_job.sh" 2>&1
+            echo "Exit code: $?"
+        } >> "$gpu_log"
         
         EXIT_CODE=$?
         END_TIME=$(date +%s)
         DURATION=$((END_TIME - START_TIME))
         
+        # Add job footer to consolidated log
+        {
+            echo "----------------------------------------"
+            echo "[GPU $gpu_id] Job #$JOB_ID completed"
+            echo "Duration: ${DURATION} seconds"
+            echo "Status: $([ $EXIT_CODE -eq 0 ] && echo 'SUCCESS' || echo 'FAILED')"
+            echo "Time: $(date)"
+            echo "=========================================="
+            echo ""
+        } >> "$gpu_log"
+        
         if [ $EXIT_CODE -eq 0 ]; then
             mark_job_complete $JOB_ID $gpu_id $DURATION "completed"
-            echo "[GPU $gpu_id] Job $JOB_ID completed successfully in ${DURATION}s" >> "$worker_log"
         else
             mark_job_complete $JOB_ID $gpu_id $DURATION "failed"
-            echo "[GPU $gpu_id] Job $JOB_ID failed with code $EXIT_CODE" >> "$worker_log"
         fi
         
         sleep 5
     done
     
-    echo "[GPU $gpu_id] Worker finished at $(date)" >> "$worker_log"
+    # Add worker completion footer
+    {
+        echo ""
+        echo "=========================================="
+        echo "GPU $gpu_id Worker Finished: $(date)"
+        echo "=========================================="
+    } >> "$gpu_log"
 }
 
 # Status monitor

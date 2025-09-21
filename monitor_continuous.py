@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Real-time monitoring dashboard for continuous data collection
-Provides live updates on job progress, GPU utilization, and estimates
+Fixed to show actual GPU count and node information
 """
 
 import json
@@ -24,6 +24,8 @@ class ContinuousMonitor:
         self.gpu_status_file = self.state_dir / 'gpu_status.json'
         self.runtime_file = self.state_dir / 'runtime_estimates.json'
         self.completed_file = self.state_dir / 'completed_jobs.json'
+        self.node_status_file = self.state_dir / 'node_status.json'
+        self.carla_servers_file = self.state_dir / 'carla_servers.json'
         
     def load_state(self):
         """Load current state from files"""
@@ -36,11 +38,106 @@ class ContinuousMonitor:
                 self.runtime_data = json.load(f)
             with open(self.completed_file, 'r') as f:
                 self.completed_data = json.load(f)
+            
+            # Try to load node status if available (for multi-node setups)
+            self.node_status = {}
+            if self.node_status_file.exists():
+                with open(self.node_status_file, 'r') as f:
+                    node_data = json.load(f)
+                    self.node_status = node_data.get('nodes', {})
+            
+            # Try to load CARLA server status if available (for persistent mode)
+            self.carla_servers = {}
+            if self.carla_servers_file.exists():
+                with open(self.carla_servers_file, 'r') as f:
+                    carla_data = json.load(f)
+                    self.carla_servers = carla_data.get('servers', {})
+            
             return True
         except FileNotFoundError as e:
             return False
         except json.JSONDecodeError:
             return False
+    
+    def get_actual_gpu_count(self):
+        """Detect the actual number of GPUs from the status file"""
+        # Count GPUs in gpu_status
+        gpu_count = len(self.gpu_status)
+        
+        # If we have CARLA servers info, use that as it's more accurate
+        if self.carla_servers:
+            gpu_count = max(gpu_count, len(self.carla_servers))
+        
+        # Check environment variable
+        env_gpu_count = os.environ.get('NUM_GPUS')
+        if env_gpu_count:
+            try:
+                gpu_count = int(env_gpu_count)
+            except ValueError:
+                pass
+        
+        # Ensure at least 1 GPU
+        return max(1, gpu_count)
+    
+    def get_node_for_gpu(self, gpu_id):
+        """Get node identifier for a GPU"""
+        gpu_str = str(gpu_id)
+        
+        # Method 1: Check if GPU ID contains node info (e.g., "0_1" for node 0, gpu 1)
+        if '_' in gpu_str:
+            parts = gpu_str.split('_')
+            if len(parts) == 2:
+                return f"Node {parts[0]}"
+        
+        # Method 2: Check current job for node assignment
+        gpu_info = self.gpu_status.get(gpu_str, {})
+        current_job_id = gpu_info.get('current_job')
+        if current_job_id is not None:
+            # Find job in queue
+            for job in self.queue_data.get('jobs', []):
+                if job['id'] == current_job_id:
+                    if 'node' in job:
+                        return f"Node {job['node']}"
+                    if 'completed_by_node' in job:
+                        return f"Node {job['completed_by_node']}"
+        
+        # Method 3: Check completed jobs for this GPU
+        for job in self.completed_data.get('jobs', []):
+            if job.get('gpu') == gpu_id:
+                if 'node' in job:
+                    return f"Node {job['node']}"
+                if 'completed_by_node' in job:
+                    return f"Node {job['completed_by_node']}"
+        
+        # Method 4: Check node status file
+        for node_id, node_info in self.node_status.items():
+            if node_info.get('gpus'):
+                # Assume GPUs are numbered sequentially per node
+                gpus_per_node = node_info['gpus']
+                node_num = int(node_id) if node_id.isdigit() else 0
+                gpu_start = node_num * gpus_per_node
+                gpu_end = gpu_start + gpus_per_node
+                if gpu_id >= gpu_start and gpu_id < gpu_end:
+                    hostname = node_info.get('hostname', f'node{node_id}')
+                    return hostname
+        
+        # Method 5: Try to determine from SLURM environment
+        slurm_nodename = os.environ.get('SLURMD_NODENAME')
+        if slurm_nodename:
+            return slurm_nodename
+        
+        # Default: Check if we're in single-node or multi-node mode
+        num_nodes = len(self.node_status) if self.node_status else 1
+        if num_nodes > 1:
+            # Multi-node: try to calculate which node
+            gpus_per_node = self.get_actual_gpu_count() // num_nodes
+            if gpus_per_node > 0:
+                node_id = gpu_id // gpus_per_node
+                return f"Node {node_id}"
+        
+        # Single node or unknown
+        import socket
+        return socket.gethostname().split('.')[0]  # Short hostname
     
     def get_statistics(self):
         """Calculate current statistics"""
@@ -74,6 +171,9 @@ class ContinuousMonitor:
         else:
             stats['eta'] = 0
         
+        # Add GPU count
+        stats['gpu_count'] = self.get_actual_gpu_count()
+        
         return stats
     
     def get_gpu_info(self):
@@ -81,37 +181,70 @@ class ContinuousMonitor:
         gpu_info = []
         current_time = datetime.now().timestamp()
         
-        for gpu_id in range(8):
+        # Get actual GPU IDs from status file
+        gpu_ids = []
+        
+        # Collect all GPU IDs from gpu_status
+        for gpu_str in self.gpu_status.keys():
+            # Handle both simple IDs (0, 1, 2) and node-based IDs (0_0, 0_1, 1_0)
+            try:
+                if '_' in gpu_str:
+                    # Node-based ID
+                    gpu_ids.append(gpu_str)
+                else:
+                    # Simple ID
+                    gpu_ids.append(int(gpu_str))
+            except (ValueError, TypeError):
+                gpu_ids.append(gpu_str)
+        
+        # Sort IDs (handle mixed types)
+        gpu_ids.sort(key=lambda x: (str(x) if isinstance(x, str) else f"{x:03d}"))
+        
+        # If no GPUs in status, use the detected count
+        if not gpu_ids:
+            gpu_ids = list(range(self.get_actual_gpu_count()))
+        
+        for gpu_id in gpu_ids:
             gpu_str = str(gpu_id)
-            if gpu_str not in self.gpu_status:
-                continue
-                
-            gpu_data = self.gpu_status[gpu_str]
-            info = {
-                'id': gpu_id,
-                'status': gpu_data['status'],
-                'jobs_completed': gpu_data['jobs_completed'],
-                'current_job': None,
-                'progress': ''
-            }
             
-            if gpu_data['status'] == 'busy' and gpu_data['current_job'] is not None:
-                # Find current job details
-                current_job = next((j for j in self.queue_data['jobs'] 
-                                  if j['id'] == gpu_data['current_job']), None)
-                if current_job:
-                    info['current_job'] = current_job
-                    
-                    # Calculate progress
-                    if current_job.get('start_time'):
-                        elapsed = current_time - current_job['start_time']
-                        key = f"{current_job['agent']}_{current_job['route']}"
-                        expected = self.runtime_data['combinations'].get(key, 
-                                                                        self.runtime_data['default'])
-                        progress_pct = min(100, (elapsed / expected) * 100)
-                        info['progress'] = f"{progress_pct:.0f}%"
-                        info['elapsed'] = elapsed
-                        info['expected'] = expected
+            if gpu_str not in self.gpu_status:
+                # GPU not in status file, show as offline
+                info = {
+                    'id': gpu_id,
+                    'node': self.get_node_for_gpu(gpu_id),
+                    'status': 'offline',
+                    'jobs_completed': 0,
+                    'current_job': None,
+                    'progress': ''
+                }
+            else:
+                gpu_data = self.gpu_status[gpu_str]
+                info = {
+                    'id': gpu_id,
+                    'node': self.get_node_for_gpu(gpu_id),
+                    'status': gpu_data['status'],
+                    'jobs_completed': gpu_data['jobs_completed'],
+                    'current_job': None,
+                    'progress': ''
+                }
+                
+                if gpu_data['status'] == 'busy' and gpu_data['current_job'] is not None:
+                    # Find current job details
+                    current_job = next((j for j in self.queue_data['jobs'] 
+                                      if j['id'] == gpu_data['current_job']), None)
+                    if current_job:
+                        info['current_job'] = current_job
+                        
+                        # Calculate progress
+                        if current_job.get('start_time'):
+                            elapsed = current_time - current_job['start_time']
+                            key = f"{current_job['agent']}_{current_job['route']}"
+                            expected = self.runtime_data['combinations'].get(key, 
+                                                                            self.runtime_data['default'])
+                            progress_pct = min(100, (elapsed / expected) * 100)
+                            info['progress'] = f"{progress_pct:.0f}%"
+                            info['elapsed'] = elapsed
+                            info['expected'] = expected
             
             gpu_info.append(info)
         
@@ -213,39 +346,55 @@ class ContinuousMonitor:
                     stdscr.addstr(row, 25, f"ETA: {eta_time}")
             row += 2
             
-            # GPU Status
-            stdscr.addstr(row, 0, "GPU STATUS:", curses.A_BOLD)
+            # GPU Status with node info
+            num_gpus = stats['gpu_count']
+            stdscr.addstr(row, 0, f"GPU STATUS ({num_gpus} GPUs):", curses.A_BOLD)
             row += 1
             stdscr.addstr(row, 0, "-" * min(width - 1, 80))
             row += 1
             
             gpu_info = self.get_gpu_info()
             for gpu in gpu_info:
+                node_str = gpu.get('node', 'Unknown')
+                
                 if gpu['status'] == 'idle':
-                    status_str = f"GPU {gpu['id']}: IDLE"
+                    status_str = f"{node_str} GPU {gpu['id']}: IDLE"
                     color = curses.color_pair(5)
                 elif gpu['status'] == 'busy':
                     if gpu['current_job']:
                         job = gpu['current_job']
-                        status_str = f"GPU {gpu['id']}: {job['agent']}/{job['route'][:15]} {gpu['progress']}"
+                        # Truncate route name if needed
+                        route_display = job['route'][:15] if len(job['route']) > 15 else job['route']
+                        status_str = f"{node_str} GPU {gpu['id']}: {job['agent']}/{route_display} {gpu['progress']}"
                     else:
-                        status_str = f"GPU {gpu['id']}: BUSY"
+                        status_str = f"{node_str} GPU {gpu['id']}: BUSY"
                     color = curses.color_pair(2)
-                else:
-                    status_str = f"GPU {gpu['id']}: OFFLINE"
+                elif gpu['status'] == 'offline':
+                    status_str = f"{node_str} GPU {gpu['id']}: OFFLINE"
                     color = curses.color_pair(3)
+                else:
+                    status_str = f"{node_str} GPU {gpu['id']}: {gpu['status'].upper()}"
+                    color = curses.color_pair(5)
                 
-                stdscr.addstr(row, 0, status_str[:width-15], color)
-                stdscr.addstr(row, min(width-15, 50), f"Done: {gpu['jobs_completed']}")
+                # Ensure string fits in terminal width
+                max_status_len = width - 15
+                if len(status_str) > max_status_len:
+                    status_str = status_str[:max_status_len-3] + "..."
+                
+                stdscr.addstr(row, 0, status_str, color)
+                stdscr.addstr(row, min(width-15, 60), f"Done: {gpu['jobs_completed']}")
                 row += 1
+                
+                if row >= height - 5:
+                    break  # Prevent overflow
             row += 1
             
-            # Job Distribution by Agent
+            # Job Distribution by Agent (if space allows)
             if row < height - 5:
                 stdscr.addstr(row, 0, "AGENT DISTRIBUTION:", curses.A_BOLD)
                 row += 1
                 distribution = self.get_job_distribution()
-                for agent, counts in distribution.items():
+                for agent, counts in list(distribution.items())[:3]:  # Show top 3 agents
                     if row >= height - 2:
                         break
                     total_agent = sum(counts.values())
@@ -297,13 +446,16 @@ class ContinuousMonitor:
                 print(f"ETA:            {eta_time}")
         
         print("-"*60)
-        print("GPU Status:")
+        print(f"GPU Status ({stats['gpu_count']} GPUs in use):")
         for gpu in gpu_info:
+            node_str = gpu.get('node', 'Unknown')
             if gpu['status'] == 'busy' and gpu['current_job']:
                 job = gpu['current_job']
-                print(f"  GPU {gpu['id']}: {job['agent']}/{job['route']} ({gpu['progress']}) | Completed: {gpu['jobs_completed']}")
+                print(f"  {node_str} GPU {gpu['id']}: {job['agent']}/{job['route']} ({gpu['progress']}) | Completed: {gpu['jobs_completed']}")
+            elif gpu['status'] == 'offline':
+                print(f"  {node_str} GPU {gpu['id']}: OFFLINE | Completed: {gpu['jobs_completed']}")
             else:
-                print(f"  GPU {gpu['id']}: {gpu['status'].upper()} | Completed: {gpu['jobs_completed']}")
+                print(f"  {node_str} GPU {gpu['id']}: {gpu['status'].upper()} | Completed: {gpu['jobs_completed']}")
         
         print("="*60)
 
