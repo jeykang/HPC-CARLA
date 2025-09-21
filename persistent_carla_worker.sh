@@ -256,16 +256,8 @@ export PYTHONPATH=${WORKSPACE_DIR}/leaderboard:\$PYTHONPATH
 export PYTHONPATH=${WORKSPACE_DIR}:\$PYTHONPATH
 export SCENARIO_RUNNER_ROOT=${WORKSPACE_DIR}/scenario_runner
 
-# Prepare save path
-ROUTE_NAME_NO_EXT="${ROUTE_FILE%.xml}"
-ROUTE_NAME_NO_EXT=$(basename "$ROUTE_NAME_NO_EXT")
-SAVE_PATH="${WORKSPACE_DIR}/dataset/agent-${AGENT_TYPE}/weather-${WEATHER_IDX}/${ROUTE_NAME_NO_EXT}"
+# Use SAVE_PATH and RECORD_PATH computed and exported by the outer script.
 export SAVE_PATH
-mkdir -p "$SAVE_PATH"
-
-# Construct a separate recorder file name
-RECORD_PATH="${SAVE_PATH}/${ROUTE_NAME_NO_EXT}_${WEATHER_IDX}_${JOB_ID}.log"
-
 export RECORD_PATH
 
 # Set environment variables
@@ -279,6 +271,7 @@ export CONSOLIDATED_AGENT="true"
 
 echo "[GPU $GPU_ID] Starting evaluation for job $JOB_ID..."
 echo "  Save path: \$SAVE_PATH"
+echo "  Record path: \$RECORD_PATH"
 
 # Change to workspace directory for relative imports
 cd ${WORKSPACE_DIR}
