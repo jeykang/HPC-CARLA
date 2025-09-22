@@ -121,8 +121,7 @@ export SCENARIO_RUNNER_ROOT=${WORKSPACE_DIR}/scenario_runner
 
 # Prepare save path
 
-ROUTE_NAME_NO_EXT="${ROUTE_FILE%.xml}"
-ROUTE_NAME_NO_EXT=$(basename "$ROUTE_NAME_NO_EXT")
+# ROUTE_NAME_NO_EXT is already set outside the heredoc
 SAVE_PATH="${WORKSPACE_DIR}/dataset/agent-${AGENT_TYPE}/weather-${WEATHER_IDX}/${ROUTE_NAME_NO_EXT}"
 export SAVE_PATH
 mkdir -p "$SAVE_PATH"
