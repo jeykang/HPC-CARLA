@@ -102,6 +102,9 @@ fi
 
 echo "[GPU $GPU_ID] CARLA server is ready on port $RPC_PORT"
 
+# Compute the route name without extension for use in paths
+ROUTE_NAME_NO_EXT=$(basename "${ROUTE_FILE%.xml}")
+
 # Run the evaluation job (no CARLA startup needed!)
 # Note: Using heredoc WITHOUT quotes to allow variable substitution
 singularity exec --nv \
@@ -124,7 +127,7 @@ export SCENARIO_RUNNER_ROOT=${WORKSPACE_DIR}/scenario_runner
 # ROUTE_NAME_NO_EXT is already set outside the heredoc
 SAVE_PATH="${WORKSPACE_DIR}/dataset/agent-${AGENT_TYPE}/weather-${WEATHER_IDX}/${ROUTE_NAME_NO_EXT}"
 export SAVE_PATH
-mkdir -p "$SAVE_PATH"
+mkdir -p "\$SAVE_PATH"
 
 # Construct a separate recorder file name
 RECORD_PATH="${SAVE_PATH}/${ROUTE_NAME_NO_EXT}_${WEATHER_IDX}_${JOB_ID}.log"
