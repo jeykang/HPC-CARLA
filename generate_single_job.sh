@@ -77,6 +77,8 @@ fi
 
 echo "[GPU $GPU_ID] All required files validated successfully"
 
+ROUTE_NAME_NO_EXT="${ROUTE_FILE%.xml}"
+
 # Run the job
 singularity exec --nv \
   --bind "${PROJECT_ROOT}:${WORKSPACE_DIR}" \
@@ -117,7 +119,6 @@ if ! ps -p \$CARLA_PID >/dev/null; then
 fi
 
 # Prepare save path
-ROUTE_NAME_NO_EXT="\${ROUTE_FILE%.xml}"
 SAVE_PATH="${WORKSPACE_DIR}/dataset/agent-${AGENT_TYPE}/weather-${WEATHER_IDX}/\${ROUTE_NAME_NO_EXT}"
 mkdir -p "\$SAVE_PATH"
 
