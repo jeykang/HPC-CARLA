@@ -3,10 +3,12 @@
 
 # Model configuration
 model_type: interfuser
-model_path: /workspace/leaderboard/team_code/interfuser/interfuser.pth.tar
+#model_path: /workspace/leaderboard/team_code/interfuser/interfuser.pth.tar
+model_path: /home/netai/Documents/HPC-CARLA/leaderboard/team_code/interfuser/interfuser.pth.tar
 
 # External config loading (InterFuser's Python config)
-external_config: /workspace/leaderboard/team_code/interfuser/config.py
+#external_config: /workspace/leaderboard/team_code/interfuser/config.py
+external_config: /home/netai/Documents/HPC-CARLA/leaderboard/team_code/interfuser/config.py
 
 # Model-specific configuration
 model_config:

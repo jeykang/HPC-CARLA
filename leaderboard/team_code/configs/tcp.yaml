@@ -3,7 +3,8 @@
 
 # Model configuration
 model_type: generic  # TCP uses custom architecture
-model_path: /workspace/leaderboard/team_code/tcp/checkpoints/tcp_model.ckpt
+#model_path: /workspace/leaderboard/team_code/tcp/checkpoints/tcp_model.ckpt
+model_path: /home/netai/Documents/HPC-CARLA/leaderboard/team_code/tcp/checkpoints/tcp_model.ckpt
 
 # Alternative: Extract from original TCP agent
 # agent_config:
