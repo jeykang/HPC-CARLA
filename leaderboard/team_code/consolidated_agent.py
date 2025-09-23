@@ -822,10 +822,19 @@ class ConsolidatedAgent(AutonomousAgent):
     def _process_speed(self, data):
         """Process speed data."""
         if hasattr(data, 'speed'):
+            # Object with speed attribute
             speed = data.speed
+        elif isinstance(data, dict):
+            # Dictionary format - this is what CARLA speedometer returns
+            speed = float(data.get('speed', 0.0))
         else:
-            speed = float(data)
-        
+            # Try direct conversion as fallback
+            try:
+                speed = float(data)
+            except (TypeError, ValueError) as e:
+                print(f"Warning: Could not convert speed data to float: {type(data)} - {data}")
+                speed = 0.0
+    
         return speed
     
     def _model_inference(self, processed_data, timestamp):
