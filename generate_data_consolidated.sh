@@ -4,10 +4,10 @@
 # ================================================================
 
 #SBATCH --job-name=modular_agent_run
-#SBATCH --nodelist=hpc-pr-a-pod08
-#SBATCH --gres=gpu:8
-#SBATCH --nodes=1
-#SBATCH --time=48:00:00
+#SBATCH --nodelist=hpc-pr-a-pod10,hpc-pr-a-pod11
+#SBATCH --gres=gpu:16
+#SBATCH --nodes=2
+#SBATCH --time=168:00:00
 #SBATCH --output=logs/modular_run_%A_%a.out
 #SBATCH --error=logs/modular_run_%A_%a.err
 
@@ -128,6 +128,8 @@ export CUDA_VISIBLE_DEVICES=__GPU_ID__
 
 singularity exec --nv \
   --bind __PROJECT_ROOT__:__WORKSPACE_DIR__ \
+  --bind /etc/passwd:/etc/passwd:ro \
+  --bind /etc/group:/etc/group:ro \
   "__CARLA_SIF__" bash << 'CARLA_SCRIPT'
 set -ex
 

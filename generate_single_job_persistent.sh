@@ -109,6 +109,8 @@ ROUTE_NAME_NO_EXT=$(basename "${ROUTE_FILE%.xml}")
 # Note: Using heredoc WITHOUT quotes to allow variable substitution
 singularity exec --nv \
   --bind "${PROJECT_ROOT}:${WORKSPACE_DIR}" \
+  --bind /etc/passwd:/etc/passwd:ro \
+  --bind /etc/group:/etc/group:ro \
   "$CARLA_SIF" bash << EVALUATION_SCRIPT
 set -ex
 

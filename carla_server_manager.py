@@ -47,10 +47,12 @@ class CarlaServer:
             logging.error(f"GPU {self.gpu_id}: CARLA Singularity image not found at {self.carla_sif}")
             return False
         
-        # Build Singularity command that runs CARLA inline
+        # Build Singularity command with passwd/group binding
         cmd = [
             'singularity', 'exec', '--nv',
             '--bind', f'{self.project_root}:/workspace',
+            '--bind', '/etc/passwd:/etc/passwd:ro',  # Bind passwd file (read-only)
+            '--bind', '/etc/group:/etc/group:ro',    # Bind group file (read-only)
             self.carla_sif,
             'bash', '-c',
             f"""
@@ -66,7 +68,9 @@ class CarlaServer:
         
         # Set up environment for the Singularity process
         env = os.environ.copy()
-        env['CUDA_VISIBLE_DEVICES'] = str(self.gpu_id)
+        # Don't override CUDA_VISIBLE_DEVICES if SLURM already set it
+        if 'SLURM_JOB_ID' not in env:
+            env['CUDA_VISIBLE_DEVICES'] = str(self.gpu_id)
         
         # Start process through Singularity
         try:
@@ -76,6 +80,21 @@ class CarlaServer:
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE
             )
+            
+            # Capture initial output for debugging
+            import select
+            import time as time_module
+            
+            time_module.sleep(2)  # Give it a moment to start
+            
+            # Check if process died immediately
+            if self.process.poll() is not None:
+                stdout, stderr = self.process.communicate()
+                logging.error(f"GPU {self.gpu_id}: CARLA process died immediately")
+                logging.error(f"GPU {self.gpu_id}: STDOUT: {stdout.decode('utf-8', errors='replace')}")
+                logging.error(f"GPU {self.gpu_id}: STDERR: {stderr.decode('utf-8', errors='replace')}")
+                return False
+                
             self.start_time = datetime.now()
             
             # Wait for server to be ready
@@ -85,11 +104,17 @@ class CarlaServer:
                 return True
             else:
                 logging.error(f"GPU {self.gpu_id}: CARLA failed to start properly")
+                # Capture output for debugging
+                stdout, stderr = self.process.communicate(timeout=5)
+                logging.error(f"GPU {self.gpu_id}: STDOUT: {stdout.decode('utf-8', errors='replace')}")
+                logging.error(f"GPU {self.gpu_id}: STDERR: {stderr.decode('utf-8', errors='replace')}")
                 self.stop()
                 return False
                 
         except Exception as e:
             logging.error(f"GPU {self.gpu_id}: Failed to start CARLA: {e}")
+            import traceback
+            logging.error(traceback.format_exc())
             return False
     
     def stop(self):

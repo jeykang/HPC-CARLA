@@ -5,9 +5,9 @@
 # ================================================================
 
 #SBATCH --job-name=continuous_collection_persistent
-#SBATCH --nodelist=hpc-pr-a-pod08
-#SBATCH --gres=gpu:8
-#SBATCH --nodes=1
+#SBATCH --nodelist=hpc-pr-a-pod10,hpc-pr-a-pod11
+#SBATCH --gres=gpu:16
+#SBATCH --nodes=2
 #SBATCH --time=168:00:00
 #SBATCH --output=logs/continuous_persistent_%A.out
 #SBATCH --error=logs/continuous_persistent_%A.err

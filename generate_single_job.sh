@@ -82,6 +82,8 @@ ROUTE_NAME_NO_EXT="${ROUTE_FILE%.xml}"
 # Run the job
 singularity exec --nv \
   --bind "${PROJECT_ROOT}:${WORKSPACE_DIR}" \
+  --bind /etc/passwd:/etc/passwd:ro \
+  --bind /etc/group:/etc/group:ro \
   "$CARLA_SIF" bash << CARLA_SCRIPT
 set -ex
 

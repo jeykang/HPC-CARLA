@@ -114,6 +114,8 @@ launch_carla() {
     # Launch CARLA in background using singularity
     singularity exec --nv \
         --bind "${PROJECT_ROOT}:${WORKSPACE_DIR}" \
+        --bind /etc/passwd:/etc/passwd:ro \
+        --bind /etc/group:/etc/group:ro \
         "$CARLA_SIF" bash -c "
         export CUDA_VISIBLE_DEVICES=$GPU_ID
         export XDG_RUNTIME_DIR=/tmp/runtime-\$USER-gpu${GPU_ID}-$
@@ -243,6 +245,8 @@ run_evaluation_job() {
     # Run evaluation in singularity (without launching CARLA - it's already running)
     singularity exec --nv \
         --bind "${PROJECT_ROOT}:${WORKSPACE_DIR}" \
+        --bind /etc/passwd:/etc/passwd:ro \
+        --bind /etc/group:/etc/group:ro \
         "$CARLA_SIF" bash << EVAL_SCRIPT
 set -e
 
