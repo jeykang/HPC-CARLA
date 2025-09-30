@@ -17,6 +17,10 @@ import cv2
 from collections import deque
 from leaderboard.autoagents.autonomous_agent import AutonomousAgent
 from srunner.scenariomanager.carla_data_provider import CarlaDataProvider
+<<<<<<< HEAD
+=======
+import carla
+>>>>>>> 5c6ba0f (trying to set up rsync)
 
 def get_entry_point():
     """Required by CARLA Leaderboard."""
@@ -289,6 +293,7 @@ class ConsolidatedAgent(AutonomousAgent):
         # Common model attribute names
         model_attrs = ['model', 'net', 'network', 'backbone', 'policy', 
                       'actor', 'planner', 'controller']
+<<<<<<< HEAD
         
         # Check for single model
         for attr in model_attrs:
@@ -1173,6 +1178,894 @@ class ConsolidatedAgent(AutonomousAgent):
         if not hasattr(self, '_global_plan_world_coord'):
             return torch.zeros(1, num_waypoints, 2)
         
+=======
+        
+        # Check for single model
+        for attr in model_attrs:
+            if hasattr(agent, attr):
+                model = getattr(agent, attr)
+                if isinstance(model, torch.nn.Module):
+                    self.model = model
+                    print(f"  Extracted model from agent.{attr}")
+                    return
+        
+        # Check for multiple models (like LAV)
+        multi_model_attrs = {
+            'lidar_model': ['lidar_model', 'lidar_net', 'lidar_encoder'],
+            'bev_model': ['bev_model', 'bev_net', 'bev_encoder'],
+            'seg_model': ['seg_model', 'segmentation', 'seg_net'],
+            'uniplanner': ['uniplanner', 'planner', 'planning_model'],
+            'controller': ['controller', 'control_model', 'control_net'],
+        }
+        
+        self.model_components = {}
+        for component_name, possible_attrs in multi_model_attrs.items():
+            for attr in possible_attrs:
+                if hasattr(agent, attr):
+                    model = getattr(agent, attr)
+                    if isinstance(model, torch.nn.Module):
+                        self.model_components[component_name] = model
+                        print(f"  Extracted {component_name} from agent.{attr}")
+                        break
+        
+        if self.model_components:
+            # Create wrapper based on agent type
+            if 'lav' in self.model_type.lower():
+                self._create_lav_wrapper()
+            else:
+                self.model = self.model_components
+    
+    def _merge_configs(self, base_config, external_config):
+        """Merge external config into base config."""
+        for key, value in external_config.items():
+            if key not in base_config:
+                base_config[key] = value
+            elif isinstance(value, dict) and isinstance(base_config[key], dict):
+                # Recursively merge dictionaries
+                self._merge_configs(base_config[key], value)
+            # else: keep base_config value (base takes precedence for existing keys)
+    
+    def _convert_lav_config(self):
+        """Convert LAV-style config with individual model paths to our format."""
+        if 'model_components' not in self.config:
+            self.config['model_components'] = {}
+        
+        # Map LAV config keys to our component names
+        lav_component_mapping = {
+            'lidar_model_dir': ('lidar_model', 'checkpoint'),
+            'uniplanner_dir': ('uniplanner', 'checkpoint'),
+            'bra_model_dir': ('bra_model', 'checkpoint'),
+            'bra_model_trace_dir': ('bra_model_trace', 'trace'),
+            'seg_model_dir': ('seg_model', 'checkpoint'),
+            'seg_model_trace_dir': ('seg_model_trace', 'trace'),
+            'bev_model_dir': ('bev_model', 'checkpoint'),
+        }
+        
+        for config_key, (component_name, component_type) in lav_component_mapping.items():
+            if config_key in self.model_config:
+                path = self.model_config[config_key]
+                if path and os.path.exists(path):
+                    self.config['model_components'][component_name] = {
+                        'path': path,
+                        'type': component_type
+                    }
+        
+        # Set model type to LAV if not already set
+        if self.model_type == 'generic':
+            self.model_type = 'lav'
+        
+        print(f"ConsolidatedAgent: Converted LAV config - found {len(self.config['model_components'])} components")
+    
+    def _load_model(self):
+        """Load the neural network model(s) based on type."""
+        # Check if we have multiple model components
+        if 'model_components' in self.config:
+            self._load_multi_component_model()
+        elif self.model_path and self.model_path != 'none':
+            print(f"ConsolidatedAgent: Loading model from {self.model_path}")
+            
+            if self.model_type == 'interfuser':
+                self._load_interfuser_model()
+            elif self.model_type == 'lav':
+                self._load_lav_model()
+            elif self.model_type == 'transfuser':
+                self._load_transfuser_model()
+            else:
+                self._load_generic_model()
+            
+            # Set model to eval mode
+            if hasattr(self, 'model') and hasattr(self.model, 'eval'):
+                self.model.eval()
+                print(f"ConsolidatedAgent: Model loaded and set to eval mode")
+        else:
+            print("ConsolidatedAgent: No model specified, using rule-based control")
+            self.model = None
+    
+    def _load_multi_component_model(self):
+        """Load multiple model components for complex architectures."""
+        print("ConsolidatedAgent: Loading multi-component model architecture")
+        
+        self.model_components = {}
+        components_config = self.config.get('model_components', {})
+        
+        # Load each component
+        for component_name, component_info in components_config.items():
+            component_path = component_info.get('path')
+            component_type = component_info.get('type', 'checkpoint')
+            
+            if not component_path or not os.path.exists(component_path):
+                print(f"Warning: Component {component_name} path not found: {component_path}")
+                continue
+            
+            print(f"  Loading {component_name} from {component_path}")
+            
+            try:
+                if component_type == 'trace':
+                    # Load JIT traced model
+                    self.model_components[component_name] = torch.jit.load(component_path)
+                elif component_type == 'checkpoint':
+                    # Load regular checkpoint
+                    checkpoint = torch.load(component_path, map_location='cpu')
+                    
+                    # Handle different checkpoint formats
+                    if isinstance(checkpoint, torch.nn.Module):
+                        self.model_components[component_name] = checkpoint
+                    elif 'model' in checkpoint:
+                        self.model_components[component_name] = checkpoint['model']
+                    elif 'state_dict' in checkpoint:
+                        # Need to instantiate model first - use component config
+                        model_class_info = component_info.get('model_class')
+                        if model_class_info:
+                            module = importlib.import_module(model_class_info['module'])
+                            model_class = getattr(module, model_class_info['name'])
+                            model_args = model_class_info.get('args', {})
+                            model = model_class(**model_args)
+                            model.load_state_dict(checkpoint['state_dict'])
+                            self.model_components[component_name] = model
+                        else:
+                            self.model_components[component_name] = checkpoint
+                    else:
+                        self.model_components[component_name] = checkpoint
+                        
+                # Move to device and set to eval
+                if hasattr(self.model_components[component_name], 'eval'):
+                    self.model_components[component_name].eval()
+                    if hasattr(self.model_components[component_name], 'to'):
+                        device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+                        self.model_components[component_name] = self.model_components[component_name].to(device)
+                        
+                print(f"    ✓ {component_name} loaded successfully")
+                
+            except Exception as e:
+                print(f"    ✗ Failed to load {component_name}: {e}")
+                
+        # Create wrapper model for compatibility
+        if self.model_type == 'lav':
+            self._create_lav_wrapper()
+        else:
+            # Generic wrapper
+            self.model = self.model_components
+        
+        print(f"ConsolidatedAgent: Loaded {len(self.model_components)} model components")
+    
+    def _load_generic_model(self):
+        """Load a generic PyTorch model."""
+        try:
+            # Try to load as PyTorch checkpoint
+            checkpoint = torch.load(self.model_path, map_location='cpu')
+            
+            # Try to instantiate model from config
+            if 'model_class' in self.model_config:
+                module_path = self.model_config['model_module']
+                class_name = self.model_config['model_class']
+                
+                module = importlib.import_module(module_path)
+                model_class = getattr(module, class_name)
+                
+                # Instantiate model with config
+                model_args = self.model_config.get('model_args', {})
+                self.model = model_class(**model_args)
+                
+                # Load weights
+                if 'state_dict' in checkpoint:
+                    self.model.load_state_dict(checkpoint['state_dict'])
+                else:
+                    self.model.load_state_dict(checkpoint)
+            else:
+                # Direct model object in checkpoint
+                self.model = checkpoint['model'] if 'model' in checkpoint else checkpoint
+            
+            # Move to GPU if available
+            self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+            self.model = self.model.to(self.device)
+            
+        except Exception as e:
+            print(f"Warning: Could not load model as PyTorch: {e}")
+            print("Will use simple rule-based control as fallback")
+            self.model = None
+    
+    def _load_interfuser_model(self):
+        """Load InterFuser-specific model."""
+        try:
+            # InterFuser uses specific model structure
+            from interfuser.timm.models import create_model
+            
+            # Create model architecture
+            self.model = create_model(
+                self.model_config.get('architecture', 'interfuser_baseline'),
+                pretrained=False,
+                **self.model_config.get('model_args', {})
+            )
+            
+            # Load checkpoint
+            checkpoint = torch.load(self.model_path, map_location='cpu')
+            self.model.load_state_dict(checkpoint['state_dict'])
+            
+            self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+            self.model = self.model.to(self.device)
+            
+        except Exception as e:
+            print(f"Error loading InterFuser model: {e}")
+            self._load_generic_model()
+    
+    def _load_lav_model(self):
+        """Load LAV-specific model."""
+        # Check if using multi-component architecture (typical for LAV)
+        if 'model_components' in self.config:
+            self._load_multi_component_model()
+            return
+            
+        # Single model fallback
+        try:
+            checkpoint = torch.load(self.model_path, map_location='cpu')
+            
+            # Extract model from checkpoint
+            if 'model' in checkpoint:
+                self.model = checkpoint['model']
+            elif 'state_dict' in checkpoint:
+                # Need to instantiate model first
+                from lav_model import LAV  # Assuming LAV model class exists
+                self.model = LAV(**self.model_config.get('model_args', {}))
+                self.model.load_state_dict(checkpoint['state_dict'])
+            else:
+                self.model = checkpoint
+            
+            self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+            self.model = self.model.to(self.device)
+            
+        except Exception as e:
+            print(f"Error loading LAV model: {e}")
+            self._load_generic_model()
+    
+    def _create_lav_wrapper(self):
+        """Create a wrapper for LAV's multi-component architecture."""
+        class LAVModelWrapper:
+            def __init__(self, components, device):
+                self.components = components
+                self.device = device
+                
+                # Extract individual models
+                self.lidar_model = components.get('lidar_model')
+                self.uniplanner = components.get('uniplanner')
+                self.bra_model = components.get('bra_model')
+                self.seg_model = components.get('seg_model')
+                self.bev_model = components.get('bev_model')
+                
+            def __call__(self, inputs):
+                """Forward pass through LAV pipeline."""
+                # This is a simplified version - actual LAV may have more complex pipeline
+                outputs = {}
+                
+                # Process BEV if available
+                if self.bev_model and 'bev' in inputs:
+                    bev_features = self.bev_model(inputs['bev'])
+                    outputs['bev_features'] = bev_features
+                
+                # Process LiDAR if available
+                if self.lidar_model and 'lidar' in inputs:
+                    lidar_features = self.lidar_model(inputs['lidar'])
+                    outputs['lidar_features'] = lidar_features
+                
+                # Segmentation
+                if self.seg_model and 'rgb_front' in inputs:
+                    seg_output = self.seg_model(inputs['rgb_front'])
+                    outputs['segmentation'] = seg_output
+                
+                # Planning with uniplanner
+                if self.uniplanner:
+                    # Combine features for planning
+                    planner_input = {}
+                    if 'bev_features' in outputs:
+                        planner_input['bev'] = outputs['bev_features']
+                    if 'lidar_features' in outputs:
+                        planner_input['lidar'] = outputs['lidar_features']
+                    if 'measurements' in inputs:
+                        planner_input['measurements'] = inputs['measurements']
+                    
+                    control_output = self.uniplanner(planner_input)
+                    outputs.update(control_output)
+                
+                # Behavior prediction/refinement
+                if self.bra_model and 'bev_features' in outputs:
+                    bra_output = self.bra_model(outputs['bev_features'])
+                    outputs['behavior'] = bra_output
+                
+                return outputs
+            
+            def eval(self):
+                """Set all components to eval mode."""
+                for component in self.components.values():
+                    if hasattr(component, 'eval'):
+                        component.eval()
+                        
+        self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        self.model = LAVModelWrapper(self.model_components, self.device)
+    
+    def _load_transfuser_model(self):
+        """Load TransFuser-specific model."""
+        try:
+            # TransFuser model loading
+            from transfuser_model import TransFuser
+            
+            self.model = TransFuser(self.model_config)
+            checkpoint = torch.load(self.model_path, map_location='cpu')
+            self.model.load_state_dict(checkpoint['state_dict'])
+            
+            self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+            self.model = self.model.to(self.device)
+            
+        except Exception as e:
+            print(f"Error loading TransFuser model: {e}")
+            self._load_generic_model()
+    
+    def sensors(self):
+        """Return sensor configuration."""
+        sensors = []
+        
+        for sensor_spec in self.sensor_config:
+            sensor = {
+                'type': sensor_spec['type'],
+                'id': sensor_spec['id']
+            }
+            
+            # Add positional parameters if available
+            for key in ['x', 'y', 'z', 'roll', 'pitch', 'yaw']:
+                if key in sensor_spec:
+                    sensor[key] = sensor_spec[key]
+            
+            # Add sensor-specific parameters
+            if 'camera' in sensor_spec['type']:
+                sensor['width'] = sensor_spec.get('width', 800)
+                sensor['height'] = sensor_spec.get('height', 600)
+                sensor['fov'] = sensor_spec.get('fov', 90)
+            elif 'lidar' in sensor_spec['type']:
+                sensor['channels'] = sensor_spec.get('channels', 32)
+                sensor['range'] = sensor_spec.get('range', 50)
+                sensor['points_per_second'] = sensor_spec.get('points_per_second', 100000)
+                sensor['rotation_frequency'] = sensor_spec.get('rotation_frequency', 10)
+                sensor['upper_fov'] = sensor_spec.get('upper_fov', 10)
+                sensor['lower_fov'] = sensor_spec.get('lower_fov', -30)
+            
+            sensors.append(sensor)
+        
+        # Create save directories
+        self._setup_sensor_directories(sensors)
+        
+        return sensors
+    
+    def _setup_sensor_directories(self, sensors):
+        """Create directories for sensor data storage."""
+        for sensor in sensors:
+            sensor_id = sensor['id']
+            folder_name = self._get_sensor_folder_name(sensor['type'], sensor_id)
+            sensor_path = os.path.join(self.save_path, folder_name)
+            os.makedirs(sensor_path, exist_ok=True)
+            self.sensor_data_paths[sensor_id] = sensor_path
+    
+    def run_step(self, input_data, timestamp):
+        """Process sensor data and return control commands."""
+        # Save raw sensor data
+        try:
+            self._save_sensor_data(input_data, timestamp)
+        except Exception as e:
+            print(f"Warning: Data saving failed: {e}")
+        
+        # Process sensor data
+        processed_data = self._process_sensor_data(input_data)
+        
+        # Track speed for control decisions
+        if 'speed' in processed_data:
+            self.last_speed = processed_data['speed']
+        
+        # Get control commands
+        if self.model is not None or (hasattr(self, 'model_components') and self.model_components):
+            control = self._model_inference(processed_data, timestamp)
+        else:
+            control = self._rule_based_control(processed_data, timestamp)
+        
+        # Apply control post-processing
+        control = self._postprocess_control(control)
+        
+        self.frame_count += 1
+        
+        return control
+    
+    def _process_sensor_data(self, input_data):
+        """Process raw sensor data into model-ready format."""
+        processed = {}
+        
+        for sensor_id, sensor_data in input_data.items():
+            # Extract actual data from tuple format
+            if isinstance(sensor_data, tuple) and len(sensor_data) == 2:
+                _, data = sensor_data
+            else:
+                data = sensor_data
+            
+            sensor_id_lower = sensor_id.lower()
+            
+            # Process different sensor types
+            if 'rgb' in sensor_id_lower:
+                processed[sensor_id] = self._process_rgb_image(data)
+            elif 'semantic' in sensor_id_lower:
+                processed[sensor_id] = self._process_semantic_image(data)
+            elif 'depth' in sensor_id_lower:
+                processed[sensor_id] = self._process_depth_image(data)
+            elif 'lidar' in sensor_id_lower:
+                processed[sensor_id] = self._process_lidar(data)
+            elif 'imu' in sensor_id_lower:
+                processed[sensor_id] = self._process_imu(data)
+            elif 'gps' in sensor_id_lower or 'gnss' in sensor_id_lower:
+                processed[sensor_id] = self._process_gps(data)
+            elif 'speed' in sensor_id_lower:
+                processed[sensor_id] = self._process_speed(data)
+            else:
+                processed[sensor_id] = data
+        
+        return processed
+    
+    def _process_rgb_image(self, data):
+        """Process RGB camera data."""
+        if hasattr(data, 'raw_data'):
+            array = np.frombuffer(data.raw_data, dtype=np.uint8)
+            array = array.reshape((data.height, data.width, 4))
+            array = array[:, :, :3]  # Remove alpha channel
+        else:
+            array = np.array(data)
+        
+        # Convert to tensor
+        tensor = torch.from_numpy(array).float() / 255.0
+        tensor = tensor.permute(2, 0, 1)  # HWC to CHW
+        
+        return tensor
+    
+    def _process_semantic_image(self, data):
+        """Process semantic segmentation data."""
+        if hasattr(data, 'raw_data'):
+            array = np.frombuffer(data.raw_data, dtype=np.uint8)
+            array = array.reshape((data.height, data.width, 4))
+            array = array[:, :, 2]  # Red channel contains class IDs
+        else:
+            array = np.array(data)
+        
+        tensor = torch.from_numpy(array).long()
+        return tensor
+    
+    def _process_depth_image(self, data):
+        """Process depth camera data."""
+        if hasattr(data, 'raw_data'):
+            array = np.frombuffer(data.raw_data, dtype=np.uint8)
+            array = array.reshape((data.height, data.width, 4))
+            
+            # Convert to depth values
+            normalized = (array[:, :, 2] + 
+                         array[:, :, 1] * 256.0 + 
+                         array[:, :, 0] * 256.0 * 256.0) / (256.0 * 256.0 * 256.0 - 1.0)
+            depth = normalized * 1000.0
+        else:
+            depth = np.array(data)
+        
+        tensor = torch.from_numpy(depth).float()
+        return tensor
+    
+    def _process_lidar(self, data):
+        """Process LiDAR point cloud."""
+        if hasattr(data, 'raw_data'):
+            points = np.frombuffer(data.raw_data, dtype=np.float32)
+            points = points.reshape((-1, 4))
+        else:
+            points = np.array(data)
+        
+        # Convert to tensor
+        tensor = torch.from_numpy(points).float()
+        return tensor
+    
+    def _process_imu(self, data):
+        """Process IMU data."""
+        if hasattr(data, 'accelerometer'):
+            imu_dict = {
+                'accelerometer': np.array([data.accelerometer.x, 
+                                          data.accelerometer.y, 
+                                          data.accelerometer.z]),
+                'gyroscope': np.array([data.gyroscope.x, 
+                                      data.gyroscope.y, 
+                                      data.gyroscope.z]),
+                'compass': data.compass
+            }
+        else:
+            imu_dict = data
+        
+        return imu_dict
+    
+    def _process_gps(self, data):
+        """Process GPS data."""
+        if hasattr(data, 'latitude'):
+            gps_dict = {
+                'lat': data.latitude,
+                'lon': data.longitude,
+                'alt': getattr(data, 'altitude', 0.0)
+            }
+        else:
+            gps_dict = data
+        
+        return gps_dict
+    
+    def _process_speed(self, data):
+        """Process speed data."""
+        if hasattr(data, 'speed'):
+            # Object with speed attribute
+            speed = data.speed
+        elif isinstance(data, dict):
+            # Dictionary format - this is what CARLA speedometer returns
+            speed = float(data.get('speed', 0.0))
+        else:
+            # Try direct conversion as fallback
+            try:
+                speed = float(data)
+            except (TypeError, ValueError) as e:
+                print(f"Warning: Could not convert speed data to float: {type(data)} - {data}")
+                speed = 0.0
+    
+        return speed
+    
+    def _model_inference(self, processed_data, timestamp):
+        """Run model inference to get control commands."""
+        from srunner.scenariomanager.carla_data_provider import CarlaDataProvider
+        
+        try:
+            with torch.no_grad():
+                # Prepare model inputs based on model type
+                if self.model_type == 'interfuser':
+                    model_input = self._prepare_interfuser_input(processed_data)
+                elif self.model_type == 'lav':
+                    model_input = self._prepare_lav_input(processed_data)
+                elif self.model_type == 'transfuser':
+                    model_input = self._prepare_transfuser_input(processed_data)
+                else:
+                    model_input = self._prepare_generic_input(processed_data)
+                
+                # Run inference
+                output = self.model(model_input)
+                
+                # Convert output to control commands
+                control = self._output_to_control(output)
+                
+                return control
+                
+        except Exception as e:
+            print(f"Model inference failed: {e}")
+            # Fallback to rule-based control
+            return self._rule_based_control(processed_data, timestamp)
+    
+    def _prepare_generic_input(self, processed_data):
+        """Prepare generic model input."""
+        # Stack all image tensors if available
+        images = []
+        for key, value in processed_data.items():
+            if isinstance(value, torch.Tensor) and value.dim() >= 2:
+                if value.dim() == 2:
+                    value = value.unsqueeze(0)
+                images.append(value)
+        
+        if images:
+            # Batch dimension
+            return torch.stack(images).unsqueeze(0).to(self.device)
+        else:
+            # Return dummy input
+            return torch.zeros(1, 3, 256, 256).to(self.device)
+    
+    def _prepare_interfuser_input(self, processed_data):
+        """Prepare InterFuser-specific input."""
+        # InterFuser expects multiple camera views and measurements
+        inputs = {}
+        
+        # Camera inputs
+        if 'rgb_front' in processed_data:
+            inputs['rgb'] = processed_data['rgb_front'].unsqueeze(0).to(self.device)
+        
+        # Measurements (speed, etc.)
+        measurements = torch.zeros(1, 10).to(self.device)  # Placeholder
+        if 'speed' in processed_data:
+            measurements[0, 0] = processed_data['speed'] / 40.0  # Normalize
+        
+        inputs['measurements'] = measurements
+        
+        # Waypoints (if available from global plan)
+        if hasattr(self, 'global_plan_world_coord'):
+            waypoints = self._get_local_waypoints()
+            inputs['waypoints'] = waypoints.to(self.device)
+        
+        return inputs
+    
+    def _prepare_lav_input(self, processed_data):
+        """Prepare LAV-specific input."""
+        # LAV uses BEV and front camera with multiple model components
+        inputs = {}
+        
+        if 'bev' in processed_data:
+            inputs['bev'] = processed_data['bev'].unsqueeze(0).to(self.device)
+        if 'semantic_bev' in processed_data:
+            inputs['semantic_bev'] = processed_data['semantic_bev'].unsqueeze(0).to(self.device)
+        if 'rgb_front' in processed_data:
+            inputs['rgb_front'] = processed_data['rgb_front'].unsqueeze(0).to(self.device)
+        
+        # Additional cameras for 360 coverage
+        for key in ['rgb_left_side', 'rgb_right_side', 'rgb_rear']:
+            if key in processed_data:
+                inputs[key] = processed_data[key].unsqueeze(0).to(self.device)
+        
+        # LiDAR data if available
+        if 'lidar' in processed_data:
+            inputs['lidar'] = processed_data['lidar'].unsqueeze(0).to(self.device)
+        
+        # Measurements
+        measurements = torch.zeros(1, 10).to(self.device)
+        if 'speed' in processed_data:
+            measurements[0, 0] = processed_data['speed'] / 40.0  # Normalize
+        if 'gps' in processed_data:
+            gps = processed_data['gps']
+            if isinstance(gps, dict):
+                measurements[0, 1] = gps.get('lat', 0.0)
+                measurements[0, 2] = gps.get('lon', 0.0)
+        
+        inputs['measurements'] = measurements
+        
+        # Add waypoints if available
+        if hasattr(self, '_global_plan_world_coord'):
+            waypoints = self._get_local_waypoints()
+            inputs['waypoints'] = waypoints.to(self.device)
+        
+        return inputs
+    
+    def _prepare_transfuser_input(self, processed_data):
+        """Prepare TransFuser-specific input."""
+        # TransFuser uses image and LiDAR
+        inputs = {}
+        
+        if 'rgb_front' in processed_data:
+            inputs['image'] = processed_data['rgb_front'].unsqueeze(0).to(self.device)
+        if 'lidar' in processed_data:
+            inputs['lidar'] = processed_data['lidar'].unsqueeze(0).to(self.device)
+        
+        return inputs
+    
+    def _output_to_control(self, output):
+        """Convert model output to CARLA vehicle control."""
+        from srunner.scenariomanager.carla_data_provider import CarlaDataProvider
+        
+        #control = CarlaDataProvider.get_world().get_blueprint_library().find('controller.ai.walker').make_control()
+        control = carla.VehicleControl()
+
+        # Handle different output formats
+        if isinstance(output, dict):
+            # Dictionary output - check for various key patterns
+            if 'control' in output:
+                # Nested control dict
+                ctrl = output['control']
+                control.steer = float(ctrl.get('steer', 0.0))
+                control.throttle = float(ctrl.get('throttle', 0.0))
+                control.brake = float(ctrl.get('brake', 0.0))
+            elif 'steer' in output:
+                # Direct control values
+                control.steer = float(output.get('steer', 0.0))
+                control.throttle = float(output.get('throttle', 0.0))
+                control.brake = float(output.get('brake', 0.0))
+            elif 'action' in output:
+                # Action vector
+                action = output['action']
+                if isinstance(action, torch.Tensor):
+                    action = action.cpu().numpy().flatten()
+                control.steer = float(action[0]) if len(action) > 0 else 0.0
+                control.throttle = float(action[1]) if len(action) > 1 else 0.0
+                control.brake = float(action[2]) if len(action) > 2 else 0.0
+            elif 'waypoints' in output:
+                # Waypoint-based control - need to compute control from waypoints
+                waypoints = output['waypoints']
+                if isinstance(waypoints, torch.Tensor):
+                    waypoints = waypoints.cpu().numpy()
+                control = self._waypoints_to_control(waypoints, control)
+                
+                # Check if speed is also predicted
+                if 'speed' in output:
+                    target_speed = float(output['speed'])
+                    current_speed = self.last_speed if hasattr(self, 'last_speed') else 0.0
+                    if current_speed < target_speed:
+                        control.throttle = 0.7
+                        control.brake = 0.0
+                    else:
+                        control.throttle = 0.0
+                        control.brake = 0.3
+            else:
+                # Unknown dictionary format, try to extract something useful
+                for key in ['pred_control', 'controls', 'output']:
+                    if key in output:
+                        return self._output_to_control(output[key])
+                # Fallback to defaults
+                control.steer = 0.0
+                control.throttle = 0.3
+                control.brake = 0.0
+                
+        elif isinstance(output, (list, tuple)):
+            # List/tuple output [steer, throttle, brake]
+            control.steer = float(output[0]) if len(output) > 0 else 0.0
+            control.throttle = float(output[1]) if len(output) > 1 else 0.0
+            control.brake = float(output[2]) if len(output) > 2 else 0.0
+        elif isinstance(output, torch.Tensor):
+            # Tensor output
+            output = output.cpu().numpy().flatten()
+            control.steer = float(output[0]) if len(output) > 0 else 0.0
+            control.throttle = float(output[1]) if len(output) > 1 else 0.0
+            control.brake = float(output[2]) if len(output) > 2 else 0.0
+        else:
+            # Unknown format, use defaults
+            control.steer = 0.0
+            control.throttle = 0.3
+            control.brake = 0.0
+        
+        # Clamp values
+        control.steer = np.clip(control.steer, -1.0, 1.0)
+        control.throttle = np.clip(control.throttle, 0.0, 1.0)
+        control.brake = np.clip(control.brake, 0.0, 1.0)
+        
+        control.hand_brake = False
+        control.manual_gear_shift = False
+        
+        return control
+    
+    def _waypoints_to_control(self, waypoints, control):
+        """Convert predicted waypoints to control commands."""
+        if len(waypoints.shape) == 3:
+            waypoints = waypoints[0]  # Remove batch dimension
+        
+        if len(waypoints) < 2:
+            return control
+        
+        # Use first few waypoints for steering
+        if len(waypoints) >= 2:
+            # Calculate angle to second waypoint
+            dx = waypoints[1, 0] - waypoints[0, 0] if len(waypoints) > 1 else waypoints[0, 0]
+            dy = waypoints[1, 1] - waypoints[0, 1] if len(waypoints) > 1 else waypoints[0, 1]
+            
+            angle = np.arctan2(dy, dx)
+            control.steer = np.clip(angle / 0.7, -1.0, 1.0)  # 0.7 rad ~ 40 degrees max
+        
+        return control
+    
+    def _rule_based_control(self, processed_data, timestamp):
+        """Simple rule-based control as fallback."""
+        from srunner.scenariomanager.carla_data_provider import CarlaDataProvider
+        
+        #control = CarlaDataProvider.get_world().get_blueprint_library().find('controller.ai.walker').make_control()
+        control = carla.VehicleControl()
+
+        # Get current speed
+        current_speed = processed_data.get('speed', 0.0)
+        target_speed = self.control_config['target_speed']
+        
+        # Simple speed control
+        if current_speed < target_speed:
+            control.throttle = 0.7
+            control.brake = 0.0
+        else:
+            control.throttle = 0.0
+            control.brake = 0.3
+        
+        # Simple steering (try to follow waypoints if available)
+        control.steer = self._compute_steer_from_waypoints()
+        
+        control.hand_brake = False
+        control.manual_gear_shift = False
+        
+        return control
+    
+    def _compute_steer_from_waypoints(self):
+        """Compute steering angle from waypoints."""
+        if not hasattr(self, '_global_plan_world_coord') or not self._global_plan_world_coord:
+            return 0.0
+        
+        try:
+            from srunner.scenariomanager.carla_data_provider import CarlaDataProvider
+            
+            # Get ego vehicle
+            ego_vehicle = CarlaDataProvider.get_hero_actor()
+            if ego_vehicle is None:
+                return 0.0
+            
+            # Get current transform
+            transform = ego_vehicle.get_transform()
+            location = transform.location
+            rotation = transform.rotation
+            
+            # Find nearest waypoint
+            min_dist = float('inf')
+            target_waypoint = None
+            
+            for i, waypoint in enumerate(self._global_plan_world_coord):
+                if isinstance(waypoint, tuple):
+                    if len(waypoint) >= 2:
+                        wp_loc = waypoint[0] if isinstance(waypoint[0], object) else waypoint
+                        if hasattr(wp_loc, 'location'):
+                            wp_x, wp_y = wp_loc.location.x, wp_loc.location.y
+                        else:
+                            wp_x, wp_y = wp_loc[0], wp_loc[1]
+                    else:
+                        continue
+                else:
+                    continue
+                
+                dist = np.sqrt((wp_x - location.x)**2 + (wp_y - location.y)**2)
+                
+                # Look for waypoint ahead
+                if dist < min_dist and dist > 2.0:  # At least 2m ahead
+                    min_dist = dist
+                    target_waypoint = (wp_x, wp_y)
+            
+            if target_waypoint is None:
+                return 0.0
+            
+            # Calculate steering angle
+            dx = target_waypoint[0] - location.x
+            dy = target_waypoint[1] - location.y
+            
+            # Convert to vehicle coordinate system
+            forward_vec = transform.get_forward_vector()
+            right_vec = transform.get_right_vector()
+            
+            dot_forward = dx * forward_vec.x + dy * forward_vec.y
+            dot_right = dx * right_vec.x + dy * right_vec.y
+            
+            # Calculate angle
+            angle = np.arctan2(dot_right, dot_forward)
+            
+            # Convert to steering command (-1 to 1)
+            steer = np.clip(angle / 0.7, -1.0, 1.0)  # 0.7 rad ~ 40 degrees max
+            
+            return float(steer)
+            
+        except Exception as e:
+            print(f"Error computing steering: {e}")
+            return 0.0
+    
+    def _postprocess_control(self, control):
+        """Apply control post-processing for smoothness and safety."""
+        # Smooth steering
+        if hasattr(control, 'steer'):
+            damping = self.control_config.get('steer_damping', 0.3)
+            control.steer = (1 - damping) * control.steer + damping * self.prev_steer
+            self.prev_steer = control.steer
+        
+        # Prevent throttle and brake at same time
+        if hasattr(control, 'brake') and hasattr(control, 'throttle'):
+            if control.brake > self.control_config.get('brake_threshold', 0.5):
+                control.throttle = 0.0
+        
+        return control
+    
+    def _get_local_waypoints(self, num_waypoints=10):
+        """Get local waypoints relative to ego vehicle."""
+        if not hasattr(self, '_global_plan_world_coord'):
+            return torch.zeros(1, num_waypoints, 2)
+        
+>>>>>>> 5c6ba0f (trying to set up rsync)
         try:
             from srunner.scenariomanager.carla_data_provider import CarlaDataProvider
             ego_vehicle = CarlaDataProvider.get_hero_actor()

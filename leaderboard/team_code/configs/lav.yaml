@@ -7,6 +7,7 @@ model_type: lav
 # Multi-component model architecture
 model_components:
   lidar_model:
+<<<<<<< HEAD
     #path: /workspace/leaderboard/team_code/lav/weights/lidar_15.th
     path: /home/netai/Documents/HPC-CARLA/leaderboard/team_code/lav/weights/lidar_15.th
     type: checkpoint
@@ -29,6 +30,30 @@ model_components:
   bra_model:
     #path: /workspace/leaderboard/team_code/lav/weights/bra_10.th
     path: /home/netai/Documents/HPC-CARLA/leaderboard/team_code/lav/weights/bra_10.th
+=======
+    path: /workspace/leaderboard/team_code/lav/weights/lidar_15.th
+    #path: /home/netai/Documents/HPC-CARLA/leaderboard/team_code/lav/weights/lidar_15.th
+    type: checkpoint
+
+  uniplanner:
+    path: /workspace/leaderboard/team_code/lav/weights/uniplanner_15.th
+    #path: /home/netai/Documents/HPC-CARLA/leaderboard/team_code/lav/weights/uniplanner_15.th
+    type: checkpoint
+    
+  bev_model:
+    path: /workspace/leaderboard/team_code/lav/weights/bev_160.th
+    #path: /home/netai/Documents/HPC-CARLA/leaderboard/team_code/lav/weights/bev_160.th
+    type: checkpoint
+    
+  seg_model:
+    path: /workspace/leaderboard/team_code/lav/weights/seg_1.th
+    #path: /home/netai/Documents/HPC-CARLA/leaderboard/team_code/lav/weights/seg_1.th
+    type: checkpoint
+    
+  bra_model:
+    path: /workspace/leaderboard/team_code/lav/weights/bra_10.th
+    #path: /home/netai/Documents/HPC-CARLA/leaderboard/team_code/lav/weights/bra_10.th
+>>>>>>> 5c6ba0f (trying to set up rsync)
     type: checkpoint
 
 # Alternative: Use trace models for faster inference

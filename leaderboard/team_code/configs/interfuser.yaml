@@ -3,8 +3,13 @@
 
 # Model configuration
 model_type: interfuser
+<<<<<<< HEAD
 #model_path: /workspace/leaderboard/team_code/interfuser/interfuser.pth.tar
 model_path: /home/netai/Documents/HPC-CARLA/leaderboard/team_code/interfuser/interfuser.pth.tar
+=======
+model_path: /workspace/leaderboard/team_code/interfuser/interfuser.pth.tar
+#model_path: /home/netai/Documents/HPC-CARLA/leaderboard/team_code/interfuser/interfuser.pth.tar
+>>>>>>> 5c6ba0f (trying to set up rsync)
 
 # External config loading (InterFuser's Python config)
 #external_config: /workspace/leaderboard/team_code/interfuser/config.py
