@@ -1,5 +1,6 @@
 # LAV Agent Configuration
 <<<<<<< HEAD
+<<<<<<< HEAD
 # For use with the new consolidated_agent.py
 
 # Model configuration
@@ -72,6 +73,8 @@ model_config:
 # Sensor configuration - LAV uses BEV and multiple cameras
 sensors:
 =======
+=======
+>>>>>>> fe09b6c (annoyign having to rebase every commit but oh well)
 model_type: lav
 
 model_components:
@@ -163,7 +166,10 @@ sensors:
     id: RGB_2
     
   # Telephoto RGB camera
+<<<<<<< HEAD
 >>>>>>> 8a07600 (fixing issues w/ model loading)
+=======
+>>>>>>> fe09b6c (annoyign having to rebase every commit but oh well)
   - type: sensor.camera.rgb
     x: 1.3
     y: 0.0
@@ -171,6 +177,7 @@ sensors:
     roll: 0.0
     pitch: 0.0
     yaw: 0.0
+<<<<<<< HEAD
 <<<<<<< HEAD
     width: 900
     height: 256
@@ -227,12 +234,17 @@ sensors:
 
 # Control parameters
 =======
+=======
+>>>>>>> fe09b6c (annoyign having to rebase every commit but oh well)
     width: 480
     height: 288
     fov: 40
     id: TEL_RGB
 
+<<<<<<< HEAD
 >>>>>>> 8a07600 (fixing issues w/ model loading)
+=======
+>>>>>>> fe09b6c (annoyign having to rebase every commit but oh well)
 control:
   target_speed: 25.0
   brake_threshold: 0.4

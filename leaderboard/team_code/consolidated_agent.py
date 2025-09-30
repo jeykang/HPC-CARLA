@@ -19,12 +19,16 @@ from leaderboard.autoagents.autonomous_agent import AutonomousAgent
 from srunner.scenariomanager.carla_data_provider import CarlaDataProvider
 <<<<<<< HEAD
 <<<<<<< HEAD
+<<<<<<< HEAD
 =======
 import carla
 >>>>>>> 5c6ba0f (trying to set up rsync)
 =======
 import carla
 >>>>>>> 8a07600 (fixing issues w/ model loading)
+=======
+import carla
+>>>>>>> fe09b6c (annoyign having to rebase every commit but oh well)
 
 def get_entry_point():
     """Required by CARLA Leaderboard."""
@@ -299,8 +303,11 @@ class ConsolidatedAgent(AutonomousAgent):
                       'actor', 'planner', 'controller']
 <<<<<<< HEAD
 <<<<<<< HEAD
+<<<<<<< HEAD
 =======
 >>>>>>> 8a07600 (fixing issues w/ model loading)
+=======
+>>>>>>> fe09b6c (annoyign having to rebase every commit but oh well)
         
         # Check for single model
         for attr in model_attrs:
@@ -510,6 +517,7 @@ class ConsolidatedAgent(AutonomousAgent):
         """Load InterFuser-specific model."""
         try:
 <<<<<<< HEAD
+<<<<<<< HEAD
             # InterFuser uses specific model structure
             from interfuser.timm.models import create_model
             
@@ -553,6 +561,8 @@ class ConsolidatedAgent(AutonomousAgent):
             else:
                 self.model = checkpoint
 =======
+=======
+>>>>>>> fe09b6c (annoyign having to rebase every commit but oh well)
             # Use the correct import path
             from team_code.interfuser.interfuser.timm.models.interfuser import interfuser_baseline
             
@@ -568,11 +578,15 @@ class ConsolidatedAgent(AutonomousAgent):
             else:
                 # Try loading directly if it's just the state dict
                 self.model.load_state_dict(checkpoint)
+<<<<<<< HEAD
 >>>>>>> 8a07600 (fixing issues w/ model loading)
+=======
+>>>>>>> fe09b6c (annoyign having to rebase every commit but oh well)
             
             self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
             self.model = self.model.to(self.device)
             
+<<<<<<< HEAD
 <<<<<<< HEAD
         except Exception as e:
             print(f"Error loading LAV model: {e}")
@@ -1433,6 +1447,8 @@ class ConsolidatedAgent(AutonomousAgent):
         except Exception as e:
             print(f"Error loading InterFuser model: {e}")
 =======
+=======
+>>>>>>> fe09b6c (annoyign having to rebase every commit but oh well)
             print(f"ConsolidatedAgent: InterFuser model loaded successfully")
             
         except ImportError as e:
@@ -1442,7 +1458,10 @@ class ConsolidatedAgent(AutonomousAgent):
         except Exception as e:
             print(f"Error loading InterFuser model: {e}")
             print("Trying fallback to generic model loading...")
+<<<<<<< HEAD
 >>>>>>> 8a07600 (fixing issues w/ model loading)
+=======
+>>>>>>> fe09b6c (annoyign having to rebase every commit but oh well)
             self._load_generic_model()
     
     def _load_lav_model(self):
@@ -2103,9 +2122,12 @@ class ConsolidatedAgent(AutonomousAgent):
             return torch.zeros(1, num_waypoints, 2)
         
 <<<<<<< HEAD
+<<<<<<< HEAD
 >>>>>>> 5c6ba0f (trying to set up rsync)
 =======
 >>>>>>> 8a07600 (fixing issues w/ model loading)
+=======
+>>>>>>> fe09b6c (annoyign having to rebase every commit but oh well)
         try:
             from srunner.scenariomanager.carla_data_provider import CarlaDataProvider
             ego_vehicle = CarlaDataProvider.get_hero_actor()

@@ -1,5 +1,6 @@
 # InterFuser Agent Configuration
 <<<<<<< HEAD
+<<<<<<< HEAD
 # For use with the new consolidated_agent.py
 
 # Model configuration
@@ -39,6 +40,17 @@ model_config:
   skip_frames: 1  # InterFuser typically processes every other frame
   momentum: 0.95  # For traffic meta moving average
 
+=======
+model_type: interfuser
+model_path: /workspace/leaderboard/team_code/interfuser/interfuser.pth.tar
+external_config: /workspace/leaderboard/team_code/interfuser/config.py
+
+model_config:
+  architecture: interfuser_baseline
+  skip_frames: 1  # InterFuser typically processes every other frame
+  momentum: 0.95  # For traffic meta moving average
+
+>>>>>>> fe09b6c (annoyign having to rebase every commit but oh well)
 # Exact sensor configuration from interfuser_agent.py
 sensors:
   - type: sensor.camera.rgb
@@ -110,7 +122,10 @@ sensors:
     reading_frequency: 20
     id: speed
 
+<<<<<<< HEAD
 >>>>>>> 8a07600 (fixing issues w/ model loading)
+=======
+>>>>>>> fe09b6c (annoyign having to rebase every commit but oh well)
 control:
   target_speed: 30.0
   brake_threshold: 0.5
