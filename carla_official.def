@@ -1,0 +1,80 @@
+Bootstrap: docker
+From: carlasim/carla:0.9.10.1
+
+%environment
+    export DEBIAN_FRONTEND=noninteractive
+    export CARLA_ROOT=${CARLA_ROOT:-/home/carla}
+    export PYTHONPATH="$(echo ${CARLA_ROOT}/PythonAPI/carla/dist/carla-*-py*-linux-x86_64.egg):${PYTHONPATH}"
+    export PYTHONPATH="${CARLA_ROOT}/PythonAPI/carla:${PYTHONPATH}"
+    export PYTHONPATH="/workspace:/workspace/leaderboard:/workspace/scenario_runner:${PYTHONPATH}"
+
+%post
+    # set -euo pipefail
+    export DEBIAN_FRONTEND=noninteractive
+
+    echo "[prep] Temporarily disabling any NVIDIA repos so apt can run..."
+    mkdir -p /root/apt-hold
+    # Move out any NVIDIA list files (both cuda and machine-learning) *before* first apt-get update
+    for f in /etc/apt/sources.list /etc/apt/sources.list.d/*.list; do
+        [ -f "$f" ] || continue
+        if grep -qE 'developer\.download\.nvidia\.com' "$f"; then
+            mv -f "$f" "/root/apt-hold/$(basename "$f")"
+        fi
+    done
+
+    echo "[prep] Base update without NVIDIA repos..."
+    apt-get update
+    apt-get install -y --no-install-recommends \
+        ca-certificates curl gnupg2 apt-transport-https software-properties-common
+    update-ca-certificates
+
+    echo "[keys] Removing legacy NVIDIA key if present (7FA2AF80)..."
+    apt-key del 7fa2af80 || true
+
+    echo "[keys] Installing cuda-keyring (adds current CUDA repo key)..."
+    curl -fsSLo /tmp/cuda-keyring_1.1-1_all.deb \
+      https://developer.download.nvidia.com/compute/cuda/repos/ubuntu1804/x86_64/cuda-keyring_1.1-1_all.deb
+    dpkg -i /tmp/cuda-keyring_1.1-1_all.deb || true
+    rm -f /tmp/cuda-keyring_1.1-1_all.deb
+
+    # Fallback: if cuda-keyring didn’t drop a keyring, add it manually
+    if [ ! -f /usr/share/keyrings/cuda-archive-keyring.gpg ]; then
+      echo "[keys] Fallback: installing public key 3bf863cc to /usr/share/keyrings..."
+      curl -fsSL https://developer.download.nvidia.com/compute/cuda/repos/ubuntu1804/x86_64/3bf863cc.pub \
+        | gpg --dearmor -o /usr/share/keyrings/cuda-archive-keyring.gpg
+    fi
+
+    echo "[repos] Re-adding the CUDA repo with explicit signed-by..."
+    cat > /etc/apt/sources.list.d/cuda-ubuntu1804-x86_64.list <<'EOF'
+deb [signed-by=/usr/share/keyrings/cuda-archive-keyring.gpg] https://developer.download.nvidia.com/compute/cuda/repos/ubuntu1804/x86_64/ /
+EOF
+
+    echo "[repos] Ensuring deprecated NVIDIA ML repo stays disabled..."
+    rm -f /root/apt-hold/*machine-learning* || true
+
+    echo "[apt] Refreshing package indexes with fixed key..."
+    apt-get update
+
+    echo "[apt] Installing Python bits and system libs needed by Pillow/OpenCV..."
+    apt-get install -y --no-install-recommends \
+        python3-pip python3-setuptools \
+        libjpeg-turbo8
+
+    # Optional: other image-codec libs if your pipeline uses them
+    # apt-get install -y --no-install-recommends libpng16-16 zlib1g libtiff5 libwebp6 libopenjp2-7
+
+    # Upgrade pip/setuptools/wheel to avoid build-time surprises
+    python3 -m pip install --no-cache-dir --upgrade pip setuptools wheel
+
+    # Clean APT caches to reduce image size
+    rm -rf /var/lib/apt/lists/*
+
+    # --- Environment wiring for CARLA Python API (safe if egg not present yet) ---
+    export CARLA_ROOT=${CARLA_ROOT:-/home/carla}
+    export PYTHONPATH="$(echo ${CARLA_ROOT}/PythonAPI/carla/dist/carla-*-py*-linux-x86_64.egg):${PYTHONPATH}"
+    export PYTHONPATH="${CARLA_ROOT}/PythonAPI/carla:${PYTHONPATH}"
+    export PYTHONPATH="/workspace:/workspace/leaderboard:/workspace/scenario_runner:${PYTHONPATH}"
+
+%runscript
+    # Default entrypoint; orchestration can override
+    exec "${CARLA_ROOT}/CarlaUE4.sh" -nosound "$@"

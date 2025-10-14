@@ -1,0 +1,61 @@
+# TCP Agent Configuration
+model_type: generic
+model_path: /workspace/leaderboard/team_code/tcp/tcp_model.ckpt
+
+# TCP specific sensor configuration
+sensors:
+  - type: sensor.camera.rgb
+    x: -1.5  # Note: TCP uses negative x (behind usual position)
+    y: 0.0
+    z: 2.0
+    roll: 0.0
+    pitch: 0.0
+    yaw: 0.0
+    width: 900
+    height: 256
+    fov: 100
+    id: rgb
+    
+  - type: sensor.camera.rgb
+    x: 0.0
+    y: 0.0
+    z: 50.0
+    roll: 0.0
+    pitch: -90.0
+    yaw: 0.0
+    width: 512
+    height: 512
+    fov: 50  # Note: TCP uses 5*10.0 = 50
+    id: bev
+    
+  - type: sensor.other.imu
+    x: 0.0
+    y: 0.0
+    z: 0.0
+    roll: 0.0
+    pitch: 0.0
+    yaw: 0.0
+    sensor_tick: 0.05
+    id: imu
+    
+  - type: sensor.other.gnss
+    x: 0.0
+    y: 0.0
+    z: 0.0
+    roll: 0.0
+    pitch: 0.0
+    yaw: 0.0
+    sensor_tick: 0.01
+    id: gps
+    
+  - type: sensor.speedometer
+    reading_frequency: 20
+    id: speed
+
+model_config:
+  seq_len: 1
+
+control:
+  target_speed: 25.0
+  brake_threshold: 0.4
+  steer_damping: 0.3

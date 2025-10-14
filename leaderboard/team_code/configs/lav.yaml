@@ -1,0 +1,108 @@
+# LAV Agent Configuration
+model_type: lav
+
+model_components:
+  lidar_model:
+    path: /workspace/leaderboard/team_code/lav/weights/lidar_15.th
+    type: checkpoint
+  uniplanner:
+    path: /workspace/leaderboard/team_code/lav/weights/uniplanner_15.th
+    type: checkpoint
+  bev_model:
+    path: /workspace/leaderboard/team_code/lav/weights/bev_160.th
+    type: checkpoint
+  seg_model:
+    path: /workspace/leaderboard/team_code/lav/weights/seg_1.th
+    type: checkpoint
+  bra_model:
+    path: /workspace/leaderboard/team_code/lav/weights/bra_10.th
+    type: checkpoint
+
+model_config:
+  camera_x: 1.3
+  camera_z: 2.3
+  
+# LAV uses specific sensor IDs and configurations
+sensors:
+  - type: sensor.speedometer
+    id: EGO
+    
+  - type: sensor.other.gnss
+    x: 0.0
+    y: 0.0
+    z: 2.3
+    id: GPS
+    
+  - type: sensor.other.imu
+    x: 0.0
+    y: 0.0
+    z: 2.3
+    roll: 0.0
+    pitch: 0.0
+    yaw: 0.0
+    sensor_tick: 0.05
+    id: IMU
+    
+  - type: sensor.lidar.ray_cast
+    x: 0.0
+    y: 0.0
+    z: 2.3
+    yaw: 0.0
+    pitch: 0.0
+    roll: 0.0
+    id: LIDAR
+    
+  # Three cameras at different angles
+  - type: sensor.camera.rgb
+    x: 1.3
+    y: 0.0
+    z: 2.3
+    roll: 0.0
+    pitch: 0.0
+    yaw: -60
+    width: 256
+    height: 288
+    fov: 64
+    id: RGB_0
+    
+  - type: sensor.camera.rgb
+    x: 1.3
+    y: 0.0
+    z: 2.3
+    roll: 0.0
+    pitch: 0.0
+    yaw: 0
+    width: 256
+    height: 288
+    fov: 64
+    id: RGB_1
+    
+  - type: sensor.camera.rgb
+    x: 1.3
+    y: 0.0
+    z: 2.3
+    roll: 0.0
+    pitch: 0.0
+    yaw: 60
+    width: 256
+    height: 288
+    fov: 64
+    id: RGB_2
+    
+  # Telephoto RGB camera
+  - type: sensor.camera.rgb
+    x: 1.3
+    y: 0.0
+    z: 2.3
+    roll: 0.0
+    pitch: 0.0
+    yaw: 0.0
+    width: 480
+    height: 288
+    fov: 40
+    id: TEL_RGB
+
+control:
+  target_speed: 25.0
+  brake_threshold: 0.4
+  steer_damping: 0.2

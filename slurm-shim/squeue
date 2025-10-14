@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+STATE="$HOME/.slurm-shim/state/jobs"
+printf "%-10s %-24s %-8s %-s\n" "JOBID" "NAME" "STATE" "PIDS"
+for f in "$STATE"/*.json; do
+  [[ -e "$f" ]] || continue
+  id=$(jq -r .jobid "$f" 2>/dev/null)
+  name=$(jq -r .name "$f" 2>/dev/null)
+  pids=$(jq -r '.pids|join(",")' "$f" 2>/dev/null)
+  alive="COMPLETED"
+  for p in ${pids//,/ }; do
+    if kill -0 "$p" 2>/dev/null; then alive="RUNNING"; break; fi
+  done
+  printf "%-10s %-24s %-8s %-s\n" "$id" "$name" "$alive" "$pids"
+done

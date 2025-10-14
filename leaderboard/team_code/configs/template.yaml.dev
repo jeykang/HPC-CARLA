@@ -1,0 +1,293 @@
+# Comprehensive Template Configuration for Consolidated Agent
+# This file demonstrates ALL available configuration options
+# Copy and modify for your specific agent
+
+# ============================================================================
+# MODEL LOADING OPTIONS
+# ============================================================================
+
+# Option 1: Single Model Loading
+# -------------------------------
+model_type: generic  # Options: generic, interfuser, lav, transfuser
+model_path: /path/to/model/checkpoint.pth
+
+# Option 2: Multi-Component Model Loading (e.g., LAV)
+# ----------------------------------------------------
+# model_components:
+#   component_name_1:
+#     path: /path/to/component1.pth
+#     type: checkpoint  # or 'trace' for JIT traced models
+#     model_class:  # Optional: if instantiation needed
+#       module: my_models.encoders
+#       name: BEVEncoder
+#       args:
+#         hidden_dim: 256
+#         num_layers: 4
+#   component_name_2:
+#     path: /path/to/component2.pt
+#     type: trace
+
+# Option 3: Extract from Existing Agent
+# --------------------------------------
+# agent_config:
+#   agent_file: /workspace/leaderboard/team_code/my_agent/agent.py
+#   agent_class: MyAgentClass
+#   config_path: /workspace/leaderboard/team_code/my_agent/config.yaml
+
+# ============================================================================
+# EXTERNAL CONFIGURATION LOADING
+# ============================================================================
+
+# Load additional configuration from external file
+# Supports .py (Python config), .yaml, .json
+# external_config: /path/to/external/config.py
+
+# ============================================================================
+# MODEL-SPECIFIC CONFIGURATION
+# ============================================================================
+
+model_config:
+  # Architecture details
+  architecture: model_architecture_name
+  model_module: my_models.networks  # Python module path
+  model_class: MyModelClass         # Class name in module
+  
+  # Model instantiation arguments
+  model_args:
+    input_dim: 512
+    hidden_dim: 256
+    output_dim: 3
+    num_layers: 4
+    dropout: 0.1
+    
+  # Model-specific parameters
+  seq_len: 1          # Sequence length for recurrent models
+  pred_len: 4         # Prediction horizon
+  use_depth: true     # Use depth images
+  use_semantic: true  # Use semantic segmentation
+  use_lidar: false    # Use LiDAR data
+  use_bev: true       # Use bird's eye view
+  num_waypoints: 10   # Number of waypoints to predict
+  
+  # LAV-specific paths (alternative to model_components)
+  # lidar_model_dir: /path/to/lidar/model
+  # uniplanner_dir: /path/to/uniplanner
+  # bra_model_dir: /path/to/bra/model
+  # seg_model_dir: /path/to/segmentation/model
+  # bev_model_dir: /path/to/bev/model
+
+# ============================================================================
+# SENSOR CONFIGURATION
+# ============================================================================
+
+# Option 1: Use default sensor suite
+# sensors: default
+
+# Option 2: Custom sensor configuration
+sensors:
+  # RGB Cameras
+  - type: sensor.camera.rgb
+    x: 1.3        # Forward position (meters)
+    y: 0.0        # Lateral position (meters)
+    z: 2.3        # Height (meters)
+    roll: 0.0     # Roll angle (degrees)
+    pitch: 0.0    # Pitch angle (degrees)
+    yaw: 0.0      # Yaw angle (degrees)
+    width: 900    # Image width (pixels)
+    height: 256   # Image height (pixels)
+    fov: 100      # Field of view (degrees)
+    id: rgb_front # Unique identifier
+    
+  # Bird's Eye View Camera
+  - type: sensor.camera.rgb
+    x: 0.0
+    y: 0.0
+    z: 50.0       # High altitude for BEV
+    roll: 0.0
+    pitch: -90.0  # Looking down
+    yaw: 0.0
+    width: 512
+    height: 512
+    fov: 110
+    id: bev
+    
+  # Additional RGB cameras for 360° coverage
+  - type: sensor.camera.rgb
+    x: -1.3
+    y: 0.0
+    z: 2.3
+    roll: 0.0
+    pitch: 0.0
+    yaw: 180.0    # Rear-facing
+    width: 900
+    height: 256
+    fov: 100
+    id: rgb_rear
+    
+  - type: sensor.camera.rgb
+    x: 0.0
+    y: -0.7
+    z: 2.3
+    roll: 0.0
+    pitch: 0.0
+    yaw: -90.0    # Left-facing
+    width: 900
+    height: 256
+    fov: 100
+    id: rgb_left
+    
+  - type: sensor.camera.rgb
+    x: 0.0
+    y: 0.7
+    z: 2.3
+    roll: 0.0
+    pitch: 0.0
+    yaw: 90.0     # Right-facing
+    width: 900
+    height: 256
+    fov: 100
+    id: rgb_right
+    
+  # Semantic Segmentation Cameras
+  - type: sensor.camera.semantic_segmentation
+    x: 1.3
+    y: 0.0
+    z: 2.3
+    roll: 0.0
+    pitch: 0.0
+    yaw: 0.0
+    width: 900
+    height: 256
+    fov: 100
+    id: semantic_front
+    
+  - type: sensor.camera.semantic_segmentation
+    x: 0.0
+    y: 0.0
+    z: 50.0
+    roll: 0.0
+    pitch: -90.0
+    yaw: 0.0
+    width: 512
+    height: 512
+    fov: 110
+    id: semantic_bev
+    
+  # Depth Camera
+  - type: sensor.camera.depth
+    x: 1.3
+    y: 0.0
+    z: 2.3
+    roll: 0.0
+    pitch: 0.0
+    yaw: 0.0
+    width: 900
+    height: 256
+    fov: 100
+    id: depth_front
+    
+  # LiDAR
+  - type: sensor.lidar.ray_cast
+    x: 0.0
+    y: 0.0
+    z: 2.5
+    roll: 0.0
+    pitch: 0.0
+    yaw: 0.0
+    id: lidar
+    channels: 64              # Number of lasers
+    range: 100                # Maximum range (meters)
+    points_per_second: 1000000 # Points per second
+    rotation_frequency: 20     # Rotation frequency (Hz)
+    upper_fov: 10             # Upper field of view (degrees)
+    lower_fov: -30            # Lower field of view (degrees)
+    
+  # Radar (optional)
+  - type: sensor.radar
+    x: 2.0
+    y: 0.0
+    z: 1.0
+    roll: 0.0
+    pitch: 0.0
+    yaw: 0.0
+    id: radar_front
+    horizontal_fov: 30
+    vertical_fov: 10
+    points_per_second: 1500
+    range: 100
+    
+  # IMU (Inertial Measurement Unit)
+  - type: sensor.other.imu
+    x: 0.0
+    y: 0.0
+    z: 0.0
+    roll: 0.0
+    pitch: 0.0
+    yaw: 0.0
+    id: imu
+    
+  # GPS/GNSS
+  - type: sensor.other.gnss
+    x: 0.0
+    y: 0.0
+    z: 0.0
+    roll: 0.0
+    pitch: 0.0
+    yaw: 0.0
+    id: gps
+    
+  # Speedometer
+  - type: sensor.speedometer
+    id: speed
+
+# ============================================================================
+# CONTROL PARAMETERS
+# ============================================================================
+
+control:
+  target_speed: 30.0      # Target speed in km/h
+  brake_threshold: 0.5    # Brake activation threshold
+  steer_damping: 0.3      # Steering smoothing factor (0-1)
+  
+  # Advanced control parameters (optional)
+  throttle_kp: 0.5        # Throttle PID proportional gain
+  throttle_ki: 0.1        # Throttle PID integral gain
+  throttle_kd: 0.05       # Throttle PID derivative gain
+  
+  steer_kp: 0.8           # Steering PID proportional gain
+  steer_ki: 0.1           # Steering PID integral gain
+  steer_kd: 0.2           # Steering PID derivative gain
+  
+  max_throttle: 0.75      # Maximum throttle value
+  max_brake: 1.0          # Maximum brake value
+  max_steer: 1.0          # Maximum steering angle
+
+# ============================================================================
+# DATA COLLECTION SETTINGS (Optional)
+# ============================================================================
+
+data_collection:
+  enabled: true           # Enable/disable data collection
+  save_frequency: 10      # Save metadata every N frames
+  compress_images: false  # Compress saved images
+  save_raw_data: true     # Save raw sensor data
+  
+# ============================================================================
+# RUNTIME SETTINGS (Optional)
+# ============================================================================
+
+runtime:
+  device: cuda            # Device: cuda, cpu, or auto
+  precision: fp32         # Precision: fp32, fp16, or mixed
+  batch_size: 1           # Batch size for inference
+  num_threads: 4          # Number of CPU threads
+  
+# ============================================================================
+# DEBUG SETTINGS (Optional)
+# ============================================================================
+
+debug:
+  verbose: false          # Verbose logging
+  save_debug_images: false # Save debug visualizations
+  profile: false          # Enable profiling
+  log_level: INFO         # Log level: DEBUG, INFO, WARNING, ERROR

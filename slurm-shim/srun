@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+set -euo pipefail
+# Optional: honor SLURM_GPU_LIST and SLURM_LOCALID
+if [[ -n "${SLURM_GPU_LIST:-}" ]]; then
+  IFS=',' read -ra GARR <<< "$SLURM_GPU_LIST"
+  idx="${SLURM_LOCALID:-0}"
+  dev="${GARR[$(( idx % ${#GARR[@]} ))]}"
+  export CUDA_VISIBLE_DEVICES="$dev"
+fi
+exec "$@"
