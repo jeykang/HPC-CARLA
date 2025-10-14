@@ -61,8 +61,31 @@ EOF_REPO
         libjpeg-turbo8 \
         libtiff5
 
+    apt-get install -y \
+        ffmpeg libsm6 libxext6 libgl1-mesa-glx libglib2.0-0 \
+        libatlas-base-dev libopenmpi-dev
+
     # Upgrade pip/setuptools/wheel to avoid build-time surprises
     python3 -m pip install --no-cache-dir --upgrade pip setuptools wheel
+
+    # Install PyTorch + CUDA (match the versions used in the environment files)
+    # Use the appropriate torch + torchvision versions for CUDA 11.3
+    python3 -m pip install --no-cache-dir torch==1.10.1+cu113 torchvision==0.11.2+cu113 -f https://download.pytorch.org/whl/cu113/torch_stable.html
+
+    # Install core scientific and ML dependencies
+    python3 -m pip install --no-cache-dir \
+        numpy scipy pandas scikit-learn scikit-image \
+        pytorch-lightning==1.2.5 stable-baselines3==0.8.0 gym==0.17.2 ray==1.1.0 \
+        albumentations==1.1.0 imgaug==0.4.0 einops==0.4.1 \
+        opencv-python opencv-python-headless pillow imageio imageio-ffmpeg moviepy \
+        shapely xmlschema lmdb pycocotools==2.0.3 pyquaternion nuscenes-devkit==1.1.0 \
+        efficientnet-pytorch fvcore timm yacs hydra-core==1.1.1 omegaconf
+
+    # Install agent‑specific utilities
+    python3 -m pip install --no-cache-dir \
+        py-trees==0.8.3 carla-birdeye-view==1.1.1 ephem dictor easydict filelock \
+        elementpath configparser pydot pyglet pygame open3d==0.9.0.0 \
+        torchmetrics tensorboard tensorboardX wandb
 
     # Clean APT caches to reduce image size
     rm -rf /var/lib/apt/lists/*
