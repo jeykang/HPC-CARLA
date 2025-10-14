@@ -45,9 +45,9 @@ From: carlasim/carla:0.9.10.1
     fi
 
     echo "[repos] Re-adding the CUDA repo with explicit signed-by..."
-    cat > /etc/apt/sources.list.d/cuda-ubuntu1804-x86_64.list <<'EOF'
+    cat > /etc/apt/sources.list.d/cuda-ubuntu1804-x86_64.list <<'EOF_REPO'
 deb [signed-by=/usr/share/keyrings/cuda-archive-keyring.gpg] https://developer.download.nvidia.com/compute/cuda/repos/ubuntu1804/x86_64/ /
-EOF
+EOF_REPO
 
     echo "[repos] Ensuring deprecated NVIDIA ML repo stays disabled..."
     rm -f /root/apt-hold/*machine-learning* || true
@@ -55,13 +55,11 @@ EOF
     echo "[apt] Refreshing package indexes with fixed key..."
     apt-get update
 
-    echo "[apt] Installing Python bits and system libs needed by Pillow/OpenCV..."
+    echo "[apt] Installing Python bits and system libs needed by Pillow/OpenCV, plus libtiff5 for CARLA..."
     apt-get install -y --no-install-recommends \
         python3-pip python3-setuptools \
-        libjpeg-turbo8
-
-    # Optional: other image-codec libs if your pipeline uses them
-    # apt-get install -y --no-install-recommends libpng16-16 zlib1g libtiff5 libwebp6 libopenjp2-7
+        libjpeg-turbo8 \
+        libtiff5
 
     # Upgrade pip/setuptools/wheel to avoid build-time surprises
     python3 -m pip install --no-cache-dir --upgrade pip setuptools wheel
