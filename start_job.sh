@@ -62,7 +62,7 @@ echo "[start_job] APPTAINER_BINDPATH=${APPTAINER_BINDPATH}"
 EVAL_CMD_TEMPLATE="$(cat <<'EOF'
 singularity exec --nv --pwd /workspace "${{CARLA_SIF}}" bash -lc '
   set -euo pipefail
-  export PYTHONPATH="/workspace:/workspace/leaderboard:/workspace/scenario_runner:${PYTHONPATH:-}"
+  export PYTHONPATH="/workspace:/workspace/leaderboard:/workspace/scenario_runner:${{PYTHONPATH:-}}"
   python3 -m leaderboard.leaderboard_evaluator \
     --routes "{ROUTES_FILE}" \
     --scenarios "{SCENARIOS_FILE}" \
