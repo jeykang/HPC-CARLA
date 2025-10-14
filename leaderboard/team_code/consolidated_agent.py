@@ -84,6 +84,9 @@ class ConsolidatedAgent(AutonomousAgent):
         if 'lidar_model_dir' in self.model_config or 'uniplanner_dir' in self.model_config:
             # Convert LAV-style config to our format
             self._convert_lav_config()
+
+        # Keep the config path for deriving agent name if env is missing
+        self._config_path = path_to_config_yaml
         
         # Sensor configuration - use provided or default
         self.sensor_config = self.config.get('sensors', self.DEFAULT_SENSORS)
@@ -1372,31 +1375,60 @@ class ConsolidatedAgent(AutonomousAgent):
             return torch.zeros(1, num_waypoints, 2)
     
     def _initialize_data_collection(self):
-        """Initialize data collection infrastructure."""
-        default_save_path = os.path.join(
-            os.environ.get('WORKSPACE_DIR', '/workspace'),
-            'dataset',
-            'consolidated'
-        )
-        self.save_path = os.environ.get('SAVE_PATH', default_save_path)
-        self.save_path = os.path.expandvars(self.save_path)
-        
+        """Initialize data collection infrastructure, saving to:
+        {DATASET_DIR}/{agent}/{weather_idx}/{map_idx}/{route_id}
+        """
+        # Prefer DATASET_DIR; fall back to $WORKSPACE_DIR/dataset
+        base_dir = os.environ.get('DATASET_DIR')
+        if not base_dir:
+            base_dir = os.path.join(os.environ.get('WORKSPACE_DIR', '/workspace'), 'dataset')
+
+        # Figure out identifiers from env, with robust fallbacks
+        agent_name = os.environ.get('AGENT_NAME')
+        if not agent_name:
+            # derive from the agent config filename if available
+            try:
+                agent_name = Path(getattr(self, '_config_path', '')).stem or 'unknown_agent'
+            except Exception:
+                agent_name = 'unknown_agent'
+
+        weather_idx = os.environ.get('WEATHER_INDEX', '0')
+
+        # Map/Town index and route identifier
+        routes_file = os.environ.get('ROUTES_FILE', '')
+        route_name = os.environ.get('ROUTE_NAME') or (Path(routes_file).stem if routes_file else 'route_unknown')
+
+        town_num = os.environ.get('TOWN_NUM', '')
+        if not town_num:
+            import re
+            m = re.search(r'town(\d+)', routes_file, flags=re.IGNORECASE)
+            town_num = m.group(1) if m else 'unknown'
+
+        # Build hierarchical path
+        # Note: Use plain indices/strings (no prefixes) to match requested scheme strictly.
+        self.save_path = os.path.join(str(base_dir), str(agent_name), str(weather_idx), str(town_num), str(route_name))
+
+        # Allow explicit override if SAVE_PATH is provided
+        self.save_path = os.path.expandvars(os.environ.get('SAVE_PATH', self.save_path))
+
+        # Init bookkeeping
         self.frame_counter = 0
         self.sensor_data_paths = {}
-        
+
         os.makedirs(self.save_path, exist_ok=True)
-        
+
         self.metadata = {
-            'model_type': self.model_type,
-            'model_path': self.model_path,
-            'config': self.config,
+            'model_type': getattr(self, 'model_type', 'generic'),
+            'model_path': getattr(self, 'model_path', ''),
+            'config': getattr(self, 'config', {}),
             'save_path': self.save_path,
             'timestamp': self._get_timestamp(),
             'frames': []
         }
-        
-        print(f"ConsolidatedAgent: Data collection initialized")
+
+        print("ConsolidatedAgent: Data collection initialized")
         print(f"  Save path: {self.save_path}")
+
     
     def _get_timestamp(self):
         """Get current timestamp in ISO format."""

@@ -740,6 +740,16 @@ class ContinuousManager:
             'TM_PORT': tm_port,
         })
 
+        from pathlib import Path
+        route_stem = Path(routes_file).stem  # e.g., "routes_town04_tiny"
+        env.update({
+            'AGENT_NAME': str(agent_name),
+            'ROUTE_NAME': str(route_stem),
+            'TOWN_NUM': str(town_num) if town_num is not None else '',
+            # make sure DATASET_DIR is visible inside the process even if MC is run standalone
+            'DATASET_DIR': env.get('DATASET_DIR', str(self.project_root / 'dataset')),
+        })
+
         if eval_cmd_template:
             fmt = eval_cmd_template.format(
                 AGENT_CFG=str(agent_cfg),
