@@ -1,9 +1,18 @@
 #!/usr/bin/env python3
 """
-CARLA Health Manager for Persistent Instance Collection
-Monitors persistent CARLA workers via shared filesystem.
-Supports both legacy per-GPU health files (collection_state/health/gpu*.json)
-and the v2 namespaced gpu_status.json (collection_state/gpu_status.json).
+CARLA Health Manager (persistent)
+Renders a per-node / per-GPU dashboard for the persistent workers.
+
+Key change vs prior version:
+- Always MERGE per-GPU health files (collection_state/health/...) with
+  v2 namespaced collection_state/gpu_status.json, then de-duplicate.
+  This guarantees you see all GPUs even if only some nodes emit health files.
+
+Works with:
+  - collection_state/job_queue.json               (for header counts)
+  - collection_state/health/<node>/gpu<N>.json    (preferred legacy)
+  - collection_state/health/gpu<N>.json           (flat legacy)
+  - collection_state/gpu_status.json              (v2 namespaced)
 """
 
 import os
@@ -16,65 +25,43 @@ from pathlib import Path
 from datetime import datetime
 from typing import Dict, List, Optional, Tuple, Any
 
-# ------------------------------
-# Utilities
-# ------------------------------
 
 def _fmt_age(seconds: float) -> str:
-    if seconds is None or seconds == float('inf'):
+    if seconds is None or seconds == float("inf"):
         return "--"
     try:
-        seconds = int(seconds)
+        s = int(seconds)
     except Exception:
         return "--"
-    if seconds < 60:
-        return f"{seconds}s"
-    minutes, sec = divmod(seconds, 60)
-    if minutes < 60:
-        return f"{minutes}m{sec:02d}s"
-    hours, minutes = divmod(minutes, 60)
-    return f"{hours}h{minutes:02d}m"
+    if s < 60:
+        return f"{s}s"
+    m, sec = divmod(s, 60)
+    if m < 60:
+        return f"{m}m{sec:02d}s"
+    h, m = divmod(m, 60)
+    return f"{h}h{m:02d}m"
 
 
 class CarlaHealthManager:
-    """
-    Monitors CARLA health through shared filesystem state files.
-    Designed to work from a login node without direct cluster access.
-
-    Expected locations (relative to PROJECT_ROOT or CWD):
-      - collection_state/job_queue.json
-      - collection_state/gpu_status.json              (v2 namespaced schema)
-      - collection_state/health/gpu<N>.json           (legacy, flat)
-      - collection_state/health/<node>/gpu<N>.json    (preferred, per-node)
-    """
-
     def __init__(self, project_root: Optional[str] = None):
         self.project_root = Path(project_root or os.environ.get("PROJECT_ROOT", os.getcwd()))
-        # Allow explicit STATE_DIR override
         self.state_dir = Path(os.environ.get("STATE_DIR", self.project_root / "collection_state"))
         self.health_dir = self.state_dir / "health"
         self.logs_dir = Path(os.environ.get("LOG_DIR", self.project_root / "logs"))
 
-        # Configuration (match persistent scheme)
         self.num_gpus = int(os.environ.get("NUM_GPUS", os.environ.get("GPUS_PER_NODE", 8)))
         self.base_rpc_port = int(os.environ.get("BASE_RPC_PORT", 2000))
         self.port_spacing = int(os.environ.get("PORT_SPACING", 100))
         self.tm_offset = int(os.environ.get("TM_OFFSET", 5000))
-        self.stale_threshold = int(os.environ.get("STALE_SECS", 90))  # seconds
+        self.stale_threshold = int(os.environ.get("STALE_SECS", 90))
 
-        # Create dirs if needed (non-fatal)
-        try:
-            self.health_dir.mkdir(parents=True, exist_ok=True)
-        except Exception:
-            pass
-        try:
-            self.logs_dir.mkdir(parents=True, exist_ok=True)
-        except Exception:
-            pass
+        for d in (self.health_dir, self.logs_dir):
+            try:
+                d.mkdir(parents=True, exist_ok=True)
+            except Exception:
+                pass
 
-    # ------------------------------
-    # Data access
-    # ------------------------------
+    # ---------- IO helpers ----------
 
     def _derive_ports(self, gpu_id: int) -> Tuple[int, int]:
         rpc = self.base_rpc_port + gpu_id * self.port_spacing
@@ -88,22 +75,13 @@ class CarlaHealthManager:
         except Exception:
             return None
 
-    def get_gpu_health(self, gpu_id: int, node: Optional[str] = None, path: Optional[Path] = None) -> Dict[str, Any]:
-        """
-        Read legacy/health-file status for a specific GPU.
-        Returns a normalized dict the dashboard can render.
-        """
-        if path is not None:
-            health_file = Path(path)
-        elif node:
-            health_file = self.health_dir / node / f"gpu{gpu_id}.json"
-        else:
-            health_file = self.health_dir / f"gpu{gpu_id}.json"
+    # ---------- Health (legacy files) ----------
 
-        rpc, tm = self._derive_ports(gpu_id)
-        default_status: Dict[str, Any] = {
-            "gpu_id": gpu_id,
-            "node": "unknown",
+    def _read_health_file(self, path: Path) -> Dict[str, Any]:
+        rpc, tm = self._derive_ports(self._gpu_id_from_path(path))
+        out = {
+            "gpu_id": self._gpu_id_from_path(path),
+            "node": path.parent.name if path.parent != self.health_dir else "unknown",
             "status": "unknown",
             "message": "No health data available",
             "carla_pid": None,
@@ -116,144 +94,165 @@ class CarlaHealthManager:
             "age_seconds": float("inf"),
             "jobs_completed": 0,
         }
-
-        if not health_file.exists():
-            return default_status
-
-        data = self._read_json(health_file)
+        data = self._read_json(path)
         if not isinstance(data, dict):
-            return default_status
+            return out
 
         now = time.time()
         ts_unix = float(data.get("timestamp_unix") or 0)
-        age_sec = now - ts_unix if ts_unix else float("inf")
-        is_stale = age_sec > self.stale_threshold
+        age = now - ts_unix if ts_unix else float("inf")
+        is_stale = age > self.stale_threshold
 
-        # Normalize
-        out = default_status.copy()
         out.update(data)
-        out["age_seconds"] = age_sec
+        out["age_seconds"] = age
         out["is_stale"] = is_stale
         if is_stale:
-            out["status"] = "stale"
-            out["message"] = f"No update for {int(age_sec)}s"
+            # keep original status text but flag as stale
+            out["message"] = out.get("message") or f"No update for {int(age)}s"
         return out
 
-    def _fallback_gpu_status_from_v2(self) -> List[Dict[str, Any]]:
-        """
-        Fallback: read collection_state/gpu_status.json (v2, namespaced) and
-        synthesize per-node/per-gpu rows when health/*.json files are missing.
-        """
-        statuses: List[Dict[str, Any]] = []
+    @staticmethod
+    def _gpu_id_from_path(path: Path) -> int:
+        try:
+            return int(path.stem.replace("gpu", ""))
+        except Exception:
+            return -1
+
+    def _collect_from_health_dir(self) -> List[Dict[str, Any]]:
+        rows: List[Dict[str, Any]] = []
+        if not self.health_dir.exists():
+            return rows
+
+        # Per-node dirs
+        for node_dir in sorted(self.health_dir.glob("*")):
+            if node_dir.is_dir():
+                for f in sorted(node_dir.glob("gpu*.json")):
+                    rows.append(self._read_health_file(f))
+
+        # Flat legacy
+        for f in sorted(self.health_dir.glob("gpu*.json")):
+            rows.append(self._read_health_file(f))
+
+        return rows
+
+    # ---------- Health (v2 gpu_status.json) ----------
+
+    def _collect_from_v2_status(self) -> List[Dict[str, Any]]:
+        rows: List[Dict[str, Any]] = []
         status_file = self.state_dir / "gpu_status.json"
         data = self._read_json(status_file)
         if not isinstance(data, dict):
-            return statuses
+            return rows
         nodes = data.get("nodes")
         if not isinstance(nodes, dict):
-            return statuses
+            return rows
 
         now = time.time()
         for node_name, gpu_map in sorted(nodes.items()):
             if not isinstance(gpu_map, dict):
                 continue
-            for gpu_key, ginfo in sorted(gpu_map.items(), key=lambda kv: int(kv[0]) if str(kv[0]).isdigit() else 9999):
+            for gpu_key, info in sorted(
+                gpu_map.items(), key=lambda kv: int(kv[0]) if str(kv[0]).isdigit() else 9999
+            ):
                 try:
                     gid = int(gpu_key)
                 except Exception:
                     continue
-                hb = None
-                ts_text = None
-                ginfo = ginfo or {}
-                if "last_heartbeat" in ginfo:
-                    hb = ginfo["last_heartbeat"]
+
+                # Heartbeat -> age
                 age = float("inf")
+                ts_txt = None
+                hb = (info or {}).get("last_heartbeat")
                 if isinstance(hb, (int, float)):
                     age = max(0.0, now - float(hb))
-                    ts_text = datetime.fromtimestamp(float(hb)).strftime("%Y-%m-%d %H:%M:%S")
+                    ts_txt = datetime.fromtimestamp(float(hb)).strftime("%Y-%m-%d %H:%M:%S")
                 elif isinstance(hb, str):
-                    # try ISO-ish
-                    s = hb.replace("T", " ").split(".")[0]
                     try:
+                        s = hb.replace("T", " ").split(".")[0]
                         dt = datetime.fromisoformat(s)
                         age = max(0.0, now - dt.timestamp())
-                        ts_text = dt.strftime("%Y-%m-%d %H:%M:%S")
+                        ts_txt = dt.strftime("%Y-%m-%d %H:%M:%S")
                     except Exception:
-                        ts_text = hb
-                        age = float("inf")
+                        ts_txt = hb
 
                 rpc, tm = self._derive_ports(gid)
-                msg = ""
-                cj = ginfo.get("current_job")
-                if isinstance(cj, dict):
-                    agent = cj.get("agent") or cj.get("agent_name")
-                    town = cj.get("town") or cj.get("map") or cj.get("town_num")
-                    route = cj.get("route") or cj.get("route_id") or cj.get("route_name")
-                    weather = cj.get("weather") or cj.get("weather_idx") or cj.get("weather_index")
-                    parts = []
-                    if agent: parts.append(str(agent))
-                    if town: parts.append(f"T{town}")
-                    if route: parts.append(str(route))
-                    if weather is not None: parts.append(f"W{weather}")
-                    if parts:
-                        msg = " / ".join(parts)
 
-                statuses.append({
-                    "gpu_id": gid,
-                    "node": str(node_name),
-                    "status": ginfo.get("status", "unknown"),
-                    "message": msg or ginfo.get("message", ""),
-                    "carla_pid": None,
-                    "worker_pid": None,
-                    "rpc_port": rpc,
-                    "tm_port": tm,
-                    "timestamp": ts_text,
-                    "timestamp_unix": 0,
-                    "is_stale": age > self.stale_threshold,
-                    "age_seconds": age,
-                    "jobs_completed": ginfo.get("jobs_completed", 0),
-                })
-        return statuses
+                # Nicely formatted message: agent / T<town> / route / W<weather>
+                msg = ""
+                cj = (info or {}).get("current_job") or {}
+                parts = []
+                agent = cj.get("agent") or cj.get("agent_name")
+                town = cj.get("town") or cj.get("map") or cj.get("town_num")
+                route = cj.get("route") or cj.get("route_id") or cj.get("route_name")
+                weather = cj.get("weather") or cj.get("weather_idx") or cj.get("weather_index")
+                if agent:
+                    parts.append(str(agent))
+                if town:
+                    parts.append(f"T{town}")
+                if route:
+                    parts.append(str(route))
+                if weather is not None and weather != "":
+                    parts.append(f"W{weather}")
+                if parts:
+                    msg = " / ".join(parts)
+
+                rows.append(
+                    {
+                        "gpu_id": gid,
+                        "node": str(node_name),
+                        "status": (info or {}).get("status", "unknown"),
+                        "message": msg or (info or {}).get("message", ""),
+                        "carla_pid": None,
+                        "worker_pid": None,
+                        "rpc_port": rpc,
+                        "tm_port": tm,
+                        "timestamp": ts_txt,
+                        "timestamp_unix": 0,
+                        "is_stale": age > self.stale_threshold,
+                        "age_seconds": age,
+                        "jobs_completed": (info or {}).get("jobs_completed", 0),
+                    }
+                )
+        return rows
+
+    # ---------- Merge & summarize ----------
+
+    @staticmethod
+    def _prefers(a: Dict[str, Any], b: Dict[str, Any]) -> bool:
+        """
+        Return True if 'a' is preferable to 'b' for the same (node, gpu_id).
+        Preference rules:
+          1) non-stale beats stale
+          2) named node beats 'unknown'
+          3) has timestamp beats none
+        """
+        if a.get("is_stale", True) != b.get("is_stale", True):
+            return not a.get("is_stale", True)
+        if (a.get("node") or "unknown") != (b.get("node") or "unknown"):
+            return (a.get("node") or "unknown") != "unknown"
+        a_ts = a.get("timestamp_unix") or 0
+        b_ts = b.get("timestamp_unix") or 0
+        return a_ts >= b_ts
 
     def get_all_gpu_status(self) -> List[Dict[str, Any]]:
-        """
-        Collect per-node/per-gpu statuses from preferred health/*.json files.
-        If none are present, fall back to gpu_status.json (v2 namespaced).
-        """
-        statuses: List[Dict[str, Any]] = []
+        # Collect from BOTH sources
+        from_health = self._collect_from_health_dir()
+        from_v2 = self._collect_from_v2_status()
 
-        # Preferred: per-node health files
-        if self.health_dir.exists():
-            for node_dir in sorted(self.health_dir.glob("*")):
-                if node_dir.is_dir():
-                    for f in sorted(node_dir.glob("gpu*.json")):
-                        try:
-                            gid = int(f.stem.replace("gpu", ""))
-                        except Exception:
-                            continue
-                        statuses.append(self.get_gpu_health(gid, path=f))
-            # Legacy flat
-            for f in sorted(self.health_dir.glob("gpu*.json")):
-                try:
-                    gid = int(f.stem.replace("gpu", ""))
-                except Exception:
-                    continue
-                statuses.append(self.get_gpu_health(gid, path=f))
-
-        if not statuses:
-            statuses = self._fallback_gpu_status_from_v2()
-
-        # Deduplicate by (node, gpu_id)
         best: Dict[Tuple[str, int], Dict[str, Any]] = {}
-        for s in statuses:
-            key = (str(s.get("node", "unknown")), int(s.get("gpu_id", -1)))
-            # Prefer entries with explicit node names and non-stale status
-            prev = best.get(key)
-            if prev is None or (prev.get("node", "unknown") == "unknown" and s.get("node", "unknown") != "unknown") or (prev.get("is_stale", True) and not s.get("is_stale", False)):
-                best[key] = s
+        for row in from_health + from_v2:
+            node = str(row.get("node") or "unknown")
+            try:
+                gid = int(row.get("gpu_id", -1))
+            except Exception:
+                gid = -1
+            key = (node, gid)
+            if key not in best or self._prefers(row, best[key]):
+                best[key] = row
 
-        ordered = [best[k] for k in sorted(best.keys(), key=lambda t: (t[0], int(t[1])))]
-        return ordered
+        # Sort by node, then GPU
+        ordered_keys = sorted(best.keys(), key=lambda t: (t[0], int(t[1])))
+        return [best[k] for k in ordered_keys]
 
     def get_collection_status(self) -> Dict[str, int]:
         qf = self.state_dir / "job_queue.json"
@@ -267,12 +266,9 @@ class CarlaHealthManager:
             "failed": sum(1 for j in jobs if j.get("status") == "failed"),
         }
 
-    # ------------------------------
-    # Actions / UI
-    # ------------------------------
+    # ---------- UI ----------
 
     def print_status(self) -> None:
-        # Clear screen if possible
         try:
             os.system("clear")
         except Exception:
@@ -284,15 +280,25 @@ class CarlaHealthManager:
         print("=" * 100)
 
         cs = self.get_collection_status()
-        print(f"Tasks: total={cs['total']}  completed={cs['completed']}  running={cs['running']}  "
-              f"pending={cs['pending']}  failed={cs['failed']}")
+        print(
+            f"Tasks: total={cs['total']}  completed={cs['completed']}  "
+            f"running={cs['running']}  pending={cs['pending']}  failed={cs['failed']}"
+        )
         print("-" * 100)
         print(f"{'GPU':<4} {'Node':<18} {'Status':<16} {'Jobs':<6} {'Age':<8} {'RPC':<6} {'TM':<6} {'Message'}")
         print("-" * 100)
 
-        any_rows = False
-        for s in self.get_all_gpu_status():
-            any_rows = True
+        rows = self.get_all_gpu_status()
+        if not rows:
+            print(
+                "No GPU health data found.\n"
+                f"- Expected per-node files under: {self.health_dir}/<node>/gpu<N>.json\n"
+                f"- Or a v2 status file: {self.state_dir / 'gpu_status.json'}"
+            )
+            print()
+            return
+
+        for s in rows:
             gpu = s.get("gpu_id", "-")
             node = (s.get("node") or "unknown")[:18]
             status = s.get("status") or "unknown"
@@ -301,47 +307,21 @@ class CarlaHealthManager:
             rpc = s.get("rpc_port", "")
             tm = s.get("tm_port", "")
             msg = s.get("message") or ""
-            # decorate stale
+
             if s.get("is_stale"):
                 status = f"⚠ {status}"
-            elif status in ("ready", "healthy", "running_job", "waiting_for_job", "idle"):
+            elif status in ("ready", "healthy", "running_job", "waiting_for_job", "idle", "busy"):
                 status = f"✓ {status}"
-            print(f"{gpu:<4} {node:<18} {status:<16} {jobs_done:<6} {age:<8} {rpc:<6} {tm:<6} {msg}")
 
-        if not any_rows:
-            print("No GPU health data found.\n"
-                  f"- Expected per-node files under: {self.health_dir}/<node>/gpu<N>.json\n"
-                  f"- Or a v2 status file: {self.state_dir/'gpu_status.json'}")
+            print(f"{gpu:<4} {node:<18} {status:<16} {jobs_done:<6} {age:<8} {rpc:<6} {tm:<6} {msg}")
         print()
 
-    def monitor(self, interval: int = 30, auto_restart: bool = False) -> None:
-        print(f"Monitoring CARLA instances every {interval}s. Press Ctrl+C to stop.")
-        try:
-            while True:
-                self.print_status()
-                # Simple auto-restart heuristic (noop by default)
-                if auto_restart:
-                    for s in self.get_all_gpu_status():
-                        if s.get("is_stale") and s.get("status") in ("busy", "running_job"):
-                            self._restart_gpu_worker_safe(s.get("gpu_id"), s.get("node"))
-                time.sleep(interval)
-        except KeyboardInterrupt:
-            print("\nStopped.")
-
-    # ------------------------------
-    # Optional: restart / log helpers
-    # ------------------------------
+    # ---------- Optional helpers ----------
 
     def _restart_gpu_worker_safe(self, gpu_id: int, node: Optional[str]) -> None:
-        """
-        Submit a SLURM job to restart a specific *worker* on the node.
-        This implementation emits an sbatch that simply exports GPU_ID and calls persistent_carla_worker.sh.
-        Adjust to your environment as needed.
-        """
-        if gpu_id is None:
-            return
         script = self.project_root / "restart_gpu_worker.sh"
-        script.write_text(f"""#!/bin/bash
+        script.write_text(
+            f"""#!/bin/bash
 #SBATCH -J restart_wkr_{gpu_id}
 #SBATCH -o {self.logs_dir}/restart_gpu_{gpu_id}.out
 #SBATCH -e {self.logs_dir}/restart_gpu_{gpu_id}.err
@@ -361,7 +341,8 @@ if [[ -x "./persistent_carla_worker.sh" ]]; then
 else
   echo "persistent_carla_worker.sh not found; please restart manually."
 fi
-""")
+"""
+        )
         try:
             script.chmod(0o755)
             subprocess.run(["sbatch", str(script)], check=False)
@@ -369,9 +350,6 @@ fi
             pass
 
     def show_log(self, gpu_id: int, lines: int = 50) -> None:
-        """
-        Tail the worker log if present.
-        """
         log_file = self.logs_dir / f"worker_gpu{gpu_id}.log"
         if not log_file.exists():
             print(f"No log found at {log_file}")
@@ -381,33 +359,37 @@ fi
         except Exception as e:
             print(f"Error tailing log: {e}")
 
-# ------------------------------
-# CLI
-# ------------------------------
+    def monitor(self, interval: int = 30, auto_restart: bool = False) -> None:
+        print(f"Monitoring CARLA instances every {interval}s. Press Ctrl+C to stop.")
+        try:
+            while True:
+                self.print_status()
+                if auto_restart:
+                    for s in self.get_all_gpu_status():
+                        if s.get("is_stale") and s.get("status") in ("busy", "running_job"):
+                            self._restart_gpu_worker_safe(s.get("gpu_id"), s.get("node"))
+                time.sleep(interval)
+        except KeyboardInterrupt:
+            print("\nStopped.")
+
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="CARLA Health Monitor (persistent mode)")
+    parser = argparse.ArgumentParser(description="CARLA Health Monitor (persistent)")
     sub = parser.add_subparsers(dest="command", required=False)
 
-    # status (default)
     sub.add_parser("status", help="Show one-time status")
-
-    # monitor
     mon = sub.add_parser("monitor", help="Continuously monitor")
     mon.add_argument("--interval", type=int, default=30)
     mon.add_argument("--auto-restart", action="store_true")
 
-    # log
     lg = sub.add_parser("log", help="Show worker log")
     lg.add_argument("gpu_id", type=int)
     lg.add_argument("--lines", type=int, default=50)
 
-    # restart
     rs = sub.add_parser("restart", help="Submit SLURM job to restart worker")
     rs.add_argument("gpu_id", type=int, nargs="?")
     rs.add_argument("--node", type=str, default=None)
 
-    # cleanup (remove stale health files)
     sub.add_parser("cleanup", help="Remove stale per-GPU health files")
 
     args = parser.parse_args()
