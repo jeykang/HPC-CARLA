@@ -19,5 +19,16 @@ export CARLA_HOST=127.0.0.1
 export CARLA_PORT="${RPC_PORT}"
 export TM_PORT="${TM_PORT}"
 
+# ensure dirs
+mkdir -p "${STATE_DIR:-$PROJECT_ROOT/collection_state}" "${LOG_DIR:-$PROJECT_ROOT/logs}"
+
+# start healthbeat (background)
+export PROJECT_ROOT STATE_DIR LOG_DIR GPU_ID BASE_RPC_PORT PORT_SPACING TM_OFFSET
+export HEARTBEAT_SECS="${HEARTBEAT_SECS:-10}"
+export STATUS="${STATUS:-idle}" MESSAGE="${MESSAGE:-}" JOBS_COMPLETED="${JOBS_COMPLETED:-0}"
+"${PROJECT_ROOT}/gpu_healthbeat_daemon.sh" >"${LOG_DIR}/healthbeat_gpu${GPU_ID}.log" 2>&1 &
+echo "[worker] healthbeat started (pid=$!) for GPU ${GPU_ID}"
+
+
 echo "[GPU ${GPU_ID}] persistent_carla_worker: client-only against ${CARLA_HOST}:${CARLA_PORT}"
 bash ./generate_single_job.sh
