@@ -55,29 +55,14 @@ class ContinuousManager:
         # Default to v2 namespaced schema
         return {"schema": 2, "nodes": {}}
 
-    def _ensure_node_gpu_status(self, data: Dict[str, Any]) -> Dict[str, Any]:
-        """Ensure current node has entries 0..local_gpus-1 without clobbering other nodes."""
-        if "nodes" not in data or not isinstance(data["nodes"], dict):
-            # Upgrade legacy flat -> v2
-            legacy = data if isinstance(data, dict) else {}
-            data = {"schema": 2, "nodes": {self.node_name: {}}}
-            for k, v in legacy.items():
-                if str(k).isdigit():
-                    data["nodes"][self.node_name][str(k)] = v
-        nodes = data.setdefault("nodes", {})
-        node_map = nodes.setdefault(self.node_name, {})
-        for i in range(self.local_gpus):
-            key = str(i)
-            if key not in node_map:
-                node_map[key] = {
-                    "status": "idle",
-                    "current_job": None,
-                    "jobs_completed": 0,
-                    "total_runtime": 0,
-                    "last_heartbeat": None
-                }
-        return data
-    
+    def _init_gpu_status_skeleton(self) -> Dict[str, Any]:
+        """
+        Return an EMPTY gpu status map.
+        We purposely do NOT pre-populate the login node with fake GPUs.
+        Real rows appear via healthbeats from workers.
+        """
+        return {"schema": 2, "nodes": {}}
+
     def _with_lock(self, func):
         """Execute function with file lock"""
         self.lock_file.parent.mkdir(parents=True, exist_ok=True)
@@ -104,16 +89,14 @@ class ContinuousManager:
         
         for route_file in route_files:
             # Extract town number from filename (e.g., routes_town01_short.xml -> 01)
-            match = re.search(r'routes_town(\d+)_', route_file.name)
+            match = re.search(r'routes_town(\d+)_', route_file.name, flags=re.IGNORECASE)
             if match:
                 town_num = match.group(1)
                 
                 # Check if corresponding scenario file exists
                 scenario_file = self.scenarios_dir / f'town{town_num}_all_scenarios.json'
                 if scenario_file.exists():
-                    if town_num not in town_routes:
-                        town_routes[town_num] = []
-                    town_routes[town_num].append(route_file.name)
+                    town_routes.setdefault(town_num, []).append(route_file.name)
                 else:
                     print(f"Warning: No scenario file found for {route_file.name} "
                           f"(expected {scenario_file})")
@@ -143,9 +126,7 @@ class ContinuousManager:
         # Default agents
         if agents_list is None:
             configs_dir = self.project_root / 'leaderboard/team_code/configs'
-            agents_list = []
-            if configs_dir.exists():
-                agents_list = [f.stem for f in configs_dir.glob('*.yaml')]
+            agents_list = [f.stem for f in configs_dir.glob('*.yaml')] if configs_dir.exists() else []
             if not agents_list:
                 print("Warning: No agent configs found, using default")
                 agents_list = ['interfuser']
@@ -156,7 +137,6 @@ class ContinuousManager:
         
         # Filter routes if specific ones requested
         if routes_list is not None:
-            # Filter town_routes to only include requested routes
             filtered_town_routes = {}
             for town, routes in town_routes.items():
                 filtered = [r for r in routes if r in routes_list]
@@ -186,7 +166,9 @@ class ContinuousManager:
                             'agent': agent,
                             'weather': weather_idx,
                             'route': route,
-                            'town': town,  # Store town for reference
+                            'town': town,
+                            'status': 'pending',
+                            'attempts': 0,
                         })
         
         print(f"\nTotal valid combinations: {len(combinations)}")
@@ -198,12 +180,11 @@ class ContinuousManager:
         def _reset(agents_list, weather_list, routes_list):
             # Get valid combinations
             combinations = self._get_valid_combinations(agents_list, weather_list, routes_list)
-            
             if not combinations:
                 print("ERROR: No valid combinations could be generated!")
                 return 0
             
-            # Generate jobs from combinations
+            # Generate jobs
             jobs = []
             for job_id, combo in enumerate(combinations):
                 jobs.append({
@@ -211,7 +192,7 @@ class ContinuousManager:
                     'agent': combo['agent'],
                     'weather': combo['weather'],
                     'route': combo['route'],
-                    'town': combo['town'],  # Store town for debugging
+                    'town': combo['town'],
                     'status': 'pending',
                     'attempts': 0,
                     'gpu': None,
@@ -220,56 +201,38 @@ class ContinuousManager:
                     'duration': None
                 })
             
-            # Save new queue
-            queue_data = {'jobs': jobs, 'total': len(jobs), 'completed': 0}
             with open(self.queue_file, 'w') as f:
-                json.dump(queue_data, f, indent=2)
+                json.dump({'jobs': jobs, 'total': len(jobs), 'completed': 0}, f, indent=2)
             
-            # Initialize/upgrade GPU status without clobbering other nodes
-            gpu_status = self._load_gpu_status()
-            gpu_status = self._ensure_node_gpu_status(gpu_status)
+            # IMPORTANT: write an EMPTY gpu status skeleton (no fake login-node rows)
             with open(self.gpu_status_file, 'w') as f:
-                json.dump(gpu_status, f, indent=2)
+                json.dump(self._init_gpu_status_skeleton(), f, indent=2)
             
             # Reset completed jobs
             with open(self.completed_file, 'w') as f:
                 json.dump({'jobs': []}, f, indent=2)
             
-            # Initialize runtime estimates with better defaults
-            runtime_estimates = {
-                'default': 3600,
-                'combinations': {}
-            }
-            
-            # Create initial estimates based on route length
+            # Initial runtime estimates (heuristic by route length)
+            runtime_estimates = {'default': 3600, 'combinations': {}}
             for job in jobs:
                 key = f"{job['agent']}_{job['route']}"
                 if key not in runtime_estimates['combinations']:
-                    # Shorter runtime for 'short' routes
                     if 'short' in job['route']:
-                        runtime_estimates['combinations'][key] = 1800  # 30 min
+                        runtime_estimates['combinations'][key] = 1800
                     elif 'long' in job['route']:
-                        runtime_estimates['combinations'][key] = 5400  # 90 min
+                        runtime_estimates['combinations'][key] = 5400
                     else:
-                        runtime_estimates['combinations'][key] = 3600  # 60 min default
-            
+                        runtime_estimates['combinations'][key] = 3600
             with open(self.runtime_file, 'w') as f:
                 json.dump(runtime_estimates, f, indent=2)
             
             print(f"\nQueue reset with {len(jobs)} valid jobs")
-            
-            # Print summary by town
             jobs_by_town = {}
             for job in jobs:
-                town = job.get('town', 'unknown')
-                if town not in jobs_by_town:
-                    jobs_by_town[town] = 0
-                jobs_by_town[town] += 1
-            
+                jobs_by_town[job['town']] = jobs_by_town.get(job['town'], 0) + 1
             print("\nJobs per town:")
             for town in sorted(jobs_by_town.keys()):
                 print(f"  Town {town}: {jobs_by_town[town]} jobs")
-            
             return len(jobs)
         
         return self._with_lock(lambda: _reset(agents, weather, routes))
@@ -279,19 +242,15 @@ class ContinuousManager:
         def _retry():
             with open(self.queue_file, 'r') as f:
                 queue_data = json.load(f)
-            
             retry_count = 0
             for job in queue_data['jobs']:
                 if job['status'] == 'failed' and job['attempts'] < max_attempts:
                     job['status'] = 'pending'
                     retry_count += 1
-            
             with open(self.queue_file, 'w') as f:
                 json.dump(queue_data, f, indent=2)
-            
             print(f"Reset {retry_count} failed jobs for retry")
             return retry_count
-        
         return self._with_lock(_retry)
     
     def add_jobs(self, agent: str, weather: List[int] = None, routes: List[str] = None):
@@ -299,19 +258,14 @@ class ContinuousManager:
         def _add(agent_name, weather_list, routes_list):
             with open(self.queue_file, 'r') as f:
                 queue_data = json.load(f)
-            
-            # Get next job ID
             max_id = max((j['id'] for j in queue_data['jobs']), default=-1)
             job_id = max_id + 1
             
-            # Get valid combinations for the new jobs
             combinations = self._get_valid_combinations([agent_name], weather_list, routes_list)
-            
             if not combinations:
                 print("ERROR: No valid combinations could be generated!")
                 return 0
             
-            # Add new jobs
             new_jobs = []
             for combo in combinations:
                 new_jobs.append({
@@ -319,7 +273,7 @@ class ContinuousManager:
                     'agent': combo['agent'],
                     'weather': combo['weather'],
                     'route': combo['route'],
-                    'town': combo.get('town', 'unknown'),
+                    'town': combo['town'],
                     'status': 'pending',
                     'attempts': 0,
                     'gpu': None,
@@ -331,14 +285,11 @@ class ContinuousManager:
             
             queue_data['jobs'].extend(new_jobs)
             queue_data['total'] = len(queue_data['jobs'])
-            
             with open(self.queue_file, 'w') as f:
                 json.dump(queue_data, f, indent=2)
             
-            # Update runtime estimates for new combinations
             with open(self.runtime_file, 'r') as f:
                 runtime_data = json.load(f)
-            
             for job in new_jobs:
                 key = f"{job['agent']}_{job['route']}"
                 if key not in runtime_data['combinations']:
@@ -348,13 +299,11 @@ class ContinuousManager:
                         runtime_data['combinations'][key] = 5400
                     else:
                         runtime_data['combinations'][key] = 3600
-            
             with open(self.runtime_file, 'w') as f:
                 json.dump(runtime_data, f, indent=2)
             
             print(f"Added {len(new_jobs)} new valid jobs for agent '{agent_name}'")
             return len(new_jobs)
-        
         return self._with_lock(lambda: _add(agent, weather, routes))
     
     def cancel_pending(self, agent: str = None):
@@ -362,46 +311,64 @@ class ContinuousManager:
         def _cancel(agent_name):
             with open(self.queue_file, 'r') as f:
                 queue_data = json.load(f)
-            
             cancel_count = 0
             for job in queue_data['jobs']:
-                if job['status'] == 'pending':
-                    if agent_name is None or job['agent'] == agent_name:
-                        job['status'] = 'cancelled'
-                        cancel_count += 1
-            
+                if job['status'] == 'pending' and (agent_name is None or job['agent'] == agent_name):
+                    job['status'] = 'cancelled'
+                    cancel_count += 1
             with open(self.queue_file, 'w') as f:
                 json.dump(queue_data, f, indent=2)
-            
             if agent_name:
                 print(f"Cancelled {cancel_count} pending jobs for agent '{agent_name}'")
             else:
                 print(f"Cancelled all {cancel_count} pending jobs")
             return cancel_count
-        
         return self._with_lock(lambda: _cancel(agent))
     
+    def _scan_health(self) -> list:
+        """Return list of live healthbeats found under state_dir/health."""
+        health_dir = self.state_dir / 'health'
+        entries = []
+        if health_dir.exists():
+            for p in sorted(health_dir.glob('*.json')):
+                try:
+                    with open(p) as f:
+                        d = json.load(f)
+                    entries.append(d)
+                except Exception:
+                    pass
+        return entries
+
     def get_status(self):
         """Get current collection status"""
         try:
             with open(self.queue_file, 'r') as f:
                 queue_data = json.load(f)
-            with open(self.gpu_status_file, 'r') as f:
-                gpu_status = json.load(f)
+            # Try to load gpu_status (may be empty by design)
+            if self.gpu_status_file.exists():
+                with open(self.gpu_status_file, 'r') as f:
+                    gpu_status = json.load(f)
+            else:
+                gpu_status = {"schema": 2, "nodes": {}}
             with open(self.runtime_file, 'r') as f:
                 runtime_data = json.load(f)
             
-            # Calculate statistics
-            # Support flat (legacy) or namespaced (v2) gpu_status
-            def _iter_gpu_states(d):
-                if isinstance(d, dict) and "nodes" in d and isinstance(d["nodes"], dict):
-                    for _node, gmap in d["nodes"].items():
-                        for _gid, g in gmap.items():
-                            yield g
-                elif isinstance(d, dict):
-                    for _gid, g in d.items():
-                        if isinstance(g, dict):
-                            yield g
+            # Healthbeats override counters for active/idle
+            beats = self._scan_health()
+            beats_now = 0
+            beats_busy = 0
+            beats_idle = 0
+            now = time.time()
+            for b in beats:
+                beats_now += 1
+                status = (b.get('status') or '').lower()
+                if status == 'busy':
+                    beats_busy += 1
+                elif status == 'idle':
+                    beats_idle += 1
+                else:
+                    # stale/unknown don't count as active or idle
+                    pass
 
             status = {
                 'total': queue_data['total'],
@@ -410,11 +377,9 @@ class ContinuousManager:
                 'running': sum(1 for j in queue_data['jobs'] if j['status'] in ['assigned', 'running']),
                 'failed': sum(1 for j in queue_data['jobs'] if j['status'] == 'failed'),
                 'cancelled': sum(1 for j in queue_data['jobs'] if j['status'] == 'cancelled'),
-                'gpus_active': sum(1 for g in _iter_gpu_states(gpu_status) if g.get('status') == 'busy'),
-                'gpus_idle': sum(1 for g in _iter_gpu_states(gpu_status) if g.get('status') == 'idle')
-
+                'gpus_active': beats_busy,
+                'gpus_idle': beats_idle
             }
-            
             return status
         except FileNotFoundError:
             return None
@@ -425,7 +390,6 @@ class ContinuousManager:
             with open(self.completed_file, 'r') as f:
                 completed_data = json.load(f)
             
-            # Organize results
             results = {
                 'summary': {
                     'total_completed': len(completed_data['jobs']),
@@ -435,7 +399,6 @@ class ContinuousManager:
                 'statistics': {}
             }
             
-            # Calculate statistics
             if completed_data['jobs']:
                 durations = [j['duration'] for j in completed_data['jobs'] if j.get('duration')]
                 if durations:
@@ -446,13 +409,10 @@ class ContinuousManager:
                         'max_duration': max(durations)
                     }
                 
-                # Group by agent
                 by_agent = {}
                 for job in completed_data['jobs']:
                     agent = job['agent']
-                    if agent not in by_agent:
-                        by_agent[agent] = []
-                    by_agent[agent].append(job['duration'] if job.get('duration') else 0)
+                    by_agent.setdefault(agent, []).append(job.get('duration', 0))
                 
                 results['by_agent'] = {
                     agent: {
@@ -463,18 +423,15 @@ class ContinuousManager:
                     for agent, times in by_agent.items()
                 }
                 
-                # Group by town to analyze failure patterns
                 by_town = {}
                 for job in completed_data['jobs']:
                     town = job.get('town', 'unknown')
-                    if town not in by_town:
-                        by_town[town] = {'completed': 0, 'total_time': 0}
+                    by_town.setdefault(town, {'completed': 0, 'total_time': 0})
                     by_town[town]['completed'] += 1
                     by_town[town]['total_time'] += job.get('duration', 0)
                 
                 results['by_town'] = by_town
             
-            # Save results
             with open(output_file, 'w') as f:
                 json.dump(results, f, indent=2)
             
@@ -497,36 +454,27 @@ class ContinuousManager:
                 print("No completed jobs to analyze")
                 return 0
             
-            # Group completed jobs by agent-route combination
             combinations = {}
             for job in completed_data['jobs']:
                 if job.get('duration'):
                     key = f"{job['agent']}_{job['route']}"
-                    if key not in combinations:
-                        combinations[key] = []
-                    combinations[key].append(job['duration'])
+                    combinations.setdefault(key, []).append(job['duration'])
             
-            # Update estimates using median of actual runtimes
             updates = 0
             for key, durations in combinations.items():
-                if len(durations) >= 2:  # Need at least 2 samples
+                if len(durations) >= 2:
                     durations.sort()
                     median = durations[len(durations)//2]
                     old_estimate = runtime_data['combinations'].get(key, runtime_data['default'])
-                    
-                    # Weighted update
                     new_estimate = 0.7 * median + 0.3 * old_estimate
                     runtime_data['combinations'][key] = new_estimate
                     updates += 1
-                    
                     print(f"Updated {key}: {old_estimate:.0f}s -> {new_estimate:.0f}s")
             
             with open(self.runtime_file, 'w') as f:
                 json.dump(runtime_data, f, indent=2)
-            
             print(f"Optimized {updates} runtime estimates")
             return updates
-        
         return self._with_lock(_optimize)
     
     def show_runtime_analysis(self):
@@ -546,70 +494,46 @@ class ContinuousManager:
             print("\nRUNTIME ANALYSIS")
             print("="*60)
             
-            # Analyze failure patterns
             failed_jobs = [j for j in queue_data['jobs'] if j['status'] == 'failed']
             if failed_jobs:
                 print("\nFAILURE ANALYSIS:")
                 print(f"Total failed jobs: {len(failed_jobs)}")
-                
-                # Group failures by town
                 failures_by_town = {}
                 for job in failed_jobs:
-                    town = job.get('town', 'unknown')
-                    if town not in failures_by_town:
-                        failures_by_town[town] = []
-                    failures_by_town[town].append(job)
-                
+                    failures_by_town.setdefault(job.get('town', 'unknown'), []).append(job)
                 print("\nFailures by town:")
                 for town, jobs in sorted(failures_by_town.items()):
                     print(f"  Town {town}: {len(jobs)} failures")
-                    # Show unique routes that failed
                     failed_routes = set(j['route'] for j in jobs)
                     for route in sorted(failed_routes):
                         count = sum(1 for j in jobs if j['route'] == route)
                         print(f"    - {route}: {count} failures")
             
-            # Group by agent
             by_agent = {}
             for job in completed_data['jobs']:
                 if job.get('duration'):
-                    agent = job['agent']
-                    if agent not in by_agent:
-                        by_agent[agent] = {'durations': [], 'routes': {}}
-                    by_agent[agent]['durations'].append(job['duration'])
-                    
-                    route = job['route']
-                    if route not in by_agent[agent]['routes']:
-                        by_agent[agent]['routes'][route] = []
-                    by_agent[agent]['routes'][route].append(job['duration'])
+                    a = job['agent']
+                    by_agent.setdefault(a, {'durations': [], 'routes': {}})
+                    by_agent[a]['durations'].append(job['duration'])
+                    r = job['route']
+                    by_agent[a]['routes'].setdefault(r, []).append(job['duration'])
             
-            # Print analysis for each agent
             for agent, data in sorted(by_agent.items()):
                 durations = data['durations']
                 avg_time = sum(durations) / len(durations)
-                min_time = min(durations)
-                max_time = max(durations)
-                
+                min_time = min(durations); max_time = max(durations)
                 print(f"\n{agent}:")
                 print(f"  Jobs completed: {len(durations)}")
                 print(f"  Average time: {str(timedelta(seconds=int(avg_time)))}")
-                print(f"  Min/Max: {str(timedelta(seconds=int(min_time)))} - "
-                      f"{str(timedelta(seconds=int(max_time)))}")
-                
-                # Route breakdown
+                print(f"  Min/Max: {str(timedelta(seconds=int(min_time)))} - {str(timedelta(seconds=int(max_time)))}")
                 print("  By route:")
                 for route, route_times in sorted(data['routes'].items()):
                     route_avg = sum(route_times) / len(route_times)
                     estimate_key = f"{agent}_{route}"
-                    estimate = runtime_data['combinations'].get(estimate_key, 
-                                                               runtime_data['default'])
-                    accuracy = (1 - abs(route_avg - estimate) / route_avg) * 100
-                    
-                    print(f"    {route[:30]:30} Avg: {route_avg:6.0f}s "
-                          f"Est: {estimate:6.0f}s ({accuracy:.0f}% accurate)")
-            
+                    estimate = runtime_data['combinations'].get(estimate_key, runtime_data['default'])
+                    accuracy = (1 - abs(route_avg - estimate) / max(route_avg, 1e-6)) * 100
+                    print(f"    {route[:30]:30} Avg: {route_avg:6.0f}s Est: {estimate:6.0f}s ({accuracy:.0f}% accurate)")
             print("="*60)
-            
         except FileNotFoundError:
             print("State files not found")
     
@@ -617,8 +541,6 @@ class ContinuousManager:
         """Check if the environment is properly set up"""
         print("\nCHECKING SETUP")
         print("="*60)
-        
-        # Check routes directory
         if self.routes_dir.exists():
             route_files = list(self.routes_dir.glob('*.xml'))
             print(f"✓ Routes directory exists: {self.routes_dir}")
@@ -626,7 +548,6 @@ class ContinuousManager:
         else:
             print(f"✗ Routes directory not found: {self.routes_dir}")
         
-        # Check scenarios directory
         if self.scenarios_dir.exists():
             scenario_files = list(self.scenarios_dir.glob('*.json'))
             print(f"✓ Scenarios directory exists: {self.scenarios_dir}")
@@ -634,7 +555,6 @@ class ContinuousManager:
         else:
             print(f"✗ Scenarios directory not found: {self.scenarios_dir}")
         
-        # Check for matching route/scenario pairs
         town_routes = self._discover_routes_and_scenarios()
         if town_routes:
             print(f"\n✓ Found {sum(len(r) for r in town_routes.values())} valid route/scenario combinations")
@@ -643,7 +563,6 @@ class ContinuousManager:
         else:
             print("\n✗ No valid route/scenario combinations found!")
         
-        # Check agent configs
         configs_dir = self.project_root / 'leaderboard/team_code/configs'
         if configs_dir.exists():
             agent_configs = list(configs_dir.glob('*.yaml'))
@@ -653,7 +572,6 @@ class ContinuousManager:
                 print(f"    - {config.stem}")
         else:
             print(f"\n✗ Agent configs directory not found: {configs_dir}")
-        
         print("="*60)
 
     def run_next_job(self, host: str = "127.0.0.1", port: int = 2000, tm_port: int = 5000, extra_args: list = None) -> int:
@@ -692,7 +610,7 @@ class ContinuousManager:
         agent_code = self.project_root / 'leaderboard' / 'team_code' / 'consolidated_agent.py'
         routes_file = self.routes_dir / route_name
 
-        m = re.search(r'(?:town)?(\d+)', str(town)) or re.search(r'routes_town(\d+)_', route_name)
+        m = re.search(r'(?:town)?(\d+)', str(town)) or re.search(r'routes_town(\d+)_', route_name, flags=re.IGNORECASE)
         town_num = m.group(1) if m else None
         if town_num:
             scenarios_file = self.scenarios_dir / f'town{town_num}_all_scenarios.json'
@@ -725,9 +643,7 @@ class ContinuousManager:
             return 1
 
         # Build command (env overrides supported)
-        eval_entry = os.environ.get('EVAL_ENTRYPOINT', '')
         eval_cmd_template = os.environ.get('EVAL_CMD_TEMPLATE', '').strip()
-
         host = str(host); port = str(port); tm_port = str(tm_port)
         env = os.environ.copy()
         env.update({
@@ -740,13 +656,11 @@ class ContinuousManager:
             'TM_PORT': tm_port,
         })
 
-        from pathlib import Path
         route_stem = Path(routes_file).stem  # e.g., "routes_town04_tiny"
         env.update({
             'AGENT_NAME': str(agent_name),
             'ROUTE_NAME': str(route_stem),
             'TOWN_NUM': str(town_num) if town_num is not None else '',
-            # make sure DATASET_DIR is visible inside the process even if MC is run standalone
             'DATASET_DIR': env.get('DATASET_DIR', str(self.project_root / 'dataset')),
         })
 
@@ -815,52 +729,38 @@ def main():
     parser = argparse.ArgumentParser(description='Manage continuous data collection')
     subparsers = parser.add_subparsers(dest='command', help='Commands')
     
-    # Check command
     subparsers.add_parser('check', help='Check setup and available combinations')
-    
-    # Status command
     subparsers.add_parser('status', help='Show current status')
 
-    # Run command (execute next pending job)
     run_parser = subparsers.add_parser('run', help='Run the next pending job (one evaluation)')
     run_parser.add_argument('--host', default=os.environ.get('CARLA_HOST', '127.0.0.1'))
     run_parser.add_argument('--port', type=int, default=int(os.environ.get('CARLA_PORT', '2000')))
     run_parser.add_argument('--trafficManagerPort', type=int, default=int(os.environ.get('TM_PORT', os.environ.get('TRAFFIC_MANAGER_PORT', '5000'))))
     run_parser.add_argument('extra', nargs=argparse.REMAINDER, help='Additional args passed to evaluator')
 
-    
-    # Reset command
     reset_parser = subparsers.add_parser('reset', help='Reset job queue')
     reset_parser.add_argument('--agents', nargs='+', help='Agents to include')
     reset_parser.add_argument('--weather', nargs='+', type=int, help='Weather indices')
     reset_parser.add_argument('--routes', nargs='+', help='Route files')
     
-    # Retry command
     retry_parser = subparsers.add_parser('retry', help='Retry failed jobs')
     retry_parser.add_argument('--max-attempts', type=int, default=3, help='Maximum attempts')
     
-    # Add jobs command
     add_parser = subparsers.add_parser('add', help='Add new jobs')
     add_parser.add_argument('agent', help='Agent name')
     add_parser.add_argument('--weather', nargs='+', type=int, help='Weather indices')
     add_parser.add_argument('--routes', nargs='+', help='Route files')
     
-    # Cancel command
     cancel_parser = subparsers.add_parser('cancel', help='Cancel pending jobs')
     cancel_parser.add_argument('--agent', help='Cancel only for specific agent')
     
-    # Export command
     export_parser = subparsers.add_parser('export', help='Export results')
     export_parser.add_argument('--output', default='collection_results.json', 
                               help='Output file')
     
-    # Optimize command
     subparsers.add_parser('optimize', help='Optimize runtime estimates')
-    
-    # Analyze command
     subparsers.add_parser('analyze', help='Show runtime analysis')
     
-    # Parse arguments
     default_state_dir = os.path.join(
         os.environ.get('PROJECT_ROOT', os.getcwd()),
         'collection_state'
@@ -873,12 +773,10 @@ def main():
         parser.print_help()
         return
     
-    # Execute command
     manager = ContinuousManager(args.state_dir)
     
     if args.command == 'check':
         manager.check_setup()
-    
     elif args.command == 'status':
         status = manager.get_status()
         if status:
@@ -889,28 +787,20 @@ def main():
             print("="*40)
         else:
             print("No active collection found")
-    
     elif args.command == 'reset':
         manager.reset_queue(args.agents, args.weather, args.routes)
-    
     elif args.command == 'retry':
         manager.retry_failed(args.max_attempts)
-    
     elif args.command == 'add':
         manager.add_jobs(args.agent, args.weather, args.routes)
-    
     elif args.command == 'cancel':
         manager.cancel_pending(args.agent)
-    
     elif args.command == 'export':
         manager.export_results(args.output)
-    
     elif args.command == 'optimize':
         manager.optimize_runtime_estimates()
-    
     elif args.command == 'analyze':
         manager.show_runtime_analysis()
-
     elif args.command == 'run':
         extra = args.extra if hasattr(args, 'extra') else []
         if extra and extra[0] == '--':  # argparse quirk when using REMAINDER
@@ -918,8 +808,6 @@ def main():
         rc = manager.run_next_job(host=args.host, port=args.port,
                                 tm_port=args.trafficManagerPort, extra_args=extra)
         sys.exit(rc)
-
-
 
 if __name__ == '__main__':
     main()

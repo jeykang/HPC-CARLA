@@ -1,212 +1,183 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 """
-CARLA persistent server pool manager.
+CARLA Server Manager (persistent pool)
 
-- Starts exactly one CARLA server per visible GPU.
-- Uses a per-node BASE_RPC_PORT and a fixed PORT_SPACING so ports never collide
-  across nodes or GPUs:
-    RPC_PORT(gpu) = BASE_RPC_PORT + gpu * PORT_SPACING
-    TM_PORT(gpu)  = RPC_PORT + TM_OFFSET   (default TM_OFFSET = 5000)
-
-- Writes a JSON state file with PIDs and ports.
-- Provides a simple health check and a graceful stop.
+Commands:
+  start   -- launch a per-GPU server pool
+  stop    -- stop anything we launched (best-effort)
+  health  -- quick status of known servers (by port reachability)
+  ensure  -- idempotently ensure a server exists for ONE gpu (used by workers)
 """
 
-import os
-import sys
-import json
-import time
-import signal
-import socket
-import argparse
-import subprocess
+import os, sys, json, time, socket, signal, subprocess, argparse
 from pathlib import Path
-from typing import Dict, List
+from typing import List, Dict, Tuple, Optional
 
-DEFAULT_BASE = int(os.environ.get("BASE_RPC_PORT", "2000"))
-DEFAULT_SPACING = int(os.environ.get("PORT_SPACING", "100"))
-DEFAULT_TM_OFFSET = int(os.environ.get("TM_OFFSET", "5000"))
-DEFAULT_UE4_QUALITY = os.environ.get("UE4_QUALITY", "Epic")
-
-PROJECT_ROOT = Path(os.environ.get("PROJECT_ROOT", Path.cwd()))
-STATE_DIR = PROJECT_ROOT / "collection_state"
+PROJECT_ROOT = Path(os.environ.get("PROJECT_ROOT", os.getcwd()))
+STATE_DIR    = Path(os.environ.get("STATE_DIR", PROJECT_ROOT / "collection_state"))
+LOG_DIR      = Path(os.environ.get("LOG_DIR", PROJECT_ROOT / "logs"))
 STATE_DIR.mkdir(parents=True, exist_ok=True)
-STATE_FILE = STATE_DIR / f"carla_servers_{socket.gethostname()}.json"
-
-LOG_DIR = PROJECT_ROOT / "logs"
 LOG_DIR.mkdir(parents=True, exist_ok=True)
 
-SINGULARITY_IMAGE = os.environ.get("CARLA_SIF", "carla_official.sif")
-# Use container-native path by default; expand inside container shell.
-UE4_LAUNCH = os.environ.get("UE4_LAUNCH", "${CARLA_ROOT}/CarlaUE4.sh")
+DEFAULT_BASE      = int(os.environ.get("BASE_RPC_PORT", 2000))
+DEFAULT_SPACING   = int(os.environ.get("PORT_SPACING", 100))
+DEFAULT_TM_OFFSET = int(os.environ.get("TM_OFFSET", 5000))
 
+# Use container’s default CARLA_ROOT (/home/carla per your .def) via %environment/%runscript.
+SIF_PATH   = str(os.environ.get("CARLA_SIF", PROJECT_ROOT / "carla_official.sif"))
+NODE_NAME  = os.environ.get("SLURMD_NODENAME", os.uname().nodename)
 
-def tcp_listening(host: str, port: int, timeout: float = 0.25) -> bool:
-    import socket as _socket
-    with _socket.socket(_socket.AF_INET, _socket.SOCK_STREAM) as s:
-        s.settimeout(timeout)
-        try:
-            s.connect((host, port))
+STATE_FILE = STATE_DIR / f"carla_servers_{NODE_NAME}.json"
+
+def _read_state() -> Dict:
+    try:
+        with open(STATE_FILE, "r") as f:
+            return json.load(f)
+    except Exception:
+        return {"node": NODE_NAME, "servers": {}}
+
+def _write_state(state: Dict) -> None:
+    tmp = STATE_FILE.with_suffix(".tmp")
+    with open(tmp, "w") as f:
+        json.dump(state, f, indent=2)
+    os.replace(tmp, STATE_FILE)
+
+def is_port_open(host: str, port: int, timeout: float = 0.5) -> bool:
+    try:
+        with socket.create_connection((host, int(port)), timeout=timeout):
             return True
-        except Exception:
-            return False
+    except Exception:
+        return False
 
-
-def kill_port(port: int):
-    """Brutally clear any lingering listeners on a port (container or host)."""
-    cmds = [
-        ["bash", "-lc", f"fuser -k -TERM {port}/tcp || true"],
-        ["bash", "-lc", f"lsof -ti tcp:{port} | xargs -r kill -TERM || true"],
-    ]
-    for c in cmds:
-        try:
-            subprocess.run(c, check=False, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        except Exception:
-            pass
-
-
-def launch_server(gpu_id: int, rpc_port: int, tm_port: int) -> subprocess.Popen:
-    # Extra paranoia: free ports in case a zombie is around
-    kill_port(rpc_port)
-    kill_port(tm_port)
-
-    # Per-GPU log so we can actually debug UE4 failures
-    log_path = LOG_DIR / f"carla_gpu{gpu_id}.log"
-    log_f = open(log_path, "ab", buffering=0)
-
-    env = os.environ.copy()
-    # Singularity honors NVIDIA_VISIBLE_DEVICES; set CUDA_VISIBLE_DEVICES too for safety
-    env["NVIDIA_VISIBLE_DEVICES"] = str(gpu_id)
-    env["CUDA_VISIBLE_DEVICES"] = str(gpu_id)
-    env["CARLA_SERVER"] = "1"
-
-    # Only warn about missing host-side script if user explicitly points into /workspace
-    if UE4_LAUNCH.startswith("/workspace/"):
-        host_ue4 = PROJECT_ROOT / UE4_LAUNCH[len("/workspace/"):]
-        if not host_ue4.exists():
-            log_f.write(f"[manager] WARNING: UE4 launch script not found at {host_ue4}\n".encode())
-
-    # Headless launch. Add SDL_VIDEODRIVER=offscreen to avoid X dependencies.
-    cmd = [
-        "singularity", "exec", "--nv",
-        "-B", f"{PROJECT_ROOT}:/workspace",
-        SINGULARITY_IMAGE,
-        "bash", "-lc",
-        (
-            "ulimit -c 0 ; "
-            "DISABLE_PYTHON=1 "
-            "SDL_VIDEODRIVER=offscreen "
-            f"{UE4_LAUNCH} "
-            f"-opengl -RenderOffScreen -nosound -quality-level={DEFAULT_UE4_QUALITY} "
-            f"-carla-rpc-port={rpc_port} -carla-streaming-port=0 -world-port={rpc_port} -server"
-        ),
-    ]
-
-    # Log the exact command and environment hints
-    log_f.write(
-        f"[manager] launching gpu={gpu_id} rpc={rpc_port} tm={tm_port} "
-        f"sif={SINGULARITY_IMAGE} ue4={UE4_LAUNCH}\n".encode()
-    )
-
-    proc = subprocess.Popen(cmd, env=env, stdout=log_f, stderr=log_f)
-    return proc
-
-
-def wait_ready(proc: subprocess.Popen, port: int, wait_s: float = 120.0) -> bool:
-    deadline = time.time() + wait_s
+def wait_for_port(host: str, port: int, deadline: float) -> bool:
     while time.time() < deadline:
-        if proc.poll() is not None:
-            # UE4 exited early; no point waiting further
-            return False
-        if tcp_listening("127.0.0.1", port):
+        if is_port_open(host, port):
             return True
-        time.sleep(0.5)
+        time.sleep(0.2)
     return False
 
+def discover_gpus() -> List[int]:
+    cvd = os.environ.get("CUDA_VISIBLE_DEVICES")
+    if cvd:
+        mapping = [x for x in cvd.split(",") if x.strip() != ""]
+        return list(range(len(mapping)))
+    n = int(os.environ.get("SLURM_GPUS_ON_NODE", os.environ.get("GPUS_PER_NODE", "8")))
+    return list(range(n))
 
-def start_pool(gpus: List[int], base: int, spacing: int, tm_offset: int) -> Dict[int, Dict]:
-    info: Dict[int, Dict] = {}
-    for gpu in gpus:
-        rpc = base + gpu * spacing
-        tm = rpc + tm_offset
-        proc = launch_server(gpu, rpc, tm)
-        ok = wait_ready(proc, rpc, 120.0)
-        if not ok:
-            # Surface a helpful error message with the last lines of the per-GPU log.
-            try:
-                with open(LOG_DIR / f"carla_gpu{gpu}.log", "rb") as lf:
-                    tail = b"".join(lf.readlines()[-50:])
-                sys.stderr.write(
-                    f"\n[manager] GPU {gpu} failed to become ready on :{rpc}.\n"
-                    f"--- last log lines ---\n{tail.decode(errors='ignore')}\n"
-                    f"-----------------------\n"
-                )
-            except Exception:
-                pass
-            try:
-                proc.terminate()
-            except Exception:
-                pass
-            raise RuntimeError(f"CARLA on GPU {gpu} failed to become ready (rpc={rpc}).")
+def _derive_ports(gpu_id: int, base: int, spacing: int, tm_off: int) -> Tuple[int,int]:
+    rpc = base + gpu_id*spacing
+    tm  = rpc + tm_off
+    return rpc, tm
 
-        info[gpu] = {
-            "gpu": gpu,
-            "rpc_port": rpc,
-            "tm_port": tm,
-            "pid": proc.pid,
-            "started_at": int(time.time()),
-        }
+def _container_env_for_gpu(gpu_id: int) -> Dict[str, str]:
+    """
+    Pass GPU selection and headless SDL into the container.
+    NOTE: We do NOT set CARLA_ROOT here — container's %environment handles it.
+    """
+    env = os.environ.copy()
+    env.update({
+        "SINGULARITYENV_CUDA_VISIBLE_DEVICES": str(gpu_id),
+        "SINGULARITYENV_NVIDIA_VISIBLE_DEVICES": str(gpu_id),
+        "SINGULARITYENV_SDL_VIDEODRIVER": "offscreen",
+        "SINGULARITYENV_SDL_AUDIODRIVER": "dummy",
+        "SINGULARITYENV_DISABLE_PYTHON": "1",   # CARLA binary only
+    })
+    # Prevent core dumps inside container
+    env["SINGULARITYENV_ULIMIT_CORE"] = "0"
+    return env
 
-    STATE_FILE.write_text(json.dumps({"node": socket.gethostname(), "servers": info}, indent=2))
-    return info
+def _build_run_args(rpc: int, tm: int) -> List[str]:
+    """
+    Use 'singularity run' so the container's %runscript invokes ${CARLA_ROOT}/CarlaUE4.sh.
+    All UE4/CARLA flags are passed as args to the runscript.
+    """
+    args = [
+        "singularity", "run", "--nv",
+        "-B", f"{str(PROJECT_ROOT)}:/workspace",  # mount project at /workspace for Python sidecars
+        SIF_PATH,
+        "-opengl",
+        "-RenderOffscreen",
+        "-quality-level=Epic",
+        f"-carla-rpc-port={rpc}",
+        f"-trafficManagerPort={tm}",
+        "-carla-server",
+    ]
+    # If your image expects '-nosound' (your %runscript already adds it), no need to pass it again.
+    return args
 
-
-def stop_pool(state_path: Path = STATE_FILE):
-    if not state_path.exists():
-        return
-    data = json.loads(state_path.read_text())
-    for _gpu, rec in data.get("servers", {}).items():
-        pid = rec.get("pid")
-        if not pid:
-            continue
-        try:
-            os.kill(pid, signal.SIGTERM)
-        except ProcessLookupError:
-            pass
-        except Exception:
-            try:
-                os.kill(pid, signal.SIGKILL)
-            except Exception:
-                pass
+def start_one(gpu_id: int, rpc: int, tm: int) -> Optional[int]:
+    log_path = LOG_DIR / f"carla_{NODE_NAME}_gpu{gpu_id}.log"
     try:
-        state_path.unlink()
-    except Exception:
-        pass
+        with open(log_path, "ab", buffering=0) as logf:
+            proc = subprocess.Popen(
+                _build_run_args(rpc, tm),
+                stdout=logf, stderr=logf,
+                env=_container_env_for_gpu(gpu_id),
+            )
+        # Persist state
+        state = _read_state()
+        servers = state.setdefault("servers", {})
+        servers[str(gpu_id)] = {
+            "gpu": gpu_id, "rpc_port": rpc, "tm_port": tm,
+            "pid": proc.pid, "node": NODE_NAME, "log": str(log_path),
+        }
+        _write_state(state)
+        return proc.pid
+    except Exception as e:
+        print(f"[server_manager] failed to start gpu{gpu_id}: {e}", file=sys.stderr)
+        return None
 
+def start_pool(gpus: List[int], base: int, spacing: int, tm_off: int) -> Dict[str, Dict]:
+    started = {}
+    for gid in gpus:
+        rpc, tm = _derive_ports(gid, base, spacing, tm_off)
+        if is_port_open("127.0.0.1", rpc):
+            started[str(gid)] = {"rpc_port": rpc, "tm_port": tm, "pid": None, "already_running": True}
+            continue
+        pid = start_one(gid, rpc, tm)
+        ok = wait_for_port("127.0.0.1", rpc, time.time() + 120)
+        started[str(gid)] = {"rpc_port": rpc, "tm_port": tm, "pid": pid, "listening": ok}
+    return started
+
+def stop_pool() -> None:
+    state = _read_state()
+    for rec in (state.get("servers") or {}).values():
+        pid = rec.get("pid")
+        try:
+            if pid:
+                os.kill(int(pid), signal.SIGTERM)
+        except Exception:
+            pass
+    # State file left in place for health checks
 
 def health() -> int:
-    # Simple liveness check: sockets open for every recorded server
-    if not STATE_FILE.exists():
-        print(json.dumps({"status": "absent"}))
-        return 1
-    data = json.loads(STATE_FILE.read_text())
-    bad = []
-    for rec in data.get("servers", {}).values():
-        port = rec.get("rpc_port")
-        if not tcp_listening("127.0.0.1", int(port)):
-            bad.append(rec)
-    status = {"status": "ok" if not bad else "degraded", "bad": bad}
-    print(json.dumps(status, indent=2))
-    return 0 if not bad else 2
+    state = _read_state()
+    servers = state.get("servers") or {}
+    for k, rec in sorted(servers.items(), key=lambda kv: int(kv[0])):
+        rpc = rec.get("rpc_port")
+        ok  = is_port_open("127.0.0.1", rpc)
+        print(f"gpu{k}: rpc={rpc} tm={rec.get('tm_port')} pid={rec.get('pid')} {'OK' if ok else 'DOWN'}")
+    return 0
 
+def ensure(gpu_id: int, base: int, spacing: int, tm_off: int) -> int:
+    rpc, tm = _derive_ports(gpu_id, base, spacing, tm_off)
+    if is_port_open("127.0.0.1", rpc):
+        return 0
+    print(f"[server_manager] gpu{gpu_id}: no listener on {rpc}, launching …")
+    pid = start_one(gpu_id, rpc, tm)
+    ok = wait_for_port("127.0.0.1", rpc, time.time() + 120)
+    if not ok:
+        print(f"[server_manager] gpu{gpu_id}: still no listener on {rpc}", file=sys.stderr)
+        return 2
+    return 0
 
 def parse_args():
     p = argparse.ArgumentParser("carla_server_manager")
     sub = p.add_subparsers(dest="cmd", required=True)
 
     sp = sub.add_parser("start", help="start persistent server pool")
-    sp.add_argument("--gpus", type=str, default="auto",
-                    help='Comma list like "0,1,2" or "auto" for 0..(N-1)')
+    sp.add_argument("--gpus", type=str, default="auto", help='Comma list like "0,1,2" or "auto" for 0..(N-1)')
     sp.add_argument("--base-rpc-port", type=int, default=DEFAULT_BASE)
     sp.add_argument("--port-spacing", type=int, default=DEFAULT_SPACING)
     sp.add_argument("--tm-offset", type=int, default=DEFAULT_TM_OFFSET)
@@ -214,19 +185,13 @@ def parse_args():
     sub.add_parser("stop", help="stop persistent server pool")
     sub.add_parser("health", help="check pool health")
 
+    se = sub.add_parser("ensure", help="ensure a server exists for ONE gpu")
+    se.add_argument("--gpu", type=int, required=True)
+    se.add_argument("--base-rpc-port", type=int, default=DEFAULT_BASE)
+    se.add_argument("--port-spacing", type=int, default=DEFAULT_SPACING)
+    se.add_argument("--tm-offset", type=int, default=DEFAULT_TM_OFFSET)
+
     return p.parse_args()
-
-
-def discover_gpus() -> List[int]:
-    # Respect CUDA_VISIBLE_DEVICES if present
-    cvd = os.environ.get("CUDA_VISIBLE_DEVICES")
-    if cvd:
-        mapping = [x for x in cvd.split(",") if x.strip() != ""]
-        return list(range(len(mapping)))
-    # Fallback: assume 0..N-1 where N comes from SLURM or nvidia-smi
-    n = int(os.environ.get("SLURM_GPUS_ON_NODE", os.environ.get("NGPUS", "1")))
-    return list(range(n))
-
 
 def main():
     args = parse_args()
@@ -236,13 +201,12 @@ def main():
         print(json.dumps({"started": info}, indent=2))
         return 0
     if args.cmd == "stop":
-        stop_pool()
-        print("STOPPED")
-        return 0
+        stop_pool(); print("STOPPED"); return 0
     if args.cmd == "health":
         return health()
+    if args.cmd == "ensure":
+        return ensure(args.gpu, args.base_rpc_port, args.port_spacing, args.tm_offset)
     return 0
-
 
 if __name__ == "__main__":
     sys.exit(main())

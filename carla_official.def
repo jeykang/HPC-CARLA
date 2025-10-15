@@ -97,7 +97,7 @@ EOF_REPO
     python3 -m pip install --no-cache-dir \
         py-trees==0.8.3 carla-birdeye-view==1.1.1 ephem dictor easydict filelock \
         elementpath configparser pydot pyglet pygame open3d==0.9.0.0 \
-        torchmetrics tensorboard tensorboardX wandb
+        torchmetrics tensorboard tensorboardX wandb==0.15.11
 
     # Clean APT caches to reduce image size
     rm -rf /var/lib/apt/lists/*

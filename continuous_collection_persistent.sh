@@ -1,94 +1,104 @@
-#!/usr/bin/env bash
-# Persistent-mode coordinator for a single SLURM node.
-# - Starts a CARLA server per GPU via carla_server_manager.py
-# - Spawns a client-only worker per GPU that runs evaluation jobs
-#   against the already-running server.
+#!/bin/bash
+# Persistent collection coordinator (per node)
 set -euo pipefail
 
-: "${PROJECT_ROOT:=$(pwd)}"
-: "${BASE_RPC_PORT:=${BASE_RPC_PORT:-$((2000 + ${SLURM_NODEID:-0} * 1000))}}"
-: "${PORT_SPACING:=${PORT_SPACING:-100}}"
-: "${TM_OFFSET:=${TM_OFFSET:-5000}}"
-: "${CARLA_SIF:=carla_official.sif}"
+# --- Paths & env
+export PROJECT_ROOT="${PROJECT_ROOT:-$(pwd)}"
+export STATE_DIR="${STATE_DIR:-$PROJECT_ROOT/collection_state}"
+export LOG_DIR="${LOG_DIR:-$PROJECT_ROOT/logs}"
+mkdir -p "$STATE_DIR/health" "$LOG_DIR"
 
-cd "${PROJECT_ROOT}"
+NODE_NAME="${SLURMD_NODENAME:-$(hostname)}"
+NODE_ID="${SLURM_NODEID:-0}"
 
-# Discover GPUs on this node (honors CUDA_VISIBLE_DEVICES if set)
+# One thousand ports per node to avoid conflicts across nodes
+export BASE_RPC_PORT="${BASE_RPC_PORT:-$((2000 + NODE_ID * 1000))}"
+export PORT_SPACING="${PORT_SPACING:-100}"
+export TM_OFFSET="${TM_OFFSET:-5000}"
+
+# How many GPUs on THIS node
 discover_gpus() {
-  if [[ -n "${CUDA_VISIBLE_DEVICES:-}" ]]; then
-    IFS=',' read -r -a map <<< "${CUDA_VISIBLE_DEVICES}"
-    echo "${!map[@]}"
-  elif [[ -n "${SLURM_GPUS_ON_NODE:-}" ]]; then
-    seq 0 $((SLURM_GPUS_ON_NODE-1))
+  if [[ -n "${CUDA_VISIBLE_DEVICES-}" ]]; then
+    IFS=',' read -ra map <<< "$CUDA_VISIBLE_DEVICES"
+    for i in "${!map[@]}"; do echo "$i"; done
   else
-    nvidia-smi --list-gpus | nl -v0 -w1 -s: | awk -F: '{print $1}'
+    n="${SLURM_GPUS_ON_NODE:-${GPUS_PER_NODE:-8}}"
+    for ((i=0;i<n;i++)); do echo "$i"; done
   fi
 }
 
-start_persistent_servers() {
-  echo "[node $(hostname)] Starting persistent CARLA servers..."
-  python3 -u carla_server_manager.py start \
-    --gpus auto \
-    --base-rpc-port "${BASE_RPC_PORT}" \
-    --port-spacing "${PORT_SPACING}" \
-    --tm-offset "${TM_OFFSET}"
-  echo "[node $(hostname)] Servers are up."
-}
+derive_rpc() { echo $(( BASE_RPC_PORT + $1 * PORT_SPACING )); }
+derive_tm () { echo $(( $(derive_rpc "$1") + TM_OFFSET )); }
 
 wait_for_port() {
-  local port="$1"
-  local deadline=$((SECONDS+120))
-  until timeout 0.5 bash -lc "echo > /dev/tcp/127.0.0.1/${port}" 2>/dev/null; do
-    if (( SECONDS > deadline )); then
-      echo "[wait] Timed out waiting for port ${port}"
-      return 1
-    fi
-    sleep 0.5
+  local port="$1" timeout="$2" t0 t1
+  t0=$(date +%s); t1=$(( t0 + timeout ))
+  while [[ $(date +%s) -lt $t1 ]]; do
+    if (echo > "/dev/tcp/127.0.0.1/$port") >/dev/null 2>&1; then return 0; fi
+    sleep 0.2
   done
-  return 0
+  return 1
+}
+
+start_heartbeat() {
+  local gid="$1" rpc tm
+  rpc="$(derive_rpc "$gid")"; tm="$(derive_tm "$gid")"
+  HEALTH_NODE_DIR="$STATE_DIR/health/$NODE_NAME"
+  mkdir -p "$HEALTH_NODE_DIR"
+  # Detach: one heartbeat per GPU
+  GPU_ID="$gid" BASE_RPC_PORT="$BASE_RPC_PORT" PORT_SPACING="$PORT_SPACING" TM_OFFSET="$TM_OFFSET" \
+    NODE_NAME="$NODE_NAME" LOG_DIR="$LOG_DIR" STATE_DIR="$STATE_DIR" \
+    bash "$PROJECT_ROOT/gpu_healthbeat_daemon.sh" \
+      >> "$LOG_DIR/heartbeat_${NODE_NAME}_gpu${gid}.log" 2>&1 &
+}
+
+ensure_server() {
+  local gid="$1" rpc
+  rpc="$(derive_rpc "$gid")"
+  if ! (echo > "/dev/tcp/127.0.0.1/$rpc") >/dev/null 2>&1; then
+    echo "[coordinator:$NODE_NAME] gpu${gid}: ensuring server on $rpc"
+    python3 "$PROJECT_ROOT/carla_server_manager.py" ensure \
+      --gpu "$gid" --base-rpc-port "$BASE_RPC_PORT" --port-spacing "$PORT_SPACING" --tm-offset "$TM_OFFSET" || true
+  fi
+  wait_for_port "$rpc" 90 || { echo "[coordinator] gpu${gid}: server not listening on $rpc"; }
 }
 
 run_worker() {
-  local GPU_ID="$1"
-  local RPC_PORT=$((BASE_RPC_PORT + GPU_ID * PORT_SPACING))
-  local TM_PORT=$((RPC_PORT + TM_OFFSET))
+  local gid="$1" rpc tm
+  rpc="$(derive_rpc "$gid")"; tm="$(derive_tm "$gid")"
+  # IMPORTANT: leave the actual job logic to persistent_carla_worker.sh (as before)
+  # We only prep env, ensure server, and then exec the existing worker.
+  LOG_FILE="$LOG_DIR/worker_${NODE_NAME}_gpu${gid}.log"
+  echo "[worker $NODE_NAME/gpu${gid}] launching persistent_carla_worker.sh (RPC=$rpc, TM=$tm)" | tee -a "$LOG_FILE"
 
-  echo "[GPU ${GPU_ID}] client-only worker starting (rpc=${RPC_PORT}, tm=${TM_PORT})"
-
-  # Ensure server is listening
-  wait_for_port "${RPC_PORT}"
-
-  # Export to make generate_single_job.sh client-only and to unify ports.
+  # Export what the worker/generator expects
+  export GPU_ID="$gid"
+  export CARLA_HOST="127.0.0.1"
+  export CARLA_PORT="$rpc"
+  export TM_PORT="$tm"
   export CLIENT_ONLY=1
-  export PERSISTENT=1
-  export GPU_ID
-  export CARLA_HOST=127.0.0.1
-  export CARLA_PORT="${RPC_PORT}"
-  export TM_PORT="${TM_PORT}"
-  export BASE_RPC_PORT PORT_SPACING TM_OFFSET
+  export NODE_NAME
 
-  # Call the existing single-job launcher; it MUST NOT launch CARLA in persistent mode.
-  # (We ship a fixed version of generate_single_job.sh that respects CLIENT_ONLY/PERSISTENT.)
-  bash ./generate_single_job.sh
+  # Make sure the CARLA server is actually there:
+  ensure_server "$gid"
+
+  # Now hand off to your existing worker script
+  bash "$PROJECT_ROOT/persistent_carla_worker.sh" >> "$LOG_FILE" 2>&1 &
 }
 
 main() {
-  trap 'python3 -u carla_server_manager.py stop || true' EXIT
+  echo "[coordinator:$NODE_NAME] base_rpc=$BASE_RPC_PORT spacing=$PORT_SPACING tm_off=$TM_OFFSET"
+  mapfile -t GPUS < <(discover_gpus)
 
-  start_persistent_servers
-
-  local -a GPUS=($(discover_gpus))
-  echo "Detected GPUs: ${GPUS[*]}"
-
-  # One worker per GPU
+  # Start per-GPU heartbeat + ensure servers + run workers
   for gid in "${GPUS[@]}"; do
-    ( run_worker "${gid}" ) &
-    # Small stagger reduces I/O bursts
-    sleep 1
+    start_heartbeat "$gid"
+    ensure_server "$gid"
+    run_worker "$gid"
   done
 
+  # Keep the coordinator alive so sbatch doesn’t kill children
   wait
-  echo "[node $(hostname)] All workers finished."
 }
 
 main "$@"
