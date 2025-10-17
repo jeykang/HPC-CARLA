@@ -13,6 +13,9 @@ set -euo pipefail
 : "${TM_OFFSET:=${TM_OFFSET:-5000}}"
 
 : "${GPU_ID:=${GPU_ID:-0}}"
+# ensure GPU_ID is set for manage_continuous.py
+export GPU_ID="${GPU_ID:-${SLURM_LOCALID:-${CUDA_VISIBLE_DEVICES%%,*}}}"
+
 
 NODE="$(hostname -s)"
 RPC_PORT=$((BASE_RPC_PORT + GPU_ID * PORT_SPACING))

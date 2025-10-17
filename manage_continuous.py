@@ -173,7 +173,51 @@ class ContinuousManager:
         
         print(f"\nTotal valid combinations: {len(combinations)}")
         return combinations
-    
+
+    def _derive_gpu_id(self, fallback_port: int) -> int:
+        env_gpu = os.environ.get('GPU_ID')
+        if env_gpu is not None and str(env_gpu).isdigit():
+            return int(env_gpu)
+        base = int(os.environ.get('BASE_RPC_PORT', '2000'))
+        spacing = int(os.environ.get('PORT_SPACING', '100'))
+        try:
+            return max(0, (int(fallback_port) - base) // spacing)
+        except Exception:
+            return 0
+
+    def _health_path(self, gpu_id: int) -> Path:
+        return self.state_dir / 'health' / f"{self.node_name}_gpu{gpu_id}.json"
+
+    def _write_health(self, gpu_id: int, status: str, message: str = "",
+                      rpc_port: int = None, tm_port: int = None, current_job: int = None):
+        p = self._health_path(gpu_id)
+        p.parent.mkdir(parents=True, exist_ok=True)
+        data = _safe_read_json(p) if p.exists() else {}
+        data.update({
+            "node": self.node_name,
+            "gpu_id": int(gpu_id),
+            "status": status,
+            "message": message,
+            "rpc_port": rpc_port,
+            "tm_port": tm_port,
+            "current_job": current_job,
+            "last_heartbeat": datetime.utcnow().isoformat() + 'Z'
+        })
+        with open(p, 'w') as f:
+            json.dump(data, f, indent=2)
+
+    def _bump_gpu_stats(self, gpu_id: int, duration_s: int, completed_ok: bool):
+        st = self._load_gpu_status()
+        nodes = st.setdefault("nodes", {})
+        nd = nodes.setdefault(self.node_name, {})
+        gi = nd.setdefault(str(int(gpu_id)), {"jobs_completed": 0, "total_runtime": 0})
+        if completed_ok:
+            gi["jobs_completed"] = int(gi.get("jobs_completed", 0)) + 1
+        gi["total_runtime"] = int(gi.get("total_runtime", 0)) + max(0, int(duration_s))
+        with open(self.gpu_status_file, 'w') as f:
+            json.dump(st, f, indent=2)
+
+        
     def reset_queue(self, agents: List[str] = None, weather: List[int] = None, 
                    routes: List[str] = None):
         """Reset the job queue with specified combinations"""
@@ -581,19 +625,42 @@ class ContinuousManager:
         """
         extra_args = extra_args or []
 
+        def _estimate_sec(job):
+            # prefer longest first (your heuristic), but also prefer fewer attempts
+            try:
+                with open(self.runtime_file, 'r') as f:
+                    rt = json.load(f)
+            except Exception:
+                rt = {"default": 3600, "combinations": {}}
+            key = f"{job['agent']}_{job['route']}"
+            est = rt.get("combinations", {}).get(key, rt.get("default", 3600))
+            return int(est)
+
         def _reserve_next():
             with open(self.queue_file, 'r') as f:
                 q = json.load(f)
-            for job in q['jobs']:
-                if job.get('status') == 'pending':
-                    job['status'] = 'running'
-                    job['attempts'] = int(job.get('attempts', 0)) + 1
-                    job['gpu'] = int(os.environ.get('GPU_ID', -1)) if os.environ.get('GPU_ID') else None
-                    job['start_time'] = datetime.utcnow().isoformat() + 'Z'
-                    with open(self.queue_file, 'w') as f:
-                        json.dump(q, f, indent=2)
-                    return job
-            return None
+
+            # choose among PENDING: smallest attempts first, then longest estimated time
+            pending = [j for j in q['jobs'] if j.get('status') == 'pending']
+            if not pending:
+                return None
+
+            pending.sort(key=lambda j: (j.get('attempts', 0), -_estimate_sec(j)))
+
+            job = pending[0]
+            job['status'] = 'running'
+            job['attempts'] = int(job.get('attempts', 0)) + 1
+
+            # stamp node+gpu so the monitor can correlate
+            job['node'] = self.node_name
+            # ensure gpu id exists even if GPU_ID wasn't exported
+            job['gpu'] = int(os.environ.get('GPU_ID')) if os.environ.get('GPU_ID') is not None else self._derive_gpu_id(port)
+
+            job['start_time'] = datetime.utcnow().isoformat() + 'Z'
+            with open(self.queue_file, 'w') as f:
+                json.dump(q, f, indent=2)
+            return job
+
 
         job = self._with_lock(_reserve_next)
         if not job:
@@ -687,6 +754,16 @@ class ContinuousManager:
                 cmd.extend(extra_args)
 
         print(f"[RUN] Job {job['id']} agent={agent_name} route={route_name} weather={weather_idx}")
+        gpu_id_for_display = job['gpu'] if job.get('gpu') is not None else self._derive_gpu_id(port)
+        self._write_health(
+            gpu_id=gpu_id_for_display,
+            status="busy",
+            message=f"running job {job['id']} {agent_name}/{route_stem} w{weather_idx}",
+            rpc_port=int(port),
+            tm_port=int(tm_port),
+            current_job=job['id']
+        )
+
         start_ts = time.time()
         try:
             rc = subprocess.call(cmd, env=env)
@@ -720,10 +797,29 @@ class ContinuousManager:
             with open(self.completed_file, 'w') as f:
                 json.dump(comp, f, indent=2)
 
+            gpu_id_for_display = job.get('gpu')
+            if gpu_id_for_display is None:
+                gpu_id_for_display = self._derive_gpu_id(port)
+
+            self._bump_gpu_stats(gpu_id_for_display, duration, rc == 0)
+            self._write_health(
+                gpu_id=gpu_id_for_display,
+                status="idle",
+                message=f"last job {job['id']} rc={rc} dur={duration}s",
+                rpc_port=port,
+                tm_port=tm_port,
+                current_job=None
+            )
+
         self._with_lock(_finish)
         return rc
 
-
+def _safe_read_json(path: Path):
+    try:
+        with open(path) as f:
+            return json.load(f)
+    except Exception:
+        return {}
 
 def main():
     parser = argparse.ArgumentParser(description='Manage continuous data collection')
