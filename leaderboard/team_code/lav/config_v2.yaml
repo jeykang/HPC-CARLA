@@ -1,6 +1,6 @@
 ---
 imagenet_pretrained: True
-log_wandb: True
+log_wandb: False
 fps: 20
 crop_size: 96
 bev_embd_size: 96

@@ -6,10 +6,10 @@ import csv
 import os
 from collections import OrderedDict
 
-try:
+"""try:
     import wandb
 except ImportError:
-    pass
+    pass"""
 
 
 def get_outdir(path, *paths, inc=False):

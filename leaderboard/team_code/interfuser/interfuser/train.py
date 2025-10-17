@@ -73,12 +73,12 @@ try:
 except AttributeError:
     pass
 
-try:
-    import wandb
+#try:
+#   import wandb
 
-    has_wandb = True
-except ImportError:
-    has_wandb = False
+#    has_wandb = True
+#except ImportError:
+has_wandb = False
 
 torch.backends.cudnn.benchmark = True
 _logger = logging.getLogger("train")

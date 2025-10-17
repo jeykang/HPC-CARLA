@@ -21,7 +21,7 @@ cmd_weight: 0.1
 cmd_smooth: 0.2
 cmd_thresh: 0.2
 other_weight: 0.5 # LiDAR only
-log_wandb: True
+log_wandb: False
 #### LiDAR ##########
 backbone: cnn
 min_x: -10

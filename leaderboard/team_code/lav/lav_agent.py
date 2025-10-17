@@ -2,7 +2,7 @@ import os
 import math
 import yaml
 import numpy as np
-import wandb
+#import wandb
 import cv2
 import torch
 import carla
@@ -78,7 +78,7 @@ class LAVAgent(AutonomousAgent):
         self.waypointer = None
         self.planner    = None
 
-        wandb.init(project='lav_eval')
+        #wandb.init(project='lav_eval')
 
         # Setup models
         self.lidar_model = LiDARModel(

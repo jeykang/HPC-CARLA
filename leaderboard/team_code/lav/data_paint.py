@@ -3,7 +3,7 @@ import tqdm
 import yaml
 import numpy as np
 import torch
-import wandb
+#import wandb
 import matplotlib.pyplot as plt
 import torch.nn.functional as F
 from lav.models.rgb import RGBSegmentationModel
@@ -15,7 +15,7 @@ from lav.utils.visualization import lidar_to_bev, visualize_semantic_processed
 
 class Coordinator:
     def __init__(self, args):
-        wandb.init(project='lav_point_painting')
+        #wandb.init(project='lav_point_painting')
 
         self.dataset = PointPaintDataset(args.config_path)
 
@@ -34,7 +34,7 @@ class Coordinator:
 
         sem = visualize_semantic_processed(np.concatenate(sems, axis=1), labels=self.dataset.seg_channels)
 
-        wandb.log({'viz': wandb.Image(plt), 'sem': wandb.Image(sem)})
+        #wandb.log({'viz': wandb.Image(plt), 'sem': wandb.Image(sem)})
         plt.close('all')
 
     def commit(self, idx, lidar_painted):

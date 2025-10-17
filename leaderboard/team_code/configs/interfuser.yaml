@@ -1,7 +1,7 @@
 # InterFuser Agent Configuration
 model_type: interfuser
 model_path: /workspace/leaderboard/team_code/interfuser/interfuser.pth.tar
-external_config: /workspace/leaderboard/team_code/interfuser/config.py
+external_config: /workspace/leaderboard/team_code/interfuser/interfuser_config.py
 
 model_config:
   architecture: interfuser_baseline

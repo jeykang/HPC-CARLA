@@ -1,5 +1,5 @@
 import yaml
-import wandb
+#import wandb
 import numpy as np
 import matplotlib
 import matplotlib.pyplot as plt
@@ -27,14 +27,16 @@ class Logger:
         for key, value in config.items():
             setattr(self, key, value)
 
-        wandb.init(project=wandb_project, config=config)
+        #wandb.init(project=wandb_project, config=config)
 
     def watch_model(self, model):
-        wandb.watch(model, log_freq=100)
+        #wandb.watch(model, log_freq=100)
+        pass
 
     @property
     def save_dir(self):
-        return wandb.run.dir
+        #return wandb.run.dir
+        return
 
     def log_bra_info(self, it, opt_info):
 
@@ -53,8 +55,8 @@ class Logger:
         ax4.imshow(rgb2)
         ax5.bar(['pred', 'gt'], [pred_bra, bra])
 
-        opt_info.update({'it': it, 'viz': wandb.Image(plt)})
-        wandb.log(opt_info)
+        #opt_info.update({'it': it, 'viz': wandb.Image(plt)})
+        #wandb.log(opt_info)
         plt.close('all')
 
     def log_rgb_info(self, it, opt_info):
@@ -86,8 +88,8 @@ class Logger:
 
         ax1.add_patch(Circle(nxp,radius=0.5, color=BLUE))
 
-        opt_info.update({'it': it, 'viz': wandb.Image(plt)})
-        wandb.log(opt_info)
+        #opt_info.update({'it': it, 'viz': wandb.Image(plt)})
+        #wandb.log(opt_info)
         plt.close('all')
 
 
@@ -157,8 +159,8 @@ class Logger:
         ax1.set_yticks([])
         ax2.set_yticks([])
 
-        opt_info.update({'it': it, 'viz': wandb.Image(plt), 'num_points': wandb.Histogram(num_points)})
-        wandb.log(opt_info)
+        #opt_info.update({'it': it, 'viz': wandb.Image(plt), 'num_points': wandb.Histogram(num_points)})
+        #wandb.log(opt_info)
         plt.close('all')
 
 
@@ -174,8 +176,8 @@ class Logger:
         ax2.imshow(visualize_semantic_processed(sem))
         ax3.imshow(visualize_semantic_processed(pred_sem))
 
-        opt_info.update({'it': it, 'viz': wandb.Image(plt)})
-        wandb.log(opt_info)
+        #opt_info.update({'it': it, 'viz': wandb.Image(plt)})
+        #wandb.log(opt_info)
         plt.close('all')
 
     def log_bev_info(self, it, opt_info):
@@ -205,10 +207,11 @@ class Logger:
         for loc_x, loc_y in ego_plan_locs:
             ax.add_patch(Circle((loc_x,loc_y),radius=0.5, color=ORANGE))
 
-        opt_info.update({'it': it, 'viz': wandb.Image(plt)})
-        wandb.log(opt_info)
+        #opt_info.update({'it': it, 'viz': wandb.Image(plt)})
+        #wandb.log(opt_info)
         plt.close('all')
 
     def save(self, paths):
-        for path in paths:
-            wandb.save(path)
+        #for path in paths:
+        #    wandb.save(path)
+        pass
