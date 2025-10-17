@@ -27,6 +27,12 @@ python3 "$PROJECT_ROOT/carla_server_manager.py" start \
   --port-spacing "$PORT_SPACING" \
   --tm-offset "$TM_OFFSET" | tee -a "$LOG_DIR/carla_pool_${NODE_NAME}.log" || true
 
+# 1) make sure scripts are executable
+chmod +x "${PROJECT_ROOT}/launch_metrics_daemon.sh" || true
+
+# 2) start metrics daemon per node
+bash "${PROJECT_ROOT}/launch_metrics_daemon.sh"
+
 # Spawn workers.
 pids=()
 for gpu in $(seq 0 $((GPUS_PER_NODE - 1))); do
