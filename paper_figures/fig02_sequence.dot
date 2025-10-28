@@ -1,0 +1,10 @@
+
+digraph G {
+  rankdir=LR; node [shape=plaintext];
+  CLI [label="continuous_cli.py"]; SLURM [label="SLURM Scheduler"];
+  CONT [label="Singularity Container"]; WORK [label="persistent_carla_worker.sh"];
+  AGENT [label="Agent Wrapper"]; MON [label="Monitor"]; DS [label="dataset/..."];
+  CLI -> SLURM [label="submit"]; SLURM -> CONT [label="spawn"];
+  CONT -> WORK [label="start"]; AGENT -> WORK [label="RPC attach"];
+  AGENT -> DS [label="standardized save()"]; WORK -> MON [label="health JSON"]; AGENT -> MON [label="state JSON"];
+}

@@ -1,0 +1,7 @@
+
+digraph G {
+  rankdir=LR; node [shape=circle];
+  RESET [label="reset\n(combos)"]; START [label="start\n(persistent)"];
+  MON [label="monitor\n(health loop)"]; REC [label="recover\n(restart)"];
+  RESET -> START -> MON; MON -> REC -> MON; MON -> RESET [style=dashed,label="all done / rerun"];
+}

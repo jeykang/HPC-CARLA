@@ -1,0 +1,7 @@
+Container Definition (excerpt)
+------------------------------
+Base: NVIDIA/CARLA 0.9.10 (Singularity)
+Adds:
+  - Python deps per agents (carla, numpy, pandas, matplotlib, pillow, torch, etc.)
+  - OpenCV/codecs (libjpeg*) and CUDA compatibility
+  - Leaderboard V1 + agent wrapper + health monitor

@@ -1,0 +1,31 @@
+
+digraph G {
+  rankdir=LR; node [shape=rounded];
+  subgraph cluster_user { label="Client / Login Node"; style=dashed; CLI [label="continuous_cli.py"]; }
+  subgraph cluster_slurm { label="SLURM"; style=dashed; SCHED [label="Scheduler"]; }
+  subgraph cluster_nodes {
+    label="GPU Nodes (xN)"; style=dashed;
+    subgraph cluster_node1 {
+      label="Node A"; style=dotted;
+      W1 [label="persistent_carla_worker.sh\n(CARLA + Healthcheck)", shape=box];
+      A1 [label="Agent Wrapper\n(Leaderboard V1)"];
+      W1 -> A1 [label="attach"];
+    }
+    subgraph cluster_node2 {
+      label="Node B"; style=dotted;
+      W2 [label="persistent_carla_worker.sh\n(CARLA + Healthcheck)", shape=box];
+      A2 [label="Agent Wrapper\n(Leaderboard V1)"];
+      W2 -> A2 [label="attach"];
+    }
+  }
+  MON [label="Monitor\n(collection_state/)"];
+  OUT [label="dataset/<agent>/weather/map/route/\n(sensors)", shape=folder];
+
+  CLI -> SCHED [label="submit jobs"];
+  SCHED -> W1 [label="launch"];
+  SCHED -> W2 [label="launch"];
+  A1 -> MON [label="state/metrics"];
+  A2 -> MON [label="state/metrics"];
+  A1 -> OUT [label="save()"];
+  A2 -> OUT [label="save()"];
+}

@@ -1,0 +1,5933 @@
+dataset/
+├── interfuser/
+│   ├── weather_0/
+│   │   ├── map_01/
+│   │   │   ├── routes_town01_long/
+│   │   │   │   ├── gps/
+│   │   │   │   ├── imu/
+│   │   │   │   ├── lidar/
+│   │   │   │   ├── metadata.json
+│   │   │   │   ├── rgb/
+│   │   │   │   ├── rgb_left/
+│   │   │   │   ├── rgb_right/
+│   │   │   │   └── speed/
+│   │   │   └── routes_town01_tiny/
+│   │   │       ├── gps/
+│   │   │       ├── imu/
+│   │   │       ├── lidar/
+│   │   │       ├── metadata.json
+│   │   │       ├── rgb/
+│   │   │       ├── rgb_left/
+│   │   │       ├── rgb_right/
+│   │   │       └── speed/
+│   │   ├── map_02/
+│   │   │   ├── routes_town02_long/
+│   │   │   │   ├── gps/
+│   │   │   │   ├── imu/
+│   │   │   │   ├── lidar/
+│   │   │   │   ├── metadata.json
+│   │   │   │   ├── rgb/
+│   │   │   │   ├── rgb_left/
+│   │   │   │   ├── rgb_right/
+│   │   │   │   └── speed/
+│   │   │   └── routes_town02_tiny/
+│   │   │       ├── gps/
+│   │   │       ├── imu/
+│   │   │       ├── lidar/
+│   │   │       ├── metadata.json
+│   │   │       ├── rgb/
+│   │   │       ├── rgb_left/
+│   │   │       ├── rgb_right/
+│   │   │       └── speed/
+│   │   ├── map_03/
+│   │   │   └── routes_town03_long/
+│   │   │       ├── gps/
+│   │   │       ├── imu/
+│   │   │       ├── lidar/
+│   │   │       ├── metadata.json
+│   │   │       ├── rgb/
+│   │   │       ├── rgb_left/
+│   │   │       ├── rgb_right/
+│   │   │       └── speed/
+│   │   ├── map_04/
+│   │   │   ├── routes_town04_long/
+│   │   │   │   ├── gps/
+│   │   │   │   ├── imu/
+│   │   │   │   ├── lidar/
+│   │   │   │   ├── metadata.json
+│   │   │   │   ├── rgb/
+│   │   │   │   ├── rgb_left/
+│   │   │   │   ├── rgb_right/
+│   │   │   │   └── speed/
+│   │   │   └── routes_town04_tiny/
+│   │   │       ├── gps/
+│   │   │       ├── imu/
+│   │   │       ├── lidar/
+│   │   │       ├── metadata.json
+│   │   │       ├── rgb/
+│   │   │       ├── rgb_left/
+│   │   │       ├── rgb_right/
+│   │   │       └── speed/
+│   │   ├── map_05/
+│   │   │   ├── routes_town05_long/
+│   │   │   │   ├── gps/
+│   │   │   │   ├── imu/
+│   │   │   │   ├── lidar/
+│   │   │   │   ├── metadata.json
+│   │   │   │   ├── rgb/
+│   │   │   │   ├── rgb_left/
+│   │   │   │   ├── rgb_right/
+│   │   │   │   └── speed/
+│   │   │   └── routes_town05_tiny/
+│   │   │       ├── gps/
+│   │   │       ├── imu/
+│   │   │       ├── lidar/
+│   │   │       ├── metadata.json
+│   │   │       ├── rgb/
+│   │   │       ├── rgb_left/
+│   │   │       ├── rgb_right/
+│   │   │       └── speed/
+│   │   ├── map_06/
+│   │   │   └── routes_town06_long/
+│   │   │       ├── gps/
+│   │   │       ├── imu/
+│   │   │       ├── lidar/
+│   │   │       ├── metadata.json
+│   │   │       ├── rgb/
+│   │   │       ├── rgb_left/
+│   │   │       ├── rgb_right/
+│   │   │       └── speed/
+│   │   ├── map_07/
+│   │   │   └── routes_town07_short/
+│   │   │       ├── gps/
+│   │   │       ├── imu/
+│   │   │       ├── lidar/
+│   │   │       ├── metadata.json
+│   │   │       ├── rgb/
+│   │   │       ├── rgb_left/
+│   │   │       ├── rgb_right/
+│   │   │       └── speed/
+│   │   └── map_10/
+│   │       └── routes_town10_short/
+│   │           ├── gps/
+│   │           ├── imu/
+│   │           ├── lidar/
+│   │           ├── metadata.json
+│   │           ├── rgb/
+│   │           ├── rgb_left/
+│   │           ├── rgb_right/
+│   │           └── speed/
+│   ├── weather_1/
+│   │   ├── map_01/
+│   │   │   ├── routes_town01_long/
+│   │   │   │   ├── gps/
+│   │   │   │   ├── imu/
+│   │   │   │   ├── lidar/
+│   │   │   │   ├── metadata.json
+│   │   │   │   ├── rgb/
+│   │   │   │   ├── rgb_left/
+│   │   │   │   ├── rgb_right/
+│   │   │   │   └── speed/
+│   │   │   └── routes_town01_short/
+│   │   │       ├── gps/
+│   │   │       ├── imu/
+│   │   │       ├── lidar/
+│   │   │       ├── metadata.json
+│   │   │       ├── rgb/
+│   │   │       ├── rgb_left/
+│   │   │       ├── rgb_right/
+│   │   │       └── speed/
+│   │   ├── map_02/
+│   │   │   ├── routes_town02_long/
+│   │   │   │   ├── gps/
+│   │   │   │   ├── imu/
+│   │   │   │   ├── lidar/
+│   │   │   │   ├── metadata.json
+│   │   │   │   ├── rgb/
+│   │   │   │   ├── rgb_left/
+│   │   │   │   ├── rgb_right/
+│   │   │   │   └── speed/
+│   │   │   └── routes_town02_short/
+│   │   │       ├── gps/
+│   │   │       ├── imu/
+│   │   │       ├── lidar/
+│   │   │       ├── metadata.json
+│   │   │       ├── rgb/
+│   │   │       ├── rgb_left/
+│   │   │       ├── rgb_right/
+│   │   │       └── speed/
+│   │   ├── map_03/
+│   │   │   ├── routes_town03_long/
+│   │   │   │   ├── gps/
+│   │   │   │   ├── imu/
+│   │   │   │   ├── lidar/
+│   │   │   │   ├── metadata.json
+│   │   │   │   ├── rgb/
+│   │   │   │   ├── rgb_left/
+│   │   │   │   ├── rgb_right/
+│   │   │   │   └── speed/
+│   │   │   └── routes_town03_short/
+│   │   │       ├── gps/
+│   │   │       ├── imu/
+│   │   │       ├── lidar/
+│   │   │       ├── metadata.json
+│   │   │       ├── rgb/
+│   │   │       ├── rgb_left/
+│   │   │       ├── rgb_right/
+│   │   │       └── speed/
+│   │   ├── map_04/
+│   │   │   ├── routes_town04_long/
+│   │   │   │   ├── gps/
+│   │   │   │   ├── imu/
+│   │   │   │   ├── lidar/
+│   │   │   │   ├── metadata.json
+│   │   │   │   ├── rgb/
+│   │   │   │   ├── rgb_left/
+│   │   │   │   ├── rgb_right/
+│   │   │   │   └── speed/
+│   │   │   └── routes_town04_short/
+│   │   │       ├── gps/
+│   │   │       ├── imu/
+│   │   │       ├── lidar/
+│   │   │       ├── metadata.json
+│   │   │       ├── rgb/
+│   │   │       ├── rgb_left/
+│   │   │       ├── rgb_right/
+│   │   │       └── speed/
+│   │   ├── map_05/
+│   │   │   ├── routes_town05_long/
+│   │   │   │   ├── gps/
+│   │   │   │   ├── imu/
+│   │   │   │   ├── lidar/
+│   │   │   │   ├── metadata.json
+│   │   │   │   ├── rgb/
+│   │   │   │   ├── rgb_left/
+│   │   │   │   ├── rgb_right/
+│   │   │   │   └── speed/
+│   │   │   └── routes_town05_short/
+│   │   │       ├── gps/
+│   │   │       ├── imu/
+│   │   │       ├── lidar/
+│   │   │       ├── metadata.json
+│   │   │       ├── rgb/
+│   │   │       ├── rgb_left/
+│   │   │       ├── rgb_right/
+│   │   │       └── speed/
+│   │   ├── map_06/
+│   │   │   ├── routes_town06_long/
+│   │   │   │   ├── gps/
+│   │   │   │   ├── imu/
+│   │   │   │   ├── lidar/
+│   │   │   │   ├── metadata.json
+│   │   │   │   ├── rgb/
+│   │   │   │   ├── rgb_left/
+│   │   │   │   ├── rgb_right/
+│   │   │   │   └── speed/
+│   │   │   └── routes_town06_short/
+│   │   │       ├── gps/
+│   │   │       ├── imu/
+│   │   │       ├── lidar/
+│   │   │       ├── metadata.json
+│   │   │       ├── rgb/
+│   │   │       ├── rgb_left/
+│   │   │       ├── rgb_right/
+│   │   │       └── speed/
+│   │   ├── map_07/
+│   │   │   └── routes_town07_short/
+│   │   │       ├── gps/
+│   │   │       ├── imu/
+│   │   │       ├── lidar/
+│   │   │       ├── metadata.json
+│   │   │       ├── rgb/
+│   │   │       ├── rgb_left/
+│   │   │       ├── rgb_right/
+│   │   │       └── speed/
+│   │   └── map_10/
+│   │       └── routes_town10_short/
+│   │           ├── gps/
+│   │           ├── imu/
+│   │           ├── lidar/
+│   │           ├── metadata.json
+│   │           ├── rgb/
+│   │           ├── rgb_left/
+│   │           ├── rgb_right/
+│   │           └── speed/
+│   ├── weather_10/
+│   │   ├── map_01/
+│   │   │   ├── routes_town01_long/
+│   │   │   │   ├── gps/
+│   │   │   │   ├── imu/
+│   │   │   │   ├── lidar/
+│   │   │   │   ├── metadata.json
+│   │   │   │   ├── rgb/
+│   │   │   │   ├── rgb_left/
+│   │   │   │   ├── rgb_right/
+│   │   │   │   └── speed/
+│   │   │   ├── routes_town01_short/
+│   │   │   │   ├── gps/
+│   │   │   │   ├── imu/
+│   │   │   │   ├── lidar/
+│   │   │   │   ├── metadata.json
+│   │   │   │   ├── rgb/
+│   │   │   │   ├── rgb_left/
+│   │   │   │   ├── rgb_right/
+│   │   │   │   └── speed/
+│   │   │   └── routes_town01_tiny/
+│   │   │       ├── gps/
+│   │   │       ├── imu/
+│   │   │       ├── lidar/
+│   │   │       ├── metadata.json
+│   │   │       ├── rgb/
+│   │   │       ├── rgb_left/
+│   │   │       ├── rgb_right/
+│   │   │       └── speed/
+│   │   ├── map_02/
+│   │   │   ├── routes_town02_long/
+│   │   │   │   ├── gps/
+│   │   │   │   ├── imu/
+│   │   │   │   ├── lidar/
+│   │   │   │   ├── metadata.json
+│   │   │   │   ├── rgb/
+│   │   │   │   ├── rgb_left/
+│   │   │   │   ├── rgb_right/
+│   │   │   │   └── speed/
+│   │   │   ├── routes_town02_short/
+│   │   │   │   ├── gps/
+│   │   │   │   ├── imu/
+│   │   │   │   ├── lidar/
+│   │   │   │   ├── metadata.json
+│   │   │   │   ├── rgb/
+│   │   │   │   ├── rgb_left/
+│   │   │   │   ├── rgb_right/
+│   │   │   │   └── speed/
+│   │   │   └── routes_town02_tiny/
+│   │   │       ├── gps/
+│   │   │       ├── imu/
+│   │   │       ├── lidar/
+│   │   │       ├── metadata.json
+│   │   │       ├── rgb/
+│   │   │       ├── rgb_left/
+│   │   │       ├── rgb_right/
+│   │   │       └── speed/
+│   │   ├── map_03/
+│   │   │   ├── routes_town03_long/
+│   │   │   │   ├── gps/
+│   │   │   │   ├── imu/
+│   │   │   │   ├── lidar/
+│   │   │   │   ├── metadata.json
+│   │   │   │   ├── rgb/
+│   │   │   │   ├── rgb_left/
+│   │   │   │   ├── rgb_right/
+│   │   │   │   └── speed/
+│   │   │   └── routes_town03_tiny/
+│   │   │       ├── gps/
+│   │   │       ├── imu/
+│   │   │       ├── lidar/
+│   │   │       ├── metadata.json
+│   │   │       ├── rgb/
+│   │   │       ├── rgb_left/
+│   │   │       ├── rgb_right/
+│   │   │       └── speed/
+│   │   ├── map_04/
+│   │   │   ├── routes_town04_long/
+│   │   │   │   ├── gps/
+│   │   │   │   ├── imu/
+│   │   │   │   ├── lidar/
+│   │   │   │   ├── metadata.json
+│   │   │   │   ├── rgb/
+│   │   │   │   ├── rgb_left/
+│   │   │   │   ├── rgb_right/
+│   │   │   │   └── speed/
+│   │   │   ├── routes_town04_short/
+│   │   │   │   ├── gps/
+│   │   │   │   ├── imu/
+│   │   │   │   ├── lidar/
+│   │   │   │   ├── metadata.json
+│   │   │   │   ├── rgb/
+│   │   │   │   ├── rgb_left/
+│   │   │   │   ├── rgb_right/
+│   │   │   │   └── speed/
+│   │   │   └── routes_town04_tiny/
+│   │   │       ├── gps/
+│   │   │       ├── imu/
+│   │   │       ├── lidar/
+│   │   │       ├── metadata.json
+│   │   │       ├── rgb/
+│   │   │       ├── rgb_left/
+│   │   │       ├── rgb_right/
+│   │   │       └── speed/
+│   │   ├── map_05/
+│   │   │   ├── routes_town05_long/
+│   │   │   │   ├── gps/
+│   │   │   │   ├── imu/
+│   │   │   │   ├── lidar/
+│   │   │   │   ├── metadata.json
+│   │   │   │   ├── rgb/
+│   │   │   │   ├── rgb_left/
+│   │   │   │   ├── rgb_right/
+│   │   │   │   └── speed/
+│   │   │   ├── routes_town05_short/
+│   │   │   │   ├── gps/
+│   │   │   │   ├── imu/
+│   │   │   │   ├── lidar/
+│   │   │   │   ├── metadata.json
+│   │   │   │   ├── rgb/
+│   │   │   │   ├── rgb_left/
+│   │   │   │   ├── rgb_right/
+│   │   │   │   └── speed/
+│   │   │   └── routes_town05_tiny/
+│   │   │       ├── gps/
+│   │   │       ├── imu/
+│   │   │       ├── lidar/
+│   │   │       ├── metadata.json
+│   │   │       ├── rgb/
+│   │   │       ├── rgb_left/
+│   │   │       ├── rgb_right/
+│   │   │       └── speed/
+│   │   ├── map_06/
+│   │   │   ├── routes_town06_long/
+│   │   │   │   ├── gps/
+│   │   │   │   ├── imu/
+│   │   │   │   ├── lidar/
+│   │   │   │   ├── metadata.json
+│   │   │   │   ├── rgb/
+│   │   │   │   ├── rgb_left/
+│   │   │   │   ├── rgb_right/
+│   │   │   │   └── speed/
+│   │   │   ├── routes_town06_short/
+│   │   │   │   ├── gps/
+│   │   │   │   ├── imu/
+│   │   │   │   ├── lidar/
+│   │   │   │   ├── metadata.json
+│   │   │   │   ├── rgb/
+│   │   │   │   ├── rgb_left/
+│   │   │   │   ├── rgb_right/
+│   │   │   │   └── speed/
+│   │   │   └── routes_town06_tiny/
+│   │   │       ├── gps/
+│   │   │       ├── imu/
+│   │   │       ├── lidar/
+│   │   │       ├── metadata.json
+│   │   │       ├── rgb/
+│   │   │       ├── rgb_left/
+│   │   │       ├── rgb_right/
+│   │   │       └── speed/
+│   │   ├── map_07/
+│   │   │   ├── routes_town07_short/
+│   │   │   │   ├── gps/
+│   │   │   │   ├── imu/
+│   │   │   │   ├── lidar/
+│   │   │   │   ├── metadata.json
+│   │   │   │   ├── rgb/
+│   │   │   │   ├── rgb_left/
+│   │   │   │   ├── rgb_right/
+│   │   │   │   └── speed/
+│   │   │   └── routes_town07_tiny/
+│   │   │       ├── gps/
+│   │   │       ├── imu/
+│   │   │       ├── lidar/
+│   │   │       ├── metadata.json
+│   │   │       ├── rgb/
+│   │   │       ├── rgb_left/
+│   │   │       ├── rgb_right/
+│   │   │       └── speed/
+│   │   └── map_10/
+│   │       ├── routes_town10_short/
+│   │       │   ├── gps/
+│   │       │   ├── imu/
+│   │       │   ├── lidar/
+│   │       │   ├── metadata.json
+│   │       │   ├── rgb/
+│   │       │   ├── rgb_left/
+│   │       │   ├── rgb_right/
+│   │       │   └── speed/
+│   │       └── routes_town10_tiny/
+│   │           ├── gps/
+│   │           ├── imu/
+│   │           ├── lidar/
+│   │           ├── metadata.json
+│   │           ├── rgb/
+│   │           ├── rgb_left/
+│   │           ├── rgb_right/
+│   │           └── speed/
+│   ├── weather_11/
+│   │   ├── map_01/
+│   │   │   ├── routes_town01_long/
+│   │   │   │   ├── gps/
+│   │   │   │   ├── imu/
+│   │   │   │   ├── lidar/
+│   │   │   │   ├── metadata.json
+│   │   │   │   ├── rgb/
+│   │   │   │   ├── rgb_left/
+│   │   │   │   ├── rgb_right/
+│   │   │   │   └── speed/
+│   │   │   ├── routes_town01_short/
+│   │   │   │   ├── gps/
+│   │   │   │   ├── imu/
+│   │   │   │   ├── lidar/
+│   │   │   │   ├── metadata.json
+│   │   │   │   ├── rgb/
+│   │   │   │   ├── rgb_left/
+│   │   │   │   ├── rgb_right/
+│   │   │   │   └── speed/
+│   │   │   └── routes_town01_tiny/
+│   │   │       ├── gps/
+│   │   │       ├── imu/
+│   │   │       ├── lidar/
+│   │   │       ├── metadata.json
+│   │   │       ├── rgb/
+│   │   │       ├── rgb_left/
+│   │   │       ├── rgb_right/
+│   │   │       └── speed/
+│   │   ├── map_02/
+│   │   │   ├── routes_town02_long/
+│   │   │   │   ├── gps/
+│   │   │   │   ├── imu/
+│   │   │   │   ├── lidar/
+│   │   │   │   ├── metadata.json
+│   │   │   │   ├── rgb/
+│   │   │   │   ├── rgb_left/
+│   │   │   │   ├── rgb_right/
+│   │   │   │   └── speed/
+│   │   │   ├── routes_town02_short/
+│   │   │   │   ├── gps/
+│   │   │   │   ├── imu/
+│   │   │   │   ├── lidar/
+│   │   │   │   ├── metadata.json
+│   │   │   │   ├── rgb/
+│   │   │   │   ├── rgb_left/
+│   │   │   │   ├── rgb_right/
+│   │   │   │   └── speed/
+│   │   │   └── routes_town02_tiny/
+│   │   │       ├── gps/
+│   │   │       ├── imu/
+│   │   │       ├── lidar/
+│   │   │       ├── metadata.json
+│   │   │       ├── rgb/
+│   │   │       ├── rgb_left/
+│   │   │       ├── rgb_right/
+│   │   │       └── speed/
+│   │   ├── map_03/
+│   │   │   ├── routes_town03_long/
+│   │   │   │   ├── gps/
+│   │   │   │   ├── imu/
+│   │   │   │   ├── lidar/
+│   │   │   │   ├── metadata.json
+│   │   │   │   ├── rgb/
+│   │   │   │   ├── rgb_left/
+│   │   │   │   ├── rgb_right/
+│   │   │   │   └── speed/
+│   │   │   ├── routes_town03_short/
+│   │   │   │   ├── gps/
+│   │   │   │   ├── imu/
+│   │   │   │   ├── lidar/
+│   │   │   │   ├── metadata.json
+│   │   │   │   ├── rgb/
+│   │   │   │   ├── rgb_left/
+│   │   │   │   ├── rgb_right/
+│   │   │   │   └── speed/
+│   │   │   └── routes_town03_tiny/
+│   │   │       ├── gps/
+│   │   │       ├── imu/
+│   │   │       ├── lidar/
+│   │   │       ├── metadata.json
+│   │   │       ├── rgb/
+│   │   │       ├── rgb_left/
+│   │   │       ├── rgb_right/
+│   │   │       └── speed/
+│   │   ├── map_04/
+│   │   │   └── routes_town04_long/
+│   │   │       ├── gps/
+│   │   │       ├── imu/
+│   │   │       ├── lidar/
+│   │   │       ├── metadata.json
+│   │   │       ├── rgb/
+│   │   │       ├── rgb_left/
+│   │   │       ├── rgb_right/
+│   │   │       └── speed/
+│   │   ├── map_05/
+│   │   │   ├── routes_town05_long/
+│   │   │   │   ├── gps/
+│   │   │   │   ├── imu/
+│   │   │   │   ├── lidar/
+│   │   │   │   ├── metadata.json
+│   │   │   │   ├── rgb/
+│   │   │   │   ├── rgb_left/
+│   │   │   │   ├── rgb_right/
+│   │   │   │   └── speed/
+│   │   │   └── routes_town05_short/
+│   │   │       ├── gps/
+│   │   │       ├── imu/
+│   │   │       ├── lidar/
+│   │   │       ├── metadata.json
+│   │   │       ├── rgb/
+│   │   │       ├── rgb_left/
+│   │   │       ├── rgb_right/
+│   │   │       └── speed/
+│   │   ├── map_06/
+│   │   │   ├── routes_town06_long/
+│   │   │   │   ├── gps/
+│   │   │   │   ├── imu/
+│   │   │   │   ├── lidar/
+│   │   │   │   ├── metadata.json
+│   │   │   │   ├── rgb/
+│   │   │   │   ├── rgb_left/
+│   │   │   │   ├── rgb_right/
+│   │   │   │   └── speed/
+│   │   │   └── routes_town06_short/
+│   │   │       ├── gps/
+│   │   │       ├── imu/
+│   │   │       ├── lidar/
+│   │   │       ├── metadata.json
+│   │   │       ├── rgb/
+│   │   │       ├── rgb_left/
+│   │   │       ├── rgb_right/
+│   │   │       └── speed/
+│   │   ├── map_07/
+│   │   │   └── routes_town07_short/
+│   │   │       ├── gps/
+│   │   │       ├── imu/
+│   │   │       ├── lidar/
+│   │   │       ├── metadata.json
+│   │   │       ├── rgb/
+│   │   │       ├── rgb_left/
+│   │   │       ├── rgb_right/
+│   │   │       └── speed/
+│   │   └── map_10/
+│   │       └── routes_town10_short/
+│   │           ├── gps/
+│   │           ├── imu/
+│   │           ├── lidar/
+│   │           ├── metadata.json
+│   │           ├── rgb/
+│   │           ├── rgb_left/
+│   │           ├── rgb_right/
+│   │           └── speed/
+│   ├── weather_12/
+│   │   ├── map_01/
+│   │   │   ├── routes_town01_long/
+│   │   │   │   ├── gps/
+│   │   │   │   ├── imu/
+│   │   │   │   ├── lidar/
+│   │   │   │   ├── metadata.json
+│   │   │   │   ├── rgb/
+│   │   │   │   ├── rgb_left/
+│   │   │   │   ├── rgb_right/
+│   │   │   │   └── speed/
+│   │   │   └── routes_town01_short/
+│   │   │       ├── gps/
+│   │   │       ├── imu/
+│   │   │       ├── lidar/
+│   │   │       ├── metadata.json
+│   │   │       ├── rgb/
+│   │   │       ├── rgb_left/
+│   │   │       ├── rgb_right/
+│   │   │       └── speed/
+│   │   ├── map_02/
+│   │   │   ├── routes_town02_long/
+│   │   │   │   ├── gps/
+│   │   │   │   ├── imu/
+│   │   │   │   ├── lidar/
+│   │   │   │   ├── metadata.json
+│   │   │   │   ├── rgb/
+│   │   │   │   ├── rgb_left/
+│   │   │   │   ├── rgb_right/
+│   │   │   │   └── speed/
+│   │   │   └── routes_town02_short/
+│   │   │       ├── gps/
+│   │   │       ├── imu/
+│   │   │       ├── lidar/
+│   │   │       ├── metadata.json
+│   │   │       ├── rgb/
+│   │   │       ├── rgb_left/
+│   │   │       ├── rgb_right/
+│   │   │       └── speed/
+│   │   ├── map_03/
+│   │   │   ├── routes_town03_long/
+│   │   │   │   ├── gps/
+│   │   │   │   ├── imu/
+│   │   │   │   ├── lidar/
+│   │   │   │   ├── metadata.json
+│   │   │   │   ├── rgb/
+│   │   │   │   ├── rgb_left/
+│   │   │   │   ├── rgb_right/
+│   │   │   │   └── speed/
+│   │   │   └── routes_town03_short/
+│   │   │       ├── gps/
+│   │   │       ├── imu/
+│   │   │       ├── lidar/
+│   │   │       ├── metadata.json
+│   │   │       ├── rgb/
+│   │   │       ├── rgb_left/
+│   │   │       ├── rgb_right/
+│   │   │       └── speed/
+│   │   ├── map_04/
+│   │   │   ├── routes_town04_long/
+│   │   │   │   ├── gps/
+│   │   │   │   ├── imu/
+│   │   │   │   ├── lidar/
+│   │   │   │   ├── metadata.json
+│   │   │   │   ├── rgb/
+│   │   │   │   ├── rgb_left/
+│   │   │   │   ├── rgb_right/
+│   │   │   │   └── speed/
+│   │   │   └── routes_town04_short/
+│   │   │       ├── gps/
+│   │   │       ├── imu/
+│   │   │       ├── lidar/
+│   │   │       ├── metadata.json
+│   │   │       ├── rgb/
+│   │   │       ├── rgb_left/
+│   │   │       ├── rgb_right/
+│   │   │       └── speed/
+│   │   ├── map_05/
+│   │   │   └── routes_town05_long/
+│   │   │       ├── gps/
+│   │   │       ├── imu/
+│   │   │       ├── lidar/
+│   │   │       ├── metadata.json
+│   │   │       ├── rgb/
+│   │   │       ├── rgb_left/
+│   │   │       ├── rgb_right/
+│   │   │       └── speed/
+│   │   ├── map_06/
+│   │   │   ├── routes_town06_long/
+│   │   │   │   ├── gps/
+│   │   │   │   ├── imu/
+│   │   │   │   ├── lidar/
+│   │   │   │   ├── metadata.json
+│   │   │   │   ├── rgb/
+│   │   │   │   ├── rgb_left/
+│   │   │   │   ├── rgb_right/
+│   │   │   │   └── speed/
+│   │   │   └── routes_town06_short/
+│   │   │       ├── gps/
+│   │   │       ├── imu/
+│   │   │       ├── lidar/
+│   │   │       ├── metadata.json
+│   │   │       ├── rgb/
+│   │   │       ├── rgb_left/
+│   │   │       ├── rgb_right/
+│   │   │       └── speed/
+│   │   ├── map_07/
+│   │   │   └── routes_town07_short/
+│   │   │       ├── gps/
+│   │   │       ├── imu/
+│   │   │       ├── lidar/
+│   │   │       ├── metadata.json
+│   │   │       ├── rgb/
+│   │   │       ├── rgb_left/
+│   │   │       ├── rgb_right/
+│   │   │       └── speed/
+│   │   └── map_10/
+│   │       └── routes_town10_short/
+│   │           ├── gps/
+│   │           ├── imu/
+│   │           ├── lidar/
+│   │           ├── metadata.json
+│   │           ├── rgb/
+│   │           ├── rgb_left/
+│   │           ├── rgb_right/
+│   │           └── speed/
+│   ├── weather_13/
+│   │   ├── map_01/
+│   │   │   ├── routes_town01_long/
+│   │   │   │   ├── gps/
+│   │   │   │   ├── imu/
+│   │   │   │   ├── lidar/
+│   │   │   │   ├── metadata.json
+│   │   │   │   ├── rgb/
+│   │   │   │   ├── rgb_left/
+│   │   │   │   ├── rgb_right/
+│   │   │   │   └── speed/
+│   │   │   └── routes_town01_short/
+│   │   │       ├── gps/
+│   │   │       ├── imu/
+│   │   │       ├── lidar/
+│   │   │       ├── metadata.json
+│   │   │       ├── rgb/
+│   │   │       ├── rgb_left/
+│   │   │       ├── rgb_right/
+│   │   │       └── speed/
+│   │   ├── map_02/
+│   │   │   └── routes_town02_long/
+│   │   │       ├── gps/
+│   │   │       ├── imu/
+│   │   │       ├── lidar/
+│   │   │       ├── metadata.json
+│   │   │       ├── rgb/
+│   │   │       ├── rgb_left/
+│   │   │       ├── rgb_right/
+│   │   │       └── speed/
+│   │   ├── map_03/
+│   │   │   └── routes_town03_long/
+│   │   │       ├── gps/
+│   │   │       ├── imu/
+│   │   │       ├── lidar/
+│   │   │       ├── metadata.json
+│   │   │       ├── rgb/
+│   │   │       ├── rgb_left/
+│   │   │       ├── rgb_right/
+│   │   │       └── speed/
+│   │   ├── map_04/
+│   │   │   └── routes_town04_long/
+│   │   │       ├── gps/
+│   │   │       ├── imu/
+│   │   │       ├── lidar/
+│   │   │       ├── metadata.json
+│   │   │       ├── rgb/
+│   │   │       ├── rgb_left/
+│   │   │       ├── rgb_right/
+│   │   │       └── speed/
+│   │   ├── map_05/
+│   │   │   ├── routes_town05_long/
+│   │   │   │   ├── gps/
+│   │   │   │   ├── imu/
+│   │   │   │   ├── lidar/
+│   │   │   │   ├── metadata.json
+│   │   │   │   ├── rgb/
+│   │   │   │   ├── rgb_left/
+│   │   │   │   ├── rgb_right/
+│   │   │   │   └── speed/
+│   │   │   └── routes_town05_tiny/
+│   │   │       ├── gps/
+│   │   │       ├── imu/
+│   │   │       ├── lidar/
+│   │   │       ├── metadata.json
+│   │   │       ├── rgb/
+│   │   │       ├── rgb_left/
+│   │   │       ├── rgb_right/
+│   │   │       └── speed/
+│   │   ├── map_06/
+│   │   │   ├── routes_town06_long/
+│   │   │   │   ├── gps/
+│   │   │   │   ├── imu/
+│   │   │   │   ├── lidar/
+│   │   │   │   ├── metadata.json
+│   │   │   │   ├── rgb/
+│   │   │   │   ├── rgb_left/
+│   │   │   │   ├── rgb_right/
+│   │   │   │   └── speed/
+│   │   │   └── routes_town06_tiny/
+│   │   │       ├── gps/
+│   │   │       ├── imu/
+│   │   │       ├── lidar/
+│   │   │       ├── metadata.json
+│   │   │       ├── rgb/
+│   │   │       ├── rgb_left/
+│   │   │       ├── rgb_right/
+│   │   │       └── speed/
+│   │   ├── map_07/
+│   │   │   └── routes_town07_tiny/
+│   │   │       ├── gps/
+│   │   │       ├── imu/
+│   │   │       ├── lidar/
+│   │   │       ├── metadata.json
+│   │   │       ├── rgb/
+│   │   │       ├── rgb_left/
+│   │   │       ├── rgb_right/
+│   │   │       └── speed/
+│   │   └── map_10/
+│   │       └── routes_town10_tiny/
+│   │           ├── gps/
+│   │           ├── imu/
+│   │           ├── lidar/
+│   │           ├── metadata.json
+│   │           ├── rgb/
+│   │           ├── rgb_left/
+│   │           ├── rgb_right/
+│   │           └── speed/
+│   ├── weather_14/
+│   │   ├── map_01/
+│   │   │   ├── routes_town01_long/
+│   │   │   │   ├── gps/
+│   │   │   │   ├── imu/
+│   │   │   │   ├── lidar/
+│   │   │   │   ├── metadata.json
+│   │   │   │   ├── rgb/
+│   │   │   │   ├── rgb_left/
+│   │   │   │   ├── rgb_right/
+│   │   │   │   └── speed/
+│   │   │   └── routes_town01_tiny/
+│   │   │       ├── gps/
+│   │   │       ├── imu/
+│   │   │       ├── lidar/
+│   │   │       ├── metadata.json
+│   │   │       ├── rgb/
+│   │   │       ├── rgb_left/
+│   │   │       ├── rgb_right/
+│   │   │       └── speed/
+│   │   ├── map_02/
+│   │   │   ├── routes_town02_long/
+│   │   │   │   ├── gps/
+│   │   │   │   ├── imu/
+│   │   │   │   ├── lidar/
+│   │   │   │   ├── metadata.json
+│   │   │   │   ├── rgb/
+│   │   │   │   ├── rgb_left/
+│   │   │   │   ├── rgb_right/
+│   │   │   │   └── speed/
+│   │   │   └── routes_town02_tiny/
+│   │   │       ├── gps/
+│   │   │       ├── imu/
+│   │   │       ├── lidar/
+│   │   │       ├── metadata.json
+│   │   │       ├── rgb/
+│   │   │       ├── rgb_left/
+│   │   │       ├── rgb_right/
+│   │   │       └── speed/
+│   │   ├── map_03/
+│   │   │   ├── routes_town03_long/
+│   │   │   │   ├── gps/
+│   │   │   │   ├── imu/
+│   │   │   │   ├── lidar/
+│   │   │   │   ├── metadata.json
+│   │   │   │   ├── rgb/
+│   │   │   │   ├── rgb_left/
+│   │   │   │   ├── rgb_right/
+│   │   │   │   └── speed/
+│   │   │   └── routes_town03_tiny/
+│   │   │       ├── gps/
+│   │   │       ├── imu/
+│   │   │       ├── lidar/
+│   │   │       ├── metadata.json
+│   │   │       ├── rgb/
+│   │   │       ├── rgb_left/
+│   │   │       ├── rgb_right/
+│   │   │       └── speed/
+│   │   ├── map_04/
+│   │   │   ├── routes_town04_long/
+│   │   │   │   ├── gps/
+│   │   │   │   ├── imu/
+│   │   │   │   ├── lidar/
+│   │   │   │   ├── metadata.json
+│   │   │   │   ├── rgb/
+│   │   │   │   ├── rgb_left/
+│   │   │   │   ├── rgb_right/
+│   │   │   │   └── speed/
+│   │   │   └── routes_town04_tiny/
+│   │   │       ├── gps/
+│   │   │       ├── imu/
+│   │   │       ├── lidar/
+│   │   │       ├── metadata.json
+│   │   │       ├── rgb/
+│   │   │       ├── rgb_left/
+│   │   │       ├── rgb_right/
+│   │   │       └── speed/
+│   │   ├── map_05/
+│   │   │   ├── routes_town05_long/
+│   │   │   │   ├── gps/
+│   │   │   │   ├── imu/
+│   │   │   │   ├── lidar/
+│   │   │   │   ├── metadata.json
+│   │   │   │   ├── rgb/
+│   │   │   │   ├── rgb_left/
+│   │   │   │   ├── rgb_right/
+│   │   │   │   └── speed/
+│   │   │   └── routes_town05_tiny/
+│   │   │       ├── gps/
+│   │   │       ├── imu/
+│   │   │       ├── lidar/
+│   │   │       ├── metadata.json
+│   │   │       ├── rgb/
+│   │   │       ├── rgb_left/
+│   │   │       ├── rgb_right/
+│   │   │       └── speed/
+│   │   ├── map_06/
+│   │   │   ├── routes_town06_long/
+│   │   │   │   ├── gps/
+│   │   │   │   ├── imu/
+│   │   │   │   ├── lidar/
+│   │   │   │   ├── metadata.json
+│   │   │   │   ├── rgb/
+│   │   │   │   ├── rgb_left/
+│   │   │   │   ├── rgb_right/
+│   │   │   │   └── speed/
+│   │   │   └── routes_town06_tiny/
+│   │   │       ├── gps/
+│   │   │       ├── imu/
+│   │   │       ├── lidar/
+│   │   │       ├── metadata.json
+│   │   │       ├── rgb/
+│   │   │       ├── rgb_left/
+│   │   │       ├── rgb_right/
+│   │   │       └── speed/
+│   │   ├── map_07/
+│   │   │   └── routes_town07_tiny/
+│   │   │       ├── gps/
+│   │   │       ├── imu/
+│   │   │       ├── lidar/
+│   │   │       ├── metadata.json
+│   │   │       ├── rgb/
+│   │   │       ├── rgb_left/
+│   │   │       ├── rgb_right/
+│   │   │       └── speed/
+│   │   └── map_10/
+│   │       └── routes_town10_tiny/
+│   │           ├── gps/
+│   │           ├── imu/
+│   │           ├── lidar/
+│   │           ├── metadata.json
+│   │           ├── rgb/
+│   │           ├── rgb_left/
+│   │           ├── rgb_right/
+│   │           └── speed/
+│   ├── weather_2/
+│   │   ├── map_01/
+│   │   │   ├── routes_town01_long/
+│   │   │   │   ├── gps/
+│   │   │   │   ├── imu/
+│   │   │   │   ├── lidar/
+│   │   │   │   ├── metadata.json
+│   │   │   │   ├── rgb/
+│   │   │   │   ├── rgb_left/
+│   │   │   │   ├── rgb_right/
+│   │   │   │   └── speed/
+│   │   │   └── routes_town01_short/
+│   │   │       ├── gps/
+│   │   │       ├── imu/
+│   │   │       ├── lidar/
+│   │   │       ├── metadata.json
+│   │   │       ├── rgb/
+│   │   │       ├── rgb_left/
+│   │   │       ├── rgb_right/
+│   │   │       └── speed/
+│   │   ├── map_02/
+│   │   │   ├── routes_town02_long/
+│   │   │   │   ├── gps/
+│   │   │   │   ├── imu/
+│   │   │   │   ├── lidar/
+│   │   │   │   ├── metadata.json
+│   │   │   │   ├── rgb/
+│   │   │   │   ├── rgb_left/
+│   │   │   │   ├── rgb_right/
+│   │   │   │   └── speed/
+│   │   │   └── routes_town02_tiny/
+│   │   │       ├── gps/
+│   │   │       ├── imu/
+│   │   │       ├── lidar/
+│   │   │       ├── metadata.json
+│   │   │       ├── rgb/
+│   │   │       ├── rgb_left/
+│   │   │       ├── rgb_right/
+│   │   │       └── speed/
+│   │   ├── map_03/
+│   │   │   ├── routes_town03_long/
+│   │   │   │   ├── gps/
+│   │   │   │   ├── imu/
+│   │   │   │   ├── lidar/
+│   │   │   │   ├── metadata.json
+│   │   │   │   ├── rgb/
+│   │   │   │   ├── rgb_left/
+│   │   │   │   ├── rgb_right/
+│   │   │   │   └── speed/
+│   │   │   ├── routes_town03_short/
+│   │   │   │   ├── gps/
+│   │   │   │   ├── imu/
+│   │   │   │   ├── lidar/
+│   │   │   │   ├── metadata.json
+│   │   │   │   ├── rgb/
+│   │   │   │   ├── rgb_left/
+│   │   │   │   ├── rgb_right/
+│   │   │   │   └── speed/
+│   │   │   └── routes_town03_tiny/
+│   │   │       ├── gps/
+│   │   │       ├── imu/
+│   │   │       ├── lidar/
+│   │   │       ├── metadata.json
+│   │   │       ├── rgb/
+│   │   │       ├── rgb_left/
+│   │   │       ├── rgb_right/
+│   │   │       └── speed/
+│   │   ├── map_04/
+│   │   │   ├── routes_town04_long/
+│   │   │   │   ├── gps/
+│   │   │   │   ├── imu/
+│   │   │   │   ├── lidar/
+│   │   │   │   ├── metadata.json
+│   │   │   │   ├── rgb/
+│   │   │   │   ├── rgb_left/
+│   │   │   │   ├── rgb_right/
+│   │   │   │   └── speed/
+│   │   │   ├── routes_town04_short/
+│   │   │   │   ├── gps/
+│   │   │   │   ├── imu/
+│   │   │   │   ├── lidar/
+│   │   │   │   ├── metadata.json
+│   │   │   │   ├── rgb/
+│   │   │   │   ├── rgb_left/
+│   │   │   │   ├── rgb_right/
+│   │   │   │   └── speed/
+│   │   │   └── routes_town04_tiny/
+│   │   │       ├── gps/
+│   │   │       ├── imu/
+│   │   │       ├── lidar/
+│   │   │       ├── metadata.json
+│   │   │       ├── rgb/
+│   │   │       ├── rgb_left/
+│   │   │       ├── rgb_right/
+│   │   │       └── speed/
+│   │   ├── map_05/
+│   │   │   ├── routes_town05_long/
+│   │   │   │   ├── gps/
+│   │   │   │   ├── imu/
+│   │   │   │   ├── lidar/
+│   │   │   │   ├── metadata.json
+│   │   │   │   ├── rgb/
+│   │   │   │   ├── rgb_left/
+│   │   │   │   ├── rgb_right/
+│   │   │   │   └── speed/
+│   │   │   └── routes_town05_tiny/
+│   │   │       ├── gps/
+│   │   │       ├── imu/
+│   │   │       ├── lidar/
+│   │   │       ├── metadata.json
+│   │   │       ├── rgb/
+│   │   │       ├── rgb_left/
+│   │   │       ├── rgb_right/
+│   │   │       └── speed/
+│   │   ├── map_06/
+│   │   │   ├── routes_town06_long/
+│   │   │   │   ├── gps/
+│   │   │   │   ├── imu/
+│   │   │   │   ├── lidar/
+│   │   │   │   ├── metadata.json
+│   │   │   │   ├── rgb/
+│   │   │   │   ├── rgb_left/
+│   │   │   │   ├── rgb_right/
+│   │   │   │   └── speed/
+│   │   │   ├── routes_town06_short/
+│   │   │   │   ├── gps/
+│   │   │   │   ├── imu/
+│   │   │   │   ├── lidar/
+│   │   │   │   ├── metadata.json
+│   │   │   │   ├── rgb/
+│   │   │   │   ├── rgb_left/
+│   │   │   │   ├── rgb_right/
+│   │   │   │   └── speed/
+│   │   │   └── routes_town06_tiny/
+│   │   │       ├── gps/
+│   │   │       ├── imu/
+│   │   │       ├── lidar/
+│   │   │       ├── metadata.json
+│   │   │       ├── rgb/
+│   │   │       ├── rgb_left/
+│   │   │       ├── rgb_right/
+│   │   │       └── speed/
+│   │   ├── map_07/
+│   │   │   ├── routes_town07_short/
+│   │   │   │   ├── gps/
+│   │   │   │   ├── imu/
+│   │   │   │   ├── lidar/
+│   │   │   │   ├── metadata.json
+│   │   │   │   ├── rgb/
+│   │   │   │   ├── rgb_left/
+│   │   │   │   ├── rgb_right/
+│   │   │   │   └── speed/
+│   │   │   └── routes_town07_tiny/
+│   │   │       ├── gps/
+│   │   │       ├── imu/
+│   │   │       ├── lidar/
+│   │   │       ├── metadata.json
+│   │   │       ├── rgb/
+│   │   │       ├── rgb_left/
+│   │   │       ├── rgb_right/
+│   │   │       └── speed/
+│   │   └── map_10/
+│   │       ├── routes_town10_short/
+│   │       │   ├── gps/
+│   │       │   ├── imu/
+│   │       │   ├── lidar/
+│   │       │   ├── metadata.json
+│   │       │   ├── rgb/
+│   │       │   ├── rgb_left/
+│   │       │   ├── rgb_right/
+│   │       │   └── speed/
+│   │       └── routes_town10_tiny/
+│   │           ├── gps/
+│   │           ├── imu/
+│   │           ├── lidar/
+│   │           ├── metadata.json
+│   │           ├── rgb/
+│   │           ├── rgb_left/
+│   │           ├── rgb_right/
+│   │           └── speed/
+│   ├── weather_3/
+│   │   ├── map_01/
+│   │   │   ├── routes_town01_long/
+│   │   │   │   ├── gps/
+│   │   │   │   ├── imu/
+│   │   │   │   ├── lidar/
+│   │   │   │   ├── metadata.json
+│   │   │   │   ├── rgb/
+│   │   │   │   ├── rgb_left/
+│   │   │   │   ├── rgb_right/
+│   │   │   │   └── speed/
+│   │   │   ├── routes_town01_short/
+│   │   │   │   ├── gps/
+│   │   │   │   ├── imu/
+│   │   │   │   ├── lidar/
+│   │   │   │   ├── metadata.json
+│   │   │   │   ├── rgb/
+│   │   │   │   ├── rgb_left/
+│   │   │   │   ├── rgb_right/
+│   │   │   │   └── speed/
+│   │   │   └── routes_town01_tiny/
+│   │   │       ├── gps/
+│   │   │       ├── imu/
+│   │   │       ├── lidar/
+│   │   │       ├── metadata.json
+│   │   │       ├── rgb/
+│   │   │       ├── rgb_left/
+│   │   │       ├── rgb_right/
+│   │   │       └── speed/
+│   │   ├── map_02/
+│   │   │   ├── routes_town02_long/
+│   │   │   │   ├── gps/
+│   │   │   │   ├── imu/
+│   │   │   │   ├── lidar/
+│   │   │   │   ├── metadata.json
+│   │   │   │   ├── rgb/
+│   │   │   │   ├── rgb_left/
+│   │   │   │   ├── rgb_right/
+│   │   │   │   └── speed/
+│   │   │   ├── routes_town02_short/
+│   │   │   │   ├── gps/
+│   │   │   │   ├── imu/
+│   │   │   │   ├── lidar/
+│   │   │   │   ├── metadata.json
+│   │   │   │   ├── rgb/
+│   │   │   │   ├── rgb_left/
+│   │   │   │   ├── rgb_right/
+│   │   │   │   └── speed/
+│   │   │   └── routes_town02_tiny/
+│   │   │       ├── gps/
+│   │   │       ├── imu/
+│   │   │       ├── lidar/
+│   │   │       ├── metadata.json
+│   │   │       ├── rgb/
+│   │   │       ├── rgb_left/
+│   │   │       ├── rgb_right/
+│   │   │       └── speed/
+│   │   ├── map_03/
+│   │   │   ├── routes_town03_long/
+│   │   │   │   ├── gps/
+│   │   │   │   ├── imu/
+│   │   │   │   ├── lidar/
+│   │   │   │   ├── metadata.json
+│   │   │   │   ├── rgb/
+│   │   │   │   ├── rgb_left/
+│   │   │   │   ├── rgb_right/
+│   │   │   │   └── speed/
+│   │   │   ├── routes_town03_short/
+│   │   │   │   ├── gps/
+│   │   │   │   ├── imu/
+│   │   │   │   ├── lidar/
+│   │   │   │   ├── metadata.json
+│   │   │   │   ├── rgb/
+│   │   │   │   ├── rgb_left/
+│   │   │   │   ├── rgb_right/
+│   │   │   │   └── speed/
+│   │   │   └── routes_town03_tiny/
+│   │   │       ├── gps/
+│   │   │       ├── imu/
+│   │   │       ├── lidar/
+│   │   │       ├── metadata.json
+│   │   │       ├── rgb/
+│   │   │       ├── rgb_left/
+│   │   │       ├── rgb_right/
+│   │   │       └── speed/
+│   │   ├── map_04/
+│   │   │   ├── routes_town04_long/
+│   │   │   │   ├── gps/
+│   │   │   │   ├── imu/
+│   │   │   │   ├── lidar/
+│   │   │   │   ├── metadata.json
+│   │   │   │   ├── rgb/
+│   │   │   │   ├── rgb_left/
+│   │   │   │   ├── rgb_right/
+│   │   │   │   └── speed/
+│   │   │   └── routes_town04_short/
+│   │   │       ├── gps/
+│   │   │       ├── imu/
+│   │   │       ├── lidar/
+│   │   │       ├── metadata.json
+│   │   │       ├── rgb/
+│   │   │       ├── rgb_left/
+│   │   │       ├── rgb_right/
+│   │   │       └── speed/
+│   │   ├── map_05/
+│   │   │   ├── routes_town05_long/
+│   │   │   │   ├── gps/
+│   │   │   │   ├── imu/
+│   │   │   │   ├── lidar/
+│   │   │   │   ├── metadata.json
+│   │   │   │   ├── rgb/
+│   │   │   │   ├── rgb_left/
+│   │   │   │   ├── rgb_right/
+│   │   │   │   └── speed/
+│   │   │   ├── routes_town05_short/
+│   │   │   │   ├── gps/
+│   │   │   │   ├── imu/
+│   │   │   │   ├── lidar/
+│   │   │   │   ├── metadata.json
+│   │   │   │   ├── rgb/
+│   │   │   │   ├── rgb_left/
+│   │   │   │   ├── rgb_right/
+│   │   │   │   └── speed/
+│   │   │   └── routes_town05_tiny/
+│   │   │       ├── gps/
+│   │   │       ├── imu/
+│   │   │       ├── lidar/
+│   │   │       ├── metadata.json
+│   │   │       ├── rgb/
+│   │   │       ├── rgb_left/
+│   │   │       ├── rgb_right/
+│   │   │       └── speed/
+│   │   ├── map_06/
+│   │   │   ├── routes_town06_long/
+│   │   │   │   ├── gps/
+│   │   │   │   ├── imu/
+│   │   │   │   ├── lidar/
+│   │   │   │   ├── metadata.json
+│   │   │   │   ├── rgb/
+│   │   │   │   ├── rgb_left/
+│   │   │   │   ├── rgb_right/
+│   │   │   │   └── speed/
+│   │   │   └── routes_town06_short/
+│   │   │       ├── gps/
+│   │   │       ├── imu/
+│   │   │       ├── lidar/
+│   │   │       ├── metadata.json
+│   │   │       ├── rgb/
+│   │   │       ├── rgb_left/
+│   │   │       ├── rgb_right/
+│   │   │       └── speed/
+│   │   ├── map_07/
+│   │   │   ├── routes_town07_short/
+│   │   │   │   ├── gps/
+│   │   │   │   ├── imu/
+│   │   │   │   ├── lidar/
+│   │   │   │   ├── metadata.json
+│   │   │   │   ├── rgb/
+│   │   │   │   ├── rgb_left/
+│   │   │   │   ├── rgb_right/
+│   │   │   │   └── speed/
+│   │   │   └── routes_town07_tiny/
+│   │   │       ├── gps/
+│   │   │       ├── imu/
+│   │   │       ├── lidar/
+│   │   │       ├── metadata.json
+│   │   │       ├── rgb/
+│   │   │       ├── rgb_left/
+│   │   │       ├── rgb_right/
+│   │   │       └── speed/
+│   │   └── map_10/
+│   │       ├── routes_town10_short/
+│   │       │   ├── gps/
+│   │       │   ├── imu/
+│   │       │   ├── lidar/
+│   │       │   ├── metadata.json
+│   │       │   ├── rgb/
+│   │       │   ├── rgb_left/
+│   │       │   ├── rgb_right/
+│   │       │   └── speed/
+│   │       └── routes_town10_tiny/
+│   │           ├── gps/
+│   │           ├── imu/
+│   │           ├── lidar/
+│   │           ├── metadata.json
+│   │           ├── rgb/
+│   │           ├── rgb_left/
+│   │           ├── rgb_right/
+│   │           └── speed/
+│   ├── weather_4/
+│   │   ├── map_01/
+│   │   │   ├── routes_town01_long/
+│   │   │   │   ├── gps/
+│   │   │   │   ├── imu/
+│   │   │   │   ├── lidar/
+│   │   │   │   ├── metadata.json
+│   │   │   │   ├── rgb/
+│   │   │   │   ├── rgb_left/
+│   │   │   │   ├── rgb_right/
+│   │   │   │   └── speed/
+│   │   │   ├── routes_town01_short/
+│   │   │   │   ├── gps/
+│   │   │   │   ├── imu/
+│   │   │   │   ├── lidar/
+│   │   │   │   ├── metadata.json
+│   │   │   │   ├── rgb/
+│   │   │   │   ├── rgb_left/
+│   │   │   │   ├── rgb_right/
+│   │   │   │   └── speed/
+│   │   │   └── routes_town01_tiny/
+│   │   │       ├── gps/
+│   │   │       ├── imu/
+│   │   │       ├── lidar/
+│   │   │       ├── metadata.json
+│   │   │       ├── rgb/
+│   │   │       ├── rgb_left/
+│   │   │       ├── rgb_right/
+│   │   │       └── speed/
+│   │   ├── map_02/
+│   │   │   ├── routes_town02_long/
+│   │   │   │   ├── gps/
+│   │   │   │   ├── imu/
+│   │   │   │   ├── lidar/
+│   │   │   │   ├── metadata.json
+│   │   │   │   ├── rgb/
+│   │   │   │   ├── rgb_left/
+│   │   │   │   ├── rgb_right/
+│   │   │   │   └── speed/
+│   │   │   ├── routes_town02_short/
+│   │   │   │   ├── gps/
+│   │   │   │   ├── imu/
+│   │   │   │   ├── lidar/
+│   │   │   │   ├── metadata.json
+│   │   │   │   ├── rgb/
+│   │   │   │   ├── rgb_left/
+│   │   │   │   ├── rgb_right/
+│   │   │   │   └── speed/
+│   │   │   └── routes_town02_tiny/
+│   │   │       ├── gps/
+│   │   │       ├── imu/
+│   │   │       ├── lidar/
+│   │   │       ├── metadata.json
+│   │   │       ├── rgb/
+│   │   │       ├── rgb_left/
+│   │   │       ├── rgb_right/
+│   │   │       └── speed/
+│   │   ├── map_03/
+│   │   │   ├── routes_town03_long/
+│   │   │   │   ├── gps/
+│   │   │   │   ├── imu/
+│   │   │   │   ├── lidar/
+│   │   │   │   ├── metadata.json
+│   │   │   │   ├── rgb/
+│   │   │   │   ├── rgb_left/
+│   │   │   │   ├── rgb_right/
+│   │   │   │   └── speed/
+│   │   │   └── routes_town03_tiny/
+│   │   │       ├── gps/
+│   │   │       ├── imu/
+│   │   │       ├── lidar/
+│   │   │       ├── metadata.json
+│   │   │       ├── rgb/
+│   │   │       ├── rgb_left/
+│   │   │       ├── rgb_right/
+│   │   │       └── speed/
+│   │   ├── map_04/
+│   │   │   ├── routes_town04_long/
+│   │   │   │   ├── gps/
+│   │   │   │   ├── imu/
+│   │   │   │   ├── lidar/
+│   │   │   │   ├── metadata.json
+│   │   │   │   ├── rgb/
+│   │   │   │   ├── rgb_left/
+│   │   │   │   ├── rgb_right/
+│   │   │   │   └── speed/
+│   │   │   └── routes_town04_tiny/
+│   │   │       ├── gps/
+│   │   │       ├── imu/
+│   │   │       ├── lidar/
+│   │   │       ├── metadata.json
+│   │   │       ├── rgb/
+│   │   │       ├── rgb_left/
+│   │   │       ├── rgb_right/
+│   │   │       └── speed/
+│   │   ├── map_05/
+│   │   │   ├── routes_town05_long/
+│   │   │   │   ├── gps/
+│   │   │   │   ├── imu/
+│   │   │   │   ├── lidar/
+│   │   │   │   ├── metadata.json
+│   │   │   │   ├── rgb/
+│   │   │   │   ├── rgb_left/
+│   │   │   │   ├── rgb_right/
+│   │   │   │   └── speed/
+│   │   │   └── routes_town05_tiny/
+│   │   │       ├── gps/
+│   │   │       ├── imu/
+│   │   │       ├── lidar/
+│   │   │       ├── metadata.json
+│   │   │       ├── rgb/
+│   │   │       ├── rgb_left/
+│   │   │       ├── rgb_right/
+│   │   │       └── speed/
+│   │   ├── map_06/
+│   │   │   ├── routes_town06_long/
+│   │   │   │   ├── gps/
+│   │   │   │   ├── imu/
+│   │   │   │   ├── lidar/
+│   │   │   │   ├── metadata.json
+│   │   │   │   ├── rgb/
+│   │   │   │   ├── rgb_left/
+│   │   │   │   ├── rgb_right/
+│   │   │   │   └── speed/
+│   │   │   └── routes_town06_tiny/
+│   │   │       ├── gps/
+│   │   │       ├── imu/
+│   │   │       ├── lidar/
+│   │   │       ├── metadata.json
+│   │   │       ├── rgb/
+│   │   │       ├── rgb_left/
+│   │   │       ├── rgb_right/
+│   │   │       └── speed/
+│   │   ├── map_07/
+│   │   │   └── routes_town07_tiny/
+│   │   │       ├── gps/
+│   │   │       ├── imu/
+│   │   │       ├── lidar/
+│   │   │       ├── metadata.json
+│   │   │       ├── rgb/
+│   │   │       ├── rgb_left/
+│   │   │       ├── rgb_right/
+│   │   │       └── speed/
+│   │   └── map_10/
+│   │       └── routes_town10_tiny/
+│   │           ├── gps/
+│   │           ├── imu/
+│   │           ├── lidar/
+│   │           ├── metadata.json
+│   │           ├── rgb/
+│   │           ├── rgb_left/
+│   │           ├── rgb_right/
+│   │           └── speed/
+│   ├── weather_5/
+│   │   ├── map_01/
+│   │   │   ├── routes_town01_long/
+│   │   │   │   ├── gps/
+│   │   │   │   ├── imu/
+│   │   │   │   ├── lidar/
+│   │   │   │   ├── metadata.json
+│   │   │   │   ├── rgb/
+│   │   │   │   ├── rgb_left/
+│   │   │   │   ├── rgb_right/
+│   │   │   │   └── speed/
+│   │   │   └── routes_town01_tiny/
+│   │   │       ├── gps/
+│   │   │       ├── imu/
+│   │   │       ├── lidar/
+│   │   │       ├── metadata.json
+│   │   │       ├── rgb/
+│   │   │       ├── rgb_left/
+│   │   │       ├── rgb_right/
+│   │   │       └── speed/
+│   │   ├── map_02/
+│   │   │   ├── routes_town02_long/
+│   │   │   │   ├── gps/
+│   │   │   │   ├── imu/
+│   │   │   │   ├── lidar/
+│   │   │   │   ├── metadata.json
+│   │   │   │   ├── rgb/
+│   │   │   │   ├── rgb_left/
+│   │   │   │   ├── rgb_right/
+│   │   │   │   └── speed/
+│   │   │   └── routes_town02_tiny/
+│   │   │       ├── gps/
+│   │   │       ├── imu/
+│   │   │       ├── lidar/
+│   │   │       ├── metadata.json
+│   │   │       ├── rgb/
+│   │   │       ├── rgb_left/
+│   │   │       ├── rgb_right/
+│   │   │       └── speed/
+│   │   ├── map_03/
+│   │   │   ├── routes_town03_long/
+│   │   │   │   ├── gps/
+│   │   │   │   ├── imu/
+│   │   │   │   ├── lidar/
+│   │   │   │   ├── metadata.json
+│   │   │   │   ├── rgb/
+│   │   │   │   ├── rgb_left/
+│   │   │   │   ├── rgb_right/
+│   │   │   │   └── speed/
+│   │   │   └── routes_town03_tiny/
+│   │   │       ├── gps/
+│   │   │       ├── imu/
+│   │   │       ├── lidar/
+│   │   │       ├── metadata.json
+│   │   │       ├── rgb/
+│   │   │       ├── rgb_left/
+│   │   │       ├── rgb_right/
+│   │   │       └── speed/
+│   │   ├── map_04/
+│   │   │   └── routes_town04_long/
+│   │   │       ├── gps/
+│   │   │       ├── imu/
+│   │   │       ├── lidar/
+│   │   │       ├── metadata.json
+│   │   │       ├── rgb/
+│   │   │       ├── rgb_left/
+│   │   │       ├── rgb_right/
+│   │   │       └── speed/
+│   │   ├── map_05/
+│   │   │   ├── routes_town05_long/
+│   │   │   │   ├── gps/
+│   │   │   │   ├── imu/
+│   │   │   │   ├── lidar/
+│   │   │   │   ├── metadata.json
+│   │   │   │   ├── rgb/
+│   │   │   │   ├── rgb_left/
+│   │   │   │   ├── rgb_right/
+│   │   │   │   └── speed/
+│   │   │   └── routes_town05_tiny/
+│   │   │       ├── gps/
+│   │   │       ├── imu/
+│   │   │       ├── lidar/
+│   │   │       ├── metadata.json
+│   │   │       ├── rgb/
+│   │   │       ├── rgb_left/
+│   │   │       ├── rgb_right/
+│   │   │       └── speed/
+│   │   ├── map_06/
+│   │   │   ├── routes_town06_long/
+│   │   │   │   ├── gps/
+│   │   │   │   ├── imu/
+│   │   │   │   ├── lidar/
+│   │   │   │   ├── metadata.json
+│   │   │   │   ├── rgb/
+│   │   │   │   ├── rgb_left/
+│   │   │   │   ├── rgb_right/
+│   │   │   │   └── speed/
+│   │   │   └── routes_town06_tiny/
+│   │   │       ├── gps/
+│   │   │       ├── imu/
+│   │   │       ├── lidar/
+│   │   │       ├── metadata.json
+│   │   │       ├── rgb/
+│   │   │       ├── rgb_left/
+│   │   │       ├── rgb_right/
+│   │   │       └── speed/
+│   │   ├── map_07/
+│   │   │   └── routes_town07_tiny/
+│   │   │       ├── gps/
+│   │   │       ├── imu/
+│   │   │       ├── lidar/
+│   │   │       ├── metadata.json
+│   │   │       ├── rgb/
+│   │   │       ├── rgb_left/
+│   │   │       ├── rgb_right/
+│   │   │       └── speed/
+│   │   └── map_10/
+│   │       └── routes_town10_tiny/
+│   │           ├── gps/
+│   │           ├── imu/
+│   │           ├── lidar/
+│   │           ├── metadata.json
+│   │           ├── rgb/
+│   │           ├── rgb_left/
+│   │           ├── rgb_right/
+│   │           └── speed/
+│   ├── weather_6/
+│   │   ├── map_01/
+│   │   │   ├── routes_town01_long/
+│   │   │   │   ├── gps/
+│   │   │   │   ├── imu/
+│   │   │   │   ├── lidar/
+│   │   │   │   ├── metadata.json
+│   │   │   │   ├── rgb/
+│   │   │   │   ├── rgb_left/
+│   │   │   │   ├── rgb_right/
+│   │   │   │   └── speed/
+│   │   │   └── routes_town01_tiny/
+│   │   │       ├── gps/
+│   │   │       ├── imu/
+│   │   │       ├── lidar/
+│   │   │       ├── metadata.json
+│   │   │       ├── rgb/
+│   │   │       ├── rgb_left/
+│   │   │       ├── rgb_right/
+│   │   │       └── speed/
+│   │   ├── map_02/
+│   │   │   ├── routes_town02_long/
+│   │   │   │   ├── gps/
+│   │   │   │   ├── imu/
+│   │   │   │   ├── lidar/
+│   │   │   │   ├── metadata.json
+│   │   │   │   ├── rgb/
+│   │   │   │   ├── rgb_left/
+│   │   │   │   ├── rgb_right/
+│   │   │   │   └── speed/
+│   │   │   └── routes_town02_tiny/
+│   │   │       ├── gps/
+│   │   │       ├── imu/
+│   │   │       ├── lidar/
+│   │   │       ├── metadata.json
+│   │   │       ├── rgb/
+│   │   │       ├── rgb_left/
+│   │   │       ├── rgb_right/
+│   │   │       └── speed/
+│   │   ├── map_03/
+│   │   │   └── routes_town03_long/
+│   │   │       ├── gps/
+│   │   │       ├── imu/
+│   │   │       ├── lidar/
+│   │   │       ├── metadata.json
+│   │   │       ├── rgb/
+│   │   │       ├── rgb_left/
+│   │   │       ├── rgb_right/
+│   │   │       └── speed/
+│   │   ├── map_04/
+│   │   │   ├── routes_town04_long/
+│   │   │   │   ├── gps/
+│   │   │   │   ├── imu/
+│   │   │   │   ├── lidar/
+│   │   │   │   ├── metadata.json
+│   │   │   │   ├── rgb/
+│   │   │   │   ├── rgb_left/
+│   │   │   │   ├── rgb_right/
+│   │   │   │   └── speed/
+│   │   │   └── routes_town04_tiny/
+│   │   │       ├── gps/
+│   │   │       ├── imu/
+│   │   │       ├── lidar/
+│   │   │       ├── metadata.json
+│   │   │       ├── rgb/
+│   │   │       ├── rgb_left/
+│   │   │       ├── rgb_right/
+│   │   │       └── speed/
+│   │   ├── map_05/
+│   │   │   ├── routes_town05_long/
+│   │   │   │   ├── gps/
+│   │   │   │   ├── imu/
+│   │   │   │   ├── lidar/
+│   │   │   │   ├── metadata.json
+│   │   │   │   ├── rgb/
+│   │   │   │   ├── rgb_left/
+│   │   │   │   ├── rgb_right/
+│   │   │   │   └── speed/
+│   │   │   └── routes_town05_tiny/
+│   │   │       ├── gps/
+│   │   │       ├── imu/
+│   │   │       ├── lidar/
+│   │   │       ├── metadata.json
+│   │   │       ├── rgb/
+│   │   │       ├── rgb_left/
+│   │   │       ├── rgb_right/
+│   │   │       └── speed/
+│   │   ├── map_06/
+│   │   │   ├── routes_town06_long/
+│   │   │   │   ├── gps/
+│   │   │   │   ├── imu/
+│   │   │   │   ├── lidar/
+│   │   │   │   ├── metadata.json
+│   │   │   │   ├── rgb/
+│   │   │   │   ├── rgb_left/
+│   │   │   │   ├── rgb_right/
+│   │   │   │   └── speed/
+│   │   │   └── routes_town06_tiny/
+│   │   │       ├── gps/
+│   │   │       ├── imu/
+│   │   │       ├── lidar/
+│   │   │       ├── metadata.json
+│   │   │       ├── rgb/
+│   │   │       ├── rgb_left/
+│   │   │       ├── rgb_right/
+│   │   │       └── speed/
+│   │   ├── map_07/
+│   │   │   └── routes_town07_tiny/
+│   │   │       ├── gps/
+│   │   │       ├── imu/
+│   │   │       ├── lidar/
+│   │   │       ├── metadata.json
+│   │   │       ├── rgb/
+│   │   │       ├── rgb_left/
+│   │   │       ├── rgb_right/
+│   │   │       └── speed/
+│   │   └── map_10/
+│   │       └── routes_town10_tiny/
+│   │           ├── gps/
+│   │           ├── imu/
+│   │           ├── lidar/
+│   │           ├── metadata.json
+│   │           ├── rgb/
+│   │           ├── rgb_left/
+│   │           ├── rgb_right/
+│   │           └── speed/
+│   ├── weather_7/
+│   │   ├── map_01/
+│   │   │   ├── routes_town01_long/
+│   │   │   │   ├── gps/
+│   │   │   │   ├── imu/
+│   │   │   │   ├── lidar/
+│   │   │   │   ├── metadata.json
+│   │   │   │   ├── rgb/
+│   │   │   │   ├── rgb_left/
+│   │   │   │   ├── rgb_right/
+│   │   │   │   └── speed/
+│   │   │   └── routes_town01_tiny/
+│   │   │       ├── gps/
+│   │   │       ├── imu/
+│   │   │       ├── lidar/
+│   │   │       ├── metadata.json
+│   │   │       ├── rgb/
+│   │   │       ├── rgb_left/
+│   │   │       ├── rgb_right/
+│   │   │       └── speed/
+│   │   ├── map_02/
+│   │   │   ├── routes_town02_long/
+│   │   │   │   ├── gps/
+│   │   │   │   ├── imu/
+│   │   │   │   ├── lidar/
+│   │   │   │   ├── metadata.json
+│   │   │   │   ├── rgb/
+│   │   │   │   ├── rgb_left/
+│   │   │   │   ├── rgb_right/
+│   │   │   │   └── speed/
+│   │   │   └── routes_town02_tiny/
+│   │   │       ├── gps/
+│   │   │       ├── imu/
+│   │   │       ├── lidar/
+│   │   │       ├── metadata.json
+│   │   │       ├── rgb/
+│   │   │       ├── rgb_left/
+│   │   │       ├── rgb_right/
+│   │   │       └── speed/
+│   │   ├── map_03/
+│   │   │   ├── routes_town03_long/
+│   │   │   │   ├── gps/
+│   │   │   │   ├── imu/
+│   │   │   │   ├── lidar/
+│   │   │   │   ├── metadata.json
+│   │   │   │   ├── rgb/
+│   │   │   │   ├── rgb_left/
+│   │   │   │   ├── rgb_right/
+│   │   │   │   └── speed/
+│   │   │   └── routes_town03_tiny/
+│   │   │       ├── gps/
+│   │   │       ├── imu/
+│   │   │       ├── lidar/
+│   │   │       ├── metadata.json
+│   │   │       ├── rgb/
+│   │   │       ├── rgb_left/
+│   │   │       ├── rgb_right/
+│   │   │       └── speed/
+│   │   ├── map_04/
+│   │   │   ├── routes_town04_long/
+│   │   │   │   ├── gps/
+│   │   │   │   ├── imu/
+│   │   │   │   ├── lidar/
+│   │   │   │   ├── metadata.json
+│   │   │   │   ├── rgb/
+│   │   │   │   ├── rgb_left/
+│   │   │   │   ├── rgb_right/
+│   │   │   │   └── speed/
+│   │   │   └── routes_town04_tiny/
+│   │   │       ├── gps/
+│   │   │       ├── imu/
+│   │   │       ├── lidar/
+│   │   │       ├── metadata.json
+│   │   │       ├── rgb/
+│   │   │       ├── rgb_left/
+│   │   │       ├── rgb_right/
+│   │   │       └── speed/
+│   │   ├── map_05/
+│   │   │   ├── routes_town05_long/
+│   │   │   │   ├── gps/
+│   │   │   │   ├── imu/
+│   │   │   │   ├── lidar/
+│   │   │   │   ├── metadata.json
+│   │   │   │   ├── rgb/
+│   │   │   │   ├── rgb_left/
+│   │   │   │   ├── rgb_right/
+│   │   │   │   └── speed/
+│   │   │   └── routes_town05_tiny/
+│   │   │       ├── gps/
+│   │   │       ├── imu/
+│   │   │       ├── lidar/
+│   │   │       ├── metadata.json
+│   │   │       ├── rgb/
+│   │   │       ├── rgb_left/
+│   │   │       ├── rgb_right/
+│   │   │       └── speed/
+│   │   ├── map_06/
+│   │   │   ├── routes_town06_long/
+│   │   │   │   ├── gps/
+│   │   │   │   ├── imu/
+│   │   │   │   ├── lidar/
+│   │   │   │   ├── metadata.json
+│   │   │   │   ├── rgb/
+│   │   │   │   ├── rgb_left/
+│   │   │   │   ├── rgb_right/
+│   │   │   │   └── speed/
+│   │   │   └── routes_town06_tiny/
+│   │   │       ├── gps/
+│   │   │       ├── imu/
+│   │   │       ├── lidar/
+│   │   │       ├── metadata.json
+│   │   │       ├── rgb/
+│   │   │       ├── rgb_left/
+│   │   │       ├── rgb_right/
+│   │   │       └── speed/
+│   │   ├── map_07/
+│   │   │   └── routes_town07_tiny/
+│   │   │       ├── gps/
+│   │   │       ├── imu/
+│   │   │       ├── lidar/
+│   │   │       ├── metadata.json
+│   │   │       ├── rgb/
+│   │   │       ├── rgb_left/
+│   │   │       ├── rgb_right/
+│   │   │       └── speed/
+│   │   └── map_10/
+│   │       └── routes_town10_tiny/
+│   │           ├── gps/
+│   │           ├── imu/
+│   │           ├── lidar/
+│   │           ├── metadata.json
+│   │           ├── rgb/
+│   │           ├── rgb_left/
+│   │           ├── rgb_right/
+│   │           └── speed/
+│   ├── weather_8/
+│   │   ├── map_01/
+│   │   │   ├── routes_town01_long/
+│   │   │   │   ├── gps/
+│   │   │   │   ├── imu/
+│   │   │   │   ├── lidar/
+│   │   │   │   ├── metadata.json
+│   │   │   │   ├── rgb/
+│   │   │   │   ├── rgb_left/
+│   │   │   │   ├── rgb_right/
+│   │   │   │   └── speed/
+│   │   │   └── routes_town01_tiny/
+│   │   │       ├── gps/
+│   │   │       ├── imu/
+│   │   │       ├── lidar/
+│   │   │       ├── metadata.json
+│   │   │       ├── rgb/
+│   │   │       ├── rgb_left/
+│   │   │       ├── rgb_right/
+│   │   │       └── speed/
+│   │   ├── map_02/
+│   │   │   ├── routes_town02_long/
+│   │   │   │   ├── gps/
+│   │   │   │   ├── imu/
+│   │   │   │   ├── lidar/
+│   │   │   │   ├── metadata.json
+│   │   │   │   ├── rgb/
+│   │   │   │   ├── rgb_left/
+│   │   │   │   ├── rgb_right/
+│   │   │   │   └── speed/
+│   │   │   └── routes_town02_tiny/
+│   │   │       ├── gps/
+│   │   │       ├── imu/
+│   │   │       ├── lidar/
+│   │   │       ├── metadata.json
+│   │   │       ├── rgb/
+│   │   │       ├── rgb_left/
+│   │   │       ├── rgb_right/
+│   │   │       └── speed/
+│   │   ├── map_03/
+│   │   │   ├── routes_town03_long/
+│   │   │   │   ├── gps/
+│   │   │   │   ├── imu/
+│   │   │   │   ├── lidar/
+│   │   │   │   ├── metadata.json
+│   │   │   │   ├── rgb/
+│   │   │   │   ├── rgb_left/
+│   │   │   │   ├── rgb_right/
+│   │   │   │   └── speed/
+│   │   │   └── routes_town03_tiny/
+│   │   │       ├── gps/
+│   │   │       ├── imu/
+│   │   │       ├── lidar/
+│   │   │       ├── metadata.json
+│   │   │       ├── rgb/
+│   │   │       ├── rgb_left/
+│   │   │       ├── rgb_right/
+│   │   │       └── speed/
+│   │   ├── map_04/
+│   │   │   └── routes_town04_long/
+│   │   │       ├── gps/
+│   │   │       ├── imu/
+│   │   │       ├── lidar/
+│   │   │       ├── metadata.json
+│   │   │       ├── rgb/
+│   │   │       ├── rgb_left/
+│   │   │       ├── rgb_right/
+│   │   │       └── speed/
+│   │   ├── map_05/
+│   │   │   ├── routes_town05_long/
+│   │   │   │   ├── gps/
+│   │   │   │   ├── imu/
+│   │   │   │   ├── lidar/
+│   │   │   │   ├── metadata.json
+│   │   │   │   ├── rgb/
+│   │   │   │   ├── rgb_left/
+│   │   │   │   ├── rgb_right/
+│   │   │   │   └── speed/
+│   │   │   └── routes_town05_tiny/
+│   │   │       ├── gps/
+│   │   │       ├── imu/
+│   │   │       ├── lidar/
+│   │   │       ├── metadata.json
+│   │   │       ├── rgb/
+│   │   │       ├── rgb_left/
+│   │   │       ├── rgb_right/
+│   │   │       └── speed/
+│   │   ├── map_06/
+│   │   │   ├── routes_town06_long/
+│   │   │   │   ├── gps/
+│   │   │   │   ├── imu/
+│   │   │   │   ├── lidar/
+│   │   │   │   ├── metadata.json
+│   │   │   │   ├── rgb/
+│   │   │   │   ├── rgb_left/
+│   │   │   │   ├── rgb_right/
+│   │   │   │   └── speed/
+│   │   │   └── routes_town06_tiny/
+│   │   │       ├── gps/
+│   │   │       ├── imu/
+│   │   │       ├── lidar/
+│   │   │       ├── metadata.json
+│   │   │       ├── rgb/
+│   │   │       ├── rgb_left/
+│   │   │       ├── rgb_right/
+│   │   │       └── speed/
+│   │   ├── map_07/
+│   │   │   └── routes_town07_tiny/
+│   │   │       ├── gps/
+│   │   │       ├── imu/
+│   │   │       ├── lidar/
+│   │   │       ├── metadata.json
+│   │   │       ├── rgb/
+│   │   │       ├── rgb_left/
+│   │   │       ├── rgb_right/
+│   │   │       └── speed/
+│   │   └── map_10/
+│   │       └── routes_town10_tiny/
+│   │           ├── gps/
+│   │           ├── imu/
+│   │           ├── lidar/
+│   │           ├── metadata.json
+│   │           ├── rgb/
+│   │           ├── rgb_left/
+│   │           ├── rgb_right/
+│   │           └── speed/
+│   └── weather_9/
+│       ├── map_01/
+│       │   ├── routes_town01_long/
+│       │   │   ├── gps/
+│       │   │   ├── imu/
+│       │   │   ├── lidar/
+│       │   │   ├── metadata.json
+│       │   │   ├── rgb/
+│       │   │   ├── rgb_left/
+│       │   │   ├── rgb_right/
+│       │   │   └── speed/
+│       │   └── routes_town01_tiny/
+│       │       ├── gps/
+│       │       ├── imu/
+│       │       ├── lidar/
+│       │       ├── metadata.json
+│       │       ├── rgb/
+│       │       ├── rgb_left/
+│       │       ├── rgb_right/
+│       │       └── speed/
+│       ├── map_02/
+│       │   ├── routes_town02_long/
+│       │   │   ├── gps/
+│       │   │   ├── imu/
+│       │   │   ├── lidar/
+│       │   │   ├── metadata.json
+│       │   │   ├── rgb/
+│       │   │   ├── rgb_left/
+│       │   │   ├── rgb_right/
+│       │   │   └── speed/
+│       │   └── routes_town02_tiny/
+│       │       ├── gps/
+│       │       ├── imu/
+│       │       ├── lidar/
+│       │       ├── metadata.json
+│       │       ├── rgb/
+│       │       ├── rgb_left/
+│       │       ├── rgb_right/
+│       │       └── speed/
+│       ├── map_03/
+│       │   ├── routes_town03_long/
+│       │   │   ├── gps/
+│       │   │   ├── imu/
+│       │   │   ├── lidar/
+│       │   │   ├── metadata.json
+│       │   │   ├── rgb/
+│       │   │   ├── rgb_left/
+│       │   │   ├── rgb_right/
+│       │   │   └── speed/
+│       │   └── routes_town03_tiny/
+│       │       ├── gps/
+│       │       ├── imu/
+│       │       ├── lidar/
+│       │       ├── metadata.json
+│       │       ├── rgb/
+│       │       ├── rgb_left/
+│       │       ├── rgb_right/
+│       │       └── speed/
+│       ├── map_04/
+│       │   ├── routes_town04_long/
+│       │   │   ├── gps/
+│       │   │   ├── imu/
+│       │   │   ├── lidar/
+│       │   │   ├── metadata.json
+│       │   │   ├── rgb/
+│       │   │   ├── rgb_left/
+│       │   │   ├── rgb_right/
+│       │   │   └── speed/
+│       │   ├── routes_town04_short/
+│       │   │   ├── gps/
+│       │   │   ├── imu/
+│       │   │   ├── lidar/
+│       │   │   ├── metadata.json
+│       │   │   ├── rgb/
+│       │   │   ├── rgb_left/
+│       │   │   ├── rgb_right/
+│       │   │   └── speed/
+│       │   └── routes_town04_tiny/
+│       │       ├── gps/
+│       │       ├── imu/
+│       │       ├── lidar/
+│       │       ├── metadata.json
+│       │       ├── rgb/
+│       │       ├── rgb_left/
+│       │       ├── rgb_right/
+│       │       └── speed/
+│       ├── map_05/
+│       │   ├── routes_town05_long/
+│       │   │   ├── gps/
+│       │   │   ├── imu/
+│       │   │   ├── lidar/
+│       │   │   ├── metadata.json
+│       │   │   ├── rgb/
+│       │   │   ├── rgb_left/
+│       │   │   ├── rgb_right/
+│       │   │   └── speed/
+│       │   └── routes_town05_short/
+│       │       ├── gps/
+│       │       ├── imu/
+│       │       ├── lidar/
+│       │       ├── metadata.json
+│       │       ├── rgb/
+│       │       ├── rgb_left/
+│       │       ├── rgb_right/
+│       │       └── speed/
+│       ├── map_06/
+│       │   ├── routes_town06_long/
+│       │   │   ├── gps/
+│       │   │   ├── imu/
+│       │   │   ├── lidar/
+│       │   │   ├── metadata.json
+│       │   │   ├── rgb/
+│       │   │   ├── rgb_left/
+│       │   │   ├── rgb_right/
+│       │   │   └── speed/
+│       │   └── routes_town06_tiny/
+│       │       ├── gps/
+│       │       ├── imu/
+│       │       ├── lidar/
+│       │       ├── metadata.json
+│       │       ├── rgb/
+│       │       ├── rgb_left/
+│       │       ├── rgb_right/
+│       │       └── speed/
+│       ├── map_07/
+│       │   ├── routes_town07_short/
+│       │   │   ├── gps/
+│       │   │   ├── imu/
+│       │   │   ├── lidar/
+│       │   │   ├── metadata.json
+│       │   │   ├── rgb/
+│       │   │   ├── rgb_left/
+│       │   │   ├── rgb_right/
+│       │   │   └── speed/
+│       │   └── routes_town07_tiny/
+│       │       ├── gps/
+│       │       ├── imu/
+│       │       ├── lidar/
+│       │       ├── metadata.json
+│       │       ├── rgb/
+│       │       ├── rgb_left/
+│       │       ├── rgb_right/
+│       │       └── speed/
+│       └── map_10/
+│           ├── routes_town10_short/
+│           │   ├── gps/
+│           │   ├── imu/
+│           │   ├── lidar/
+│           │   ├── metadata.json
+│           │   ├── rgb/
+│           │   ├── rgb_left/
+│           │   ├── rgb_right/
+│           │   └── speed/
+│           └── routes_town10_tiny/
+│               ├── gps/
+│               ├── imu/
+│               ├── lidar/
+│               ├── metadata.json
+│               ├── rgb/
+│               ├── rgb_left/
+│               ├── rgb_right/
+│               └── speed/
+├── lav/
+│   ├── weather_0/
+│   │   ├── map_01/
+│   │   │   ├── routes_town01_long/
+│   │   │   │   ├── RGB_0/
+│   │   │   │   ├── RGB_1/
+│   │   │   │   ├── RGB_2/
+│   │   │   │   ├── TEL_RGB/
+│   │   │   │   ├── gps/
+│   │   │   │   ├── imu/
+│   │   │   │   ├── lidar/
+│   │   │   │   ├── metadata.json
+│   │   │   │   └── speed/
+│   │   │   └── routes_town01_tiny/
+│   │   │       ├── RGB_0/
+│   │   │       ├── RGB_1/
+│   │   │       ├── RGB_2/
+│   │   │       ├── TEL_RGB/
+│   │   │       ├── gps/
+│   │   │       ├── imu/
+│   │   │       ├── lidar/
+│   │   │       ├── metadata.json
+│   │   │       └── speed/
+│   │   ├── map_02/
+│   │   │   ├── routes_town02_long/
+│   │   │   │   ├── RGB_0/
+│   │   │   │   ├── RGB_1/
+│   │   │   │   ├── RGB_2/
+│   │   │   │   ├── TEL_RGB/
+│   │   │   │   ├── gps/
+│   │   │   │   ├── imu/
+│   │   │   │   ├── lidar/
+│   │   │   │   ├── metadata.json
+│   │   │   │   └── speed/
+│   │   │   └── routes_town02_tiny/
+│   │   │       ├── RGB_0/
+│   │   │       ├── RGB_1/
+│   │   │       ├── RGB_2/
+│   │   │       ├── TEL_RGB/
+│   │   │       ├── gps/
+│   │   │       ├── imu/
+│   │   │       ├── lidar/
+│   │   │       ├── metadata.json
+│   │   │       └── speed/
+│   │   ├── map_03/
+│   │   │   ├── routes_town03_long/
+│   │   │   │   ├── RGB_0/
+│   │   │   │   ├── RGB_1/
+│   │   │   │   ├── RGB_2/
+│   │   │   │   ├── TEL_RGB/
+│   │   │   │   ├── gps/
+│   │   │   │   ├── imu/
+│   │   │   │   ├── lidar/
+│   │   │   │   ├── metadata.json
+│   │   │   │   └── speed/
+│   │   │   └── routes_town03_tiny/
+│   │   │       ├── RGB_0/
+│   │   │       ├── RGB_1/
+│   │   │       ├── RGB_2/
+│   │   │       ├── TEL_RGB/
+│   │   │       ├── gps/
+│   │   │       ├── imu/
+│   │   │       ├── lidar/
+│   │   │       ├── metadata.json
+│   │   │       └── speed/
+│   │   ├── map_04/
+│   │   │   └── routes_town04_long/
+│   │   │       ├── RGB_0/
+│   │   │       ├── RGB_1/
+│   │   │       ├── RGB_2/
+│   │   │       ├── TEL_RGB/
+│   │   │       ├── gps/
+│   │   │       ├── imu/
+│   │   │       ├── lidar/
+│   │   │       ├── metadata.json
+│   │   │       └── speed/
+│   │   ├── map_05/
+│   │   │   ├── routes_town05_long/
+│   │   │   │   ├── RGB_0/
+│   │   │   │   ├── RGB_1/
+│   │   │   │   ├── RGB_2/
+│   │   │   │   ├── TEL_RGB/
+│   │   │   │   ├── gps/
+│   │   │   │   ├── imu/
+│   │   │   │   ├── lidar/
+│   │   │   │   ├── metadata.json
+│   │   │   │   └── speed/
+│   │   │   └── routes_town05_tiny/
+│   │   │       ├── RGB_0/
+│   │   │       ├── RGB_1/
+│   │   │       ├── RGB_2/
+│   │   │       ├── TEL_RGB/
+│   │   │       ├── gps/
+│   │   │       ├── imu/
+│   │   │       ├── lidar/
+│   │   │       ├── metadata.json
+│   │   │       └── speed/
+│   │   ├── map_06/
+│   │   │   ├── routes_town06_long/
+│   │   │   │   ├── RGB_0/
+│   │   │   │   ├── RGB_1/
+│   │   │   │   ├── RGB_2/
+│   │   │   │   ├── TEL_RGB/
+│   │   │   │   ├── gps/
+│   │   │   │   ├── imu/
+│   │   │   │   ├── lidar/
+│   │   │   │   ├── metadata.json
+│   │   │   │   └── speed/
+│   │   │   └── routes_town06_tiny/
+│   │   │       ├── RGB_0/
+│   │   │       ├── RGB_1/
+│   │   │       ├── RGB_2/
+│   │   │       ├── TEL_RGB/
+│   │   │       ├── gps/
+│   │   │       ├── imu/
+│   │   │       ├── lidar/
+│   │   │       ├── metadata.json
+│   │   │       └── speed/
+│   │   ├── map_07/
+│   │   │   └── routes_town07_tiny/
+│   │   │       ├── RGB_0/
+│   │   │       ├── RGB_1/
+│   │   │       ├── RGB_2/
+│   │   │       ├── TEL_RGB/
+│   │   │       ├── gps/
+│   │   │       ├── imu/
+│   │   │       ├── lidar/
+│   │   │       ├── metadata.json
+│   │   │       └── speed/
+│   │   └── map_10/
+│   │       └── routes_town10_tiny/
+│   │           ├── RGB_0/
+│   │           ├── RGB_1/
+│   │           ├── RGB_2/
+│   │           ├── TEL_RGB/
+│   │           ├── gps/
+│   │           ├── imu/
+│   │           ├── lidar/
+│   │           ├── metadata.json
+│   │           └── speed/
+│   ├── weather_1/
+│   │   ├── map_01/
+│   │   │   ├── routes_town01_long/
+│   │   │   │   ├── RGB_0/
+│   │   │   │   ├── RGB_1/
+│   │   │   │   ├── RGB_2/
+│   │   │   │   ├── TEL_RGB/
+│   │   │   │   ├── gps/
+│   │   │   │   ├── imu/
+│   │   │   │   ├── lidar/
+│   │   │   │   ├── metadata.json
+│   │   │   │   └── speed/
+│   │   │   └── routes_town01_tiny/
+│   │   │       ├── RGB_0/
+│   │   │       ├── RGB_1/
+│   │   │       ├── RGB_2/
+│   │   │       ├── TEL_RGB/
+│   │   │       ├── gps/
+│   │   │       ├── imu/
+│   │   │       ├── lidar/
+│   │   │       ├── metadata.json
+│   │   │       └── speed/
+│   │   ├── map_02/
+│   │   │   ├── routes_town02_long/
+│   │   │   │   ├── RGB_0/
+│   │   │   │   ├── RGB_1/
+│   │   │   │   ├── RGB_2/
+│   │   │   │   ├── TEL_RGB/
+│   │   │   │   ├── gps/
+│   │   │   │   ├── imu/
+│   │   │   │   ├── lidar/
+│   │   │   │   ├── metadata.json
+│   │   │   │   └── speed/
+│   │   │   └── routes_town02_tiny/
+│   │   │       ├── RGB_0/
+│   │   │       ├── RGB_1/
+│   │   │       ├── RGB_2/
+│   │   │       ├── TEL_RGB/
+│   │   │       ├── gps/
+│   │   │       ├── imu/
+│   │   │       ├── lidar/
+│   │   │       ├── metadata.json
+│   │   │       └── speed/
+│   │   ├── map_03/
+│   │   │   ├── routes_town03_long/
+│   │   │   │   ├── RGB_0/
+│   │   │   │   ├── RGB_1/
+│   │   │   │   ├── RGB_2/
+│   │   │   │   ├── TEL_RGB/
+│   │   │   │   ├── gps/
+│   │   │   │   ├── imu/
+│   │   │   │   ├── lidar/
+│   │   │   │   ├── metadata.json
+│   │   │   │   └── speed/
+│   │   │   └── routes_town03_tiny/
+│   │   │       ├── RGB_0/
+│   │   │       ├── RGB_1/
+│   │   │       ├── RGB_2/
+│   │   │       ├── TEL_RGB/
+│   │   │       ├── gps/
+│   │   │       ├── imu/
+│   │   │       ├── lidar/
+│   │   │       ├── metadata.json
+│   │   │       └── speed/
+│   │   ├── map_04/
+│   │   │   ├── routes_town04_long/
+│   │   │   │   ├── RGB_0/
+│   │   │   │   ├── RGB_1/
+│   │   │   │   ├── RGB_2/
+│   │   │   │   ├── TEL_RGB/
+│   │   │   │   ├── gps/
+│   │   │   │   ├── imu/
+│   │   │   │   ├── lidar/
+│   │   │   │   ├── metadata.json
+│   │   │   │   └── speed/
+│   │   │   └── routes_town04_tiny/
+│   │   │       ├── RGB_0/
+│   │   │       ├── RGB_1/
+│   │   │       ├── RGB_2/
+│   │   │       ├── TEL_RGB/
+│   │   │       ├── gps/
+│   │   │       ├── imu/
+│   │   │       ├── lidar/
+│   │   │       ├── metadata.json
+│   │   │       └── speed/
+│   │   ├── map_05/
+│   │   │   ├── routes_town05_long/
+│   │   │   │   ├── RGB_0/
+│   │   │   │   ├── RGB_1/
+│   │   │   │   ├── RGB_2/
+│   │   │   │   ├── TEL_RGB/
+│   │   │   │   ├── gps/
+│   │   │   │   ├── imu/
+│   │   │   │   ├── lidar/
+│   │   │   │   ├── metadata.json
+│   │   │   │   └── speed/
+│   │   │   └── routes_town05_tiny/
+│   │   │       ├── RGB_0/
+│   │   │       ├── RGB_1/
+│   │   │       ├── RGB_2/
+│   │   │       ├── TEL_RGB/
+│   │   │       ├── gps/
+│   │   │       ├── imu/
+│   │   │       ├── lidar/
+│   │   │       ├── metadata.json
+│   │   │       └── speed/
+│   │   ├── map_06/
+│   │   │   ├── routes_town06_long/
+│   │   │   │   ├── RGB_0/
+│   │   │   │   ├── RGB_1/
+│   │   │   │   ├── RGB_2/
+│   │   │   │   ├── TEL_RGB/
+│   │   │   │   ├── gps/
+│   │   │   │   ├── imu/
+│   │   │   │   ├── lidar/
+│   │   │   │   ├── metadata.json
+│   │   │   │   └── speed/
+│   │   │   └── routes_town06_tiny/
+│   │   │       ├── RGB_0/
+│   │   │       ├── RGB_1/
+│   │   │       ├── RGB_2/
+│   │   │       ├── TEL_RGB/
+│   │   │       ├── gps/
+│   │   │       ├── imu/
+│   │   │       ├── lidar/
+│   │   │       ├── metadata.json
+│   │   │       └── speed/
+│   │   ├── map_07/
+│   │   │   └── routes_town07_tiny/
+│   │   │       ├── RGB_0/
+│   │   │       ├── RGB_1/
+│   │   │       ├── RGB_2/
+│   │   │       ├── TEL_RGB/
+│   │   │       ├── gps/
+│   │   │       ├── imu/
+│   │   │       ├── lidar/
+│   │   │       ├── metadata.json
+│   │   │       └── speed/
+│   │   └── map_10/
+│   │       └── routes_town10_tiny/
+│   │           ├── RGB_0/
+│   │           ├── RGB_1/
+│   │           ├── RGB_2/
+│   │           ├── TEL_RGB/
+│   │           ├── gps/
+│   │           ├── imu/
+│   │           ├── lidar/
+│   │           ├── metadata.json
+│   │           └── speed/
+│   ├── weather_10/
+│   │   ├── map_01/
+│   │   │   ├── routes_town01_long/
+│   │   │   │   ├── RGB_0/
+│   │   │   │   ├── RGB_1/
+│   │   │   │   ├── RGB_2/
+│   │   │   │   ├── TEL_RGB/
+│   │   │   │   ├── gps/
+│   │   │   │   ├── imu/
+│   │   │   │   ├── lidar/
+│   │   │   │   ├── metadata.json
+│   │   │   │   └── speed/
+│   │   │   └── routes_town01_tiny/
+│   │   │       ├── RGB_0/
+│   │   │       ├── RGB_1/
+│   │   │       ├── RGB_2/
+│   │   │       ├── TEL_RGB/
+│   │   │       ├── gps/
+│   │   │       ├── imu/
+│   │   │       ├── lidar/
+│   │   │       ├── metadata.json
+│   │   │       └── speed/
+│   │   ├── map_02/
+│   │   │   ├── routes_town02_long/
+│   │   │   │   ├── RGB_0/
+│   │   │   │   ├── RGB_1/
+│   │   │   │   ├── RGB_2/
+│   │   │   │   ├── TEL_RGB/
+│   │   │   │   ├── gps/
+│   │   │   │   ├── imu/
+│   │   │   │   ├── lidar/
+│   │   │   │   ├── metadata.json
+│   │   │   │   └── speed/
+│   │   │   └── routes_town02_short/
+│   │   │       ├── RGB_0/
+│   │   │       ├── RGB_1/
+│   │   │       ├── RGB_2/
+│   │   │       ├── TEL_RGB/
+│   │   │       ├── gps/
+│   │   │       ├── imu/
+│   │   │       ├── lidar/
+│   │   │       ├── metadata.json
+│   │   │       └── speed/
+│   │   ├── map_03/
+│   │   │   ├── routes_town03_long/
+│   │   │   │   ├── RGB_0/
+│   │   │   │   ├── RGB_1/
+│   │   │   │   ├── RGB_2/
+│   │   │   │   ├── TEL_RGB/
+│   │   │   │   ├── gps/
+│   │   │   │   ├── imu/
+│   │   │   │   ├── lidar/
+│   │   │   │   ├── metadata.json
+│   │   │   │   └── speed/
+│   │   │   └── routes_town03_short/
+│   │   │       ├── RGB_0/
+│   │   │       ├── RGB_1/
+│   │   │       ├── RGB_2/
+│   │   │       ├── TEL_RGB/
+│   │   │       ├── gps/
+│   │   │       ├── imu/
+│   │   │       ├── lidar/
+│   │   │       ├── metadata.json
+│   │   │       └── speed/
+│   │   ├── map_04/
+│   │   │   ├── routes_town04_long/
+│   │   │   │   ├── RGB_0/
+│   │   │   │   ├── RGB_1/
+│   │   │   │   ├── RGB_2/
+│   │   │   │   ├── TEL_RGB/
+│   │   │   │   ├── gps/
+│   │   │   │   ├── imu/
+│   │   │   │   ├── lidar/
+│   │   │   │   ├── metadata.json
+│   │   │   │   └── speed/
+│   │   │   └── routes_town04_short/
+│   │   │       ├── RGB_0/
+│   │   │       ├── RGB_1/
+│   │   │       ├── RGB_2/
+│   │   │       ├── TEL_RGB/
+│   │   │       ├── gps/
+│   │   │       ├── imu/
+│   │   │       ├── lidar/
+│   │   │       ├── metadata.json
+│   │   │       └── speed/
+│   │   ├── map_05/
+│   │   │   └── routes_town05_short/
+│   │   │       ├── RGB_0/
+│   │   │       ├── RGB_1/
+│   │   │       ├── RGB_2/
+│   │   │       ├── TEL_RGB/
+│   │   │       ├── gps/
+│   │   │       ├── imu/
+│   │   │       ├── lidar/
+│   │   │       ├── metadata.json
+│   │   │       └── speed/
+│   │   ├── map_06/
+│   │   │   └── routes_town06_short/
+│   │   │       ├── RGB_0/
+│   │   │       ├── RGB_1/
+│   │   │       ├── RGB_2/
+│   │   │       ├── TEL_RGB/
+│   │   │       ├── gps/
+│   │   │       ├── imu/
+│   │   │       ├── lidar/
+│   │   │       ├── metadata.json
+│   │   │       └── speed/
+│   │   ├── map_07/
+│   │   │   └── routes_town07_short/
+│   │   │       ├── RGB_0/
+│   │   │       ├── RGB_1/
+│   │   │       ├── RGB_2/
+│   │   │       ├── TEL_RGB/
+│   │   │       ├── gps/
+│   │   │       ├── imu/
+│   │   │       ├── lidar/
+│   │   │       ├── metadata.json
+│   │   │       └── speed/
+│   │   └── map_10/
+│   │       └── routes_town10_short/
+│   │           ├── RGB_0/
+│   │           ├── RGB_1/
+│   │           ├── RGB_2/
+│   │           ├── TEL_RGB/
+│   │           ├── gps/
+│   │           ├── imu/
+│   │           ├── lidar/
+│   │           ├── metadata.json
+│   │           └── speed/
+│   ├── weather_11/
+│   │   ├── map_01/
+│   │   │   └── routes_town01_short/
+│   │   │       ├── RGB_0/
+│   │   │       ├── RGB_1/
+│   │   │       ├── RGB_2/
+│   │   │       ├── TEL_RGB/
+│   │   │       ├── gps/
+│   │   │       ├── imu/
+│   │   │       ├── lidar/
+│   │   │       ├── metadata.json
+│   │   │       └── speed/
+│   │   ├── map_02/
+│   │   │   └── routes_town02_short/
+│   │   │       ├── RGB_0/
+│   │   │       ├── RGB_1/
+│   │   │       ├── RGB_2/
+│   │   │       ├── TEL_RGB/
+│   │   │       ├── gps/
+│   │   │       ├── imu/
+│   │   │       ├── lidar/
+│   │   │       ├── metadata.json
+│   │   │       └── speed/
+│   │   ├── map_03/
+│   │   │   └── routes_town03_short/
+│   │   │       ├── RGB_0/
+│   │   │       ├── RGB_1/
+│   │   │       ├── RGB_2/
+│   │   │       ├── TEL_RGB/
+│   │   │       ├── gps/
+│   │   │       ├── imu/
+│   │   │       ├── lidar/
+│   │   │       ├── metadata.json
+│   │   │       └── speed/
+│   │   ├── map_05/
+│   │   │   └── routes_town05_short/
+│   │   │       ├── RGB_0/
+│   │   │       ├── RGB_1/
+│   │   │       ├── RGB_2/
+│   │   │       ├── TEL_RGB/
+│   │   │       ├── gps/
+│   │   │       ├── imu/
+│   │   │       ├── lidar/
+│   │   │       ├── metadata.json
+│   │   │       └── speed/
+│   │   ├── map_06/
+│   │   │   └── routes_town06_short/
+│   │   │       ├── RGB_0/
+│   │   │       ├── RGB_1/
+│   │   │       ├── RGB_2/
+│   │   │       ├── TEL_RGB/
+│   │   │       ├── gps/
+│   │   │       ├── imu/
+│   │   │       ├── lidar/
+│   │   │       ├── metadata.json
+│   │   │       └── speed/
+│   │   ├── map_07/
+│   │   │   └── routes_town07_short/
+│   │   │       ├── RGB_0/
+│   │   │       ├── RGB_1/
+│   │   │       ├── RGB_2/
+│   │   │       ├── TEL_RGB/
+│   │   │       ├── gps/
+│   │   │       ├── imu/
+│   │   │       ├── lidar/
+│   │   │       ├── metadata.json
+│   │   │       └── speed/
+│   │   └── map_10/
+│   │       └── routes_town10_short/
+│   │           ├── RGB_0/
+│   │           ├── RGB_1/
+│   │           ├── RGB_2/
+│   │           ├── TEL_RGB/
+│   │           ├── gps/
+│   │           ├── imu/
+│   │           ├── lidar/
+│   │           ├── metadata.json
+│   │           └── speed/
+│   ├── weather_12/
+│   │   ├── map_01/
+│   │   │   └── routes_town01_short/
+│   │   │       ├── RGB_0/
+│   │   │       ├── RGB_1/
+│   │   │       ├── RGB_2/
+│   │   │       ├── TEL_RGB/
+│   │   │       ├── gps/
+│   │   │       ├── imu/
+│   │   │       ├── lidar/
+│   │   │       ├── metadata.json
+│   │   │       └── speed/
+│   │   ├── map_02/
+│   │   │   ├── routes_town02_long/
+│   │   │   │   ├── RGB_0/
+│   │   │   │   ├── RGB_1/
+│   │   │   │   ├── RGB_2/
+│   │   │   │   ├── TEL_RGB/
+│   │   │   │   ├── gps/
+│   │   │   │   ├── imu/
+│   │   │   │   ├── lidar/
+│   │   │   │   ├── metadata.json
+│   │   │   │   └── speed/
+│   │   │   └── routes_town02_short/
+│   │   │       ├── RGB_0/
+│   │   │       ├── RGB_1/
+│   │   │       ├── RGB_2/
+│   │   │       ├── TEL_RGB/
+│   │   │       ├── gps/
+│   │   │       ├── imu/
+│   │   │       ├── lidar/
+│   │   │       ├── metadata.json
+│   │   │       └── speed/
+│   │   ├── map_03/
+│   │   │   └── routes_town03_long/
+│   │   │       ├── RGB_0/
+│   │   │       ├── RGB_1/
+│   │   │       ├── RGB_2/
+│   │   │       ├── TEL_RGB/
+│   │   │       ├── gps/
+│   │   │       ├── imu/
+│   │   │       ├── lidar/
+│   │   │       ├── metadata.json
+│   │   │       └── speed/
+│   │   ├── map_04/
+│   │   │   ├── routes_town04_long/
+│   │   │   │   ├── RGB_0/
+│   │   │   │   ├── RGB_1/
+│   │   │   │   ├── RGB_2/
+│   │   │   │   ├── TEL_RGB/
+│   │   │   │   ├── gps/
+│   │   │   │   ├── imu/
+│   │   │   │   ├── lidar/
+│   │   │   │   ├── metadata.json
+│   │   │   │   └── speed/
+│   │   │   └── routes_town04_short/
+│   │   │       ├── RGB_0/
+│   │   │       ├── RGB_1/
+│   │   │       ├── RGB_2/
+│   │   │       ├── TEL_RGB/
+│   │   │       ├── gps/
+│   │   │       ├── imu/
+│   │   │       ├── lidar/
+│   │   │       ├── metadata.json
+│   │   │       └── speed/
+│   │   ├── map_05/
+│   │   │   └── routes_town05_short/
+│   │   │       ├── RGB_0/
+│   │   │       ├── RGB_1/
+│   │   │       ├── RGB_2/
+│   │   │       ├── TEL_RGB/
+│   │   │       ├── gps/
+│   │   │       ├── imu/
+│   │   │       ├── lidar/
+│   │   │       ├── metadata.json
+│   │   │       └── speed/
+│   │   ├── map_06/
+│   │   │   ├── routes_town06_long/
+│   │   │   │   ├── RGB_0/
+│   │   │   │   ├── RGB_1/
+│   │   │   │   ├── RGB_2/
+│   │   │   │   ├── TEL_RGB/
+│   │   │   │   ├── gps/
+│   │   │   │   ├── imu/
+│   │   │   │   ├── lidar/
+│   │   │   │   ├── metadata.json
+│   │   │   │   └── speed/
+│   │   │   └── routes_town06_short/
+│   │   │       ├── RGB_0/
+│   │   │       ├── RGB_1/
+│   │   │       ├── RGB_2/
+│   │   │       ├── TEL_RGB/
+│   │   │       ├── gps/
+│   │   │       ├── imu/
+│   │   │       ├── lidar/
+│   │   │       ├── metadata.json
+│   │   │       └── speed/
+│   │   ├── map_07/
+│   │   │   └── routes_town07_short/
+│   │   │       ├── RGB_0/
+│   │   │       ├── RGB_1/
+│   │   │       ├── RGB_2/
+│   │   │       ├── TEL_RGB/
+│   │   │       ├── gps/
+│   │   │       ├── imu/
+│   │   │       ├── lidar/
+│   │   │       ├── metadata.json
+│   │   │       └── speed/
+│   │   └── map_10/
+│   │       └── routes_town10_short/
+│   │           ├── RGB_0/
+│   │           ├── RGB_1/
+│   │           ├── RGB_2/
+│   │           ├── TEL_RGB/
+│   │           ├── gps/
+│   │           ├── imu/
+│   │           ├── lidar/
+│   │           ├── metadata.json
+│   │           └── speed/
+│   ├── weather_13/
+│   │   ├── map_01/
+│   │   │   ├── routes_town01_long/
+│   │   │   │   ├── RGB_0/
+│   │   │   │   ├── RGB_1/
+│   │   │   │   ├── RGB_2/
+│   │   │   │   ├── TEL_RGB/
+│   │   │   │   ├── gps/
+│   │   │   │   ├── imu/
+│   │   │   │   ├── lidar/
+│   │   │   │   ├── metadata.json
+│   │   │   │   └── speed/
+│   │   │   └── routes_town01_short/
+│   │   │       ├── RGB_0/
+│   │   │       ├── RGB_1/
+│   │   │       ├── RGB_2/
+│   │   │       ├── TEL_RGB/
+│   │   │       ├── gps/
+│   │   │       ├── imu/
+│   │   │       ├── lidar/
+│   │   │       ├── metadata.json
+│   │   │       └── speed/
+│   │   ├── map_02/
+│   │   │   └── routes_town02_long/
+│   │   │       ├── RGB_0/
+│   │   │       ├── RGB_1/
+│   │   │       ├── RGB_2/
+│   │   │       ├── TEL_RGB/
+│   │   │       ├── gps/
+│   │   │       ├── imu/
+│   │   │       ├── lidar/
+│   │   │       ├── metadata.json
+│   │   │       └── speed/
+│   │   ├── map_03/
+│   │   │   └── routes_town03_long/
+│   │   │       ├── RGB_0/
+│   │   │       ├── RGB_1/
+│   │   │       ├── RGB_2/
+│   │   │       ├── TEL_RGB/
+│   │   │       ├── gps/
+│   │   │       ├── imu/
+│   │   │       ├── lidar/
+│   │   │       ├── metadata.json
+│   │   │       └── speed/
+│   │   ├── map_04/
+│   │   │   ├── routes_town04_long/
+│   │   │   │   ├── RGB_0/
+│   │   │   │   ├── RGB_1/
+│   │   │   │   ├── RGB_2/
+│   │   │   │   ├── TEL_RGB/
+│   │   │   │   ├── gps/
+│   │   │   │   ├── imu/
+│   │   │   │   ├── lidar/
+│   │   │   │   ├── metadata.json
+│   │   │   │   └── speed/
+│   │   │   └── routes_town04_short/
+│   │   │       ├── RGB_0/
+│   │   │       ├── RGB_1/
+│   │   │       ├── RGB_2/
+│   │   │       ├── TEL_RGB/
+│   │   │       ├── gps/
+│   │   │       ├── imu/
+│   │   │       ├── lidar/
+│   │   │       ├── metadata.json
+│   │   │       └── speed/
+│   │   ├── map_05/
+│   │   │   └── routes_town05_short/
+│   │   │       ├── RGB_0/
+│   │   │       ├── RGB_1/
+│   │   │       ├── RGB_2/
+│   │   │       ├── TEL_RGB/
+│   │   │       ├── gps/
+│   │   │       ├── imu/
+│   │   │       ├── lidar/
+│   │   │       ├── metadata.json
+│   │   │       └── speed/
+│   │   ├── map_06/
+│   │   │   ├── routes_town06_long/
+│   │   │   │   ├── RGB_0/
+│   │   │   │   ├── RGB_1/
+│   │   │   │   ├── RGB_2/
+│   │   │   │   ├── TEL_RGB/
+│   │   │   │   ├── gps/
+│   │   │   │   ├── imu/
+│   │   │   │   ├── lidar/
+│   │   │   │   ├── metadata.json
+│   │   │   │   └── speed/
+│   │   │   └── routes_town06_short/
+│   │   │       ├── RGB_0/
+│   │   │       ├── RGB_1/
+│   │   │       ├── RGB_2/
+│   │   │       ├── TEL_RGB/
+│   │   │       ├── gps/
+│   │   │       ├── imu/
+│   │   │       ├── lidar/
+│   │   │       ├── metadata.json
+│   │   │       └── speed/
+│   │   ├── map_07/
+│   │   │   └── routes_town07_short/
+│   │   │       ├── RGB_0/
+│   │   │       ├── RGB_1/
+│   │   │       ├── RGB_2/
+│   │   │       ├── TEL_RGB/
+│   │   │       ├── gps/
+│   │   │       ├── imu/
+│   │   │       ├── lidar/
+│   │   │       ├── metadata.json
+│   │   │       └── speed/
+│   │   └── map_10/
+│   │       └── routes_town10_short/
+│   │           ├── RGB_0/
+│   │           ├── RGB_1/
+│   │           ├── RGB_2/
+│   │           ├── TEL_RGB/
+│   │           ├── gps/
+│   │           ├── imu/
+│   │           ├── lidar/
+│   │           ├── metadata.json
+│   │           └── speed/
+│   ├── weather_14/
+│   │   ├── map_01/
+│   │   │   └── routes_town01_long/
+│   │   │       ├── RGB_0/
+│   │   │       ├── RGB_1/
+│   │   │       ├── RGB_2/
+│   │   │       ├── TEL_RGB/
+│   │   │       ├── gps/
+│   │   │       ├── imu/
+│   │   │       ├── lidar/
+│   │   │       ├── metadata.json
+│   │   │       └── speed/
+│   │   ├── map_02/
+│   │   │   ├── routes_town02_long/
+│   │   │   │   ├── RGB_0/
+│   │   │   │   ├── RGB_1/
+│   │   │   │   ├── RGB_2/
+│   │   │   │   ├── TEL_RGB/
+│   │   │   │   ├── gps/
+│   │   │   │   ├── imu/
+│   │   │   │   ├── lidar/
+│   │   │   │   ├── metadata.json
+│   │   │   │   └── speed/
+│   │   │   └── routes_town02_short/
+│   │   │       ├── RGB_0/
+│   │   │       ├── RGB_1/
+│   │   │       ├── RGB_2/
+│   │   │       ├── TEL_RGB/
+│   │   │       ├── gps/
+│   │   │       ├── imu/
+│   │   │       ├── lidar/
+│   │   │       ├── metadata.json
+│   │   │       └── speed/
+│   │   ├── map_03/
+│   │   │   └── routes_town03_long/
+│   │   │       ├── RGB_0/
+│   │   │       ├── RGB_1/
+│   │   │       ├── RGB_2/
+│   │   │       ├── TEL_RGB/
+│   │   │       ├── gps/
+│   │   │       ├── imu/
+│   │   │       ├── lidar/
+│   │   │       ├── metadata.json
+│   │   │       └── speed/
+│   │   ├── map_05/
+│   │   │   └── routes_town05_long/
+│   │   │       ├── RGB_0/
+│   │   │       ├── RGB_1/
+│   │   │       ├── RGB_2/
+│   │   │       ├── TEL_RGB/
+│   │   │       ├── gps/
+│   │   │       ├── imu/
+│   │   │       ├── lidar/
+│   │   │       ├── metadata.json
+│   │   │       └── speed/
+│   │   └── map_06/
+│   │       └── routes_town06_long/
+│   │           ├── RGB_0/
+│   │           ├── RGB_1/
+│   │           ├── RGB_2/
+│   │           ├── TEL_RGB/
+│   │           ├── gps/
+│   │           ├── imu/
+│   │           ├── lidar/
+│   │           ├── metadata.json
+│   │           └── speed/
+│   ├── weather_2/
+│   │   ├── map_01/
+│   │   │   ├── routes_town01_long/
+│   │   │   │   ├── RGB_0/
+│   │   │   │   ├── RGB_1/
+│   │   │   │   ├── RGB_2/
+│   │   │   │   ├── TEL_RGB/
+│   │   │   │   ├── gps/
+│   │   │   │   ├── imu/
+│   │   │   │   ├── lidar/
+│   │   │   │   ├── metadata.json
+│   │   │   │   └── speed/
+│   │   │   └── routes_town01_tiny/
+│   │   │       ├── RGB_0/
+│   │   │       ├── RGB_1/
+│   │   │       ├── RGB_2/
+│   │   │       ├── TEL_RGB/
+│   │   │       ├── gps/
+│   │   │       ├── imu/
+│   │   │       ├── lidar/
+│   │   │       ├── metadata.json
+│   │   │       └── speed/
+│   │   ├── map_02/
+│   │   │   ├── routes_town02_long/
+│   │   │   │   ├── RGB_0/
+│   │   │   │   ├── RGB_1/
+│   │   │   │   ├── RGB_2/
+│   │   │   │   ├── TEL_RGB/
+│   │   │   │   ├── gps/
+│   │   │   │   ├── imu/
+│   │   │   │   ├── lidar/
+│   │   │   │   ├── metadata.json
+│   │   │   │   └── speed/
+│   │   │   └── routes_town02_tiny/
+│   │   │       ├── RGB_0/
+│   │   │       ├── RGB_1/
+│   │   │       ├── RGB_2/
+│   │   │       ├── TEL_RGB/
+│   │   │       ├── gps/
+│   │   │       ├── imu/
+│   │   │       ├── lidar/
+│   │   │       ├── metadata.json
+│   │   │       └── speed/
+│   │   ├── map_03/
+│   │   │   ├── routes_town03_long/
+│   │   │   │   ├── RGB_0/
+│   │   │   │   ├── RGB_1/
+│   │   │   │   ├── RGB_2/
+│   │   │   │   ├── TEL_RGB/
+│   │   │   │   ├── gps/
+│   │   │   │   ├── imu/
+│   │   │   │   ├── lidar/
+│   │   │   │   ├── metadata.json
+│   │   │   │   └── speed/
+│   │   │   └── routes_town03_tiny/
+│   │   │       ├── RGB_0/
+│   │   │       ├── RGB_1/
+│   │   │       ├── RGB_2/
+│   │   │       ├── TEL_RGB/
+│   │   │       ├── gps/
+│   │   │       ├── imu/
+│   │   │       ├── lidar/
+│   │   │       ├── metadata.json
+│   │   │       └── speed/
+│   │   ├── map_04/
+│   │   │   ├── routes_town04_long/
+│   │   │   │   ├── RGB_0/
+│   │   │   │   ├── RGB_1/
+│   │   │   │   ├── RGB_2/
+│   │   │   │   ├── TEL_RGB/
+│   │   │   │   ├── gps/
+│   │   │   │   ├── imu/
+│   │   │   │   ├── lidar/
+│   │   │   │   ├── metadata.json
+│   │   │   │   └── speed/
+│   │   │   └── routes_town04_tiny/
+│   │   │       ├── RGB_0/
+│   │   │       ├── RGB_1/
+│   │   │       ├── RGB_2/
+│   │   │       ├── TEL_RGB/
+│   │   │       ├── gps/
+│   │   │       ├── imu/
+│   │   │       ├── lidar/
+│   │   │       ├── metadata.json
+│   │   │       └── speed/
+│   │   ├── map_05/
+│   │   │   ├── routes_town05_long/
+│   │   │   │   ├── RGB_0/
+│   │   │   │   ├── RGB_1/
+│   │   │   │   ├── RGB_2/
+│   │   │   │   ├── TEL_RGB/
+│   │   │   │   ├── gps/
+│   │   │   │   ├── imu/
+│   │   │   │   ├── lidar/
+│   │   │   │   ├── metadata.json
+│   │   │   │   └── speed/
+│   │   │   └── routes_town05_tiny/
+│   │   │       ├── RGB_0/
+│   │   │       ├── RGB_1/
+│   │   │       ├── RGB_2/
+│   │   │       ├── TEL_RGB/
+│   │   │       ├── gps/
+│   │   │       ├── imu/
+│   │   │       ├── lidar/
+│   │   │       ├── metadata.json
+│   │   │       └── speed/
+│   │   ├── map_06/
+│   │   │   ├── routes_town06_long/
+│   │   │   │   ├── RGB_0/
+│   │   │   │   ├── RGB_1/
+│   │   │   │   ├── RGB_2/
+│   │   │   │   ├── TEL_RGB/
+│   │   │   │   ├── gps/
+│   │   │   │   ├── imu/
+│   │   │   │   ├── lidar/
+│   │   │   │   ├── metadata.json
+│   │   │   │   └── speed/
+│   │   │   └── routes_town06_tiny/
+│   │   │       ├── RGB_0/
+│   │   │       ├── RGB_1/
+│   │   │       ├── RGB_2/
+│   │   │       ├── TEL_RGB/
+│   │   │       ├── gps/
+│   │   │       ├── imu/
+│   │   │       ├── lidar/
+│   │   │       ├── metadata.json
+│   │   │       └── speed/
+│   │   ├── map_07/
+│   │   │   └── routes_town07_tiny/
+│   │   │       ├── RGB_0/
+│   │   │       ├── RGB_1/
+│   │   │       ├── RGB_2/
+│   │   │       ├── TEL_RGB/
+│   │   │       ├── gps/
+│   │   │       ├── imu/
+│   │   │       ├── lidar/
+│   │   │       ├── metadata.json
+│   │   │       └── speed/
+│   │   └── map_10/
+│   │       └── routes_town10_tiny/
+│   │           ├── RGB_0/
+│   │           ├── RGB_1/
+│   │           ├── RGB_2/
+│   │           ├── TEL_RGB/
+│   │           ├── gps/
+│   │           ├── imu/
+│   │           ├── lidar/
+│   │           ├── metadata.json
+│   │           └── speed/
+│   ├── weather_3/
+│   │   ├── map_01/
+│   │   │   ├── routes_town01_long/
+│   │   │   │   ├── RGB_0/
+│   │   │   │   ├── RGB_1/
+│   │   │   │   ├── RGB_2/
+│   │   │   │   ├── TEL_RGB/
+│   │   │   │   ├── gps/
+│   │   │   │   ├── imu/
+│   │   │   │   ├── lidar/
+│   │   │   │   ├── metadata.json
+│   │   │   │   └── speed/
+│   │   │   ├── routes_town01_short/
+│   │   │   │   ├── RGB_0/
+│   │   │   │   ├── RGB_1/
+│   │   │   │   ├── RGB_2/
+│   │   │   │   ├── TEL_RGB/
+│   │   │   │   ├── gps/
+│   │   │   │   ├── imu/
+│   │   │   │   ├── lidar/
+│   │   │   │   ├── metadata.json
+│   │   │   │   └── speed/
+│   │   │   └── routes_town01_tiny/
+│   │   │       ├── RGB_0/
+│   │   │       ├── RGB_1/
+│   │   │       ├── RGB_2/
+│   │   │       ├── TEL_RGB/
+│   │   │       ├── gps/
+│   │   │       ├── imu/
+│   │   │       ├── lidar/
+│   │   │       ├── metadata.json
+│   │   │       └── speed/
+│   │   ├── map_02/
+│   │   │   ├── routes_town02_long/
+│   │   │   │   ├── RGB_0/
+│   │   │   │   ├── RGB_1/
+│   │   │   │   ├── RGB_2/
+│   │   │   │   ├── TEL_RGB/
+│   │   │   │   ├── gps/
+│   │   │   │   ├── imu/
+│   │   │   │   ├── lidar/
+│   │   │   │   ├── metadata.json
+│   │   │   │   └── speed/
+│   │   │   └── routes_town02_tiny/
+│   │   │       ├── RGB_0/
+│   │   │       ├── RGB_1/
+│   │   │       ├── RGB_2/
+│   │   │       ├── TEL_RGB/
+│   │   │       ├── gps/
+│   │   │       ├── imu/
+│   │   │       ├── lidar/
+│   │   │       ├── metadata.json
+│   │   │       └── speed/
+│   │   ├── map_03/
+│   │   │   ├── routes_town03_long/
+│   │   │   │   ├── RGB_0/
+│   │   │   │   ├── RGB_1/
+│   │   │   │   ├── RGB_2/
+│   │   │   │   ├── TEL_RGB/
+│   │   │   │   ├── gps/
+│   │   │   │   ├── imu/
+│   │   │   │   ├── lidar/
+│   │   │   │   ├── metadata.json
+│   │   │   │   └── speed/
+│   │   │   └── routes_town03_short/
+│   │   │       ├── RGB_0/
+│   │   │       ├── RGB_1/
+│   │   │       ├── RGB_2/
+│   │   │       ├── TEL_RGB/
+│   │   │       ├── gps/
+│   │   │       ├── imu/
+│   │   │       ├── lidar/
+│   │   │       ├── metadata.json
+│   │   │       └── speed/
+│   │   ├── map_04/
+│   │   │   ├── routes_town04_long/
+│   │   │   │   ├── RGB_0/
+│   │   │   │   ├── RGB_1/
+│   │   │   │   ├── RGB_2/
+│   │   │   │   ├── TEL_RGB/
+│   │   │   │   ├── gps/
+│   │   │   │   ├── imu/
+│   │   │   │   ├── lidar/
+│   │   │   │   ├── metadata.json
+│   │   │   │   └── speed/
+│   │   │   ├── routes_town04_short/
+│   │   │   │   ├── RGB_0/
+│   │   │   │   ├── RGB_1/
+│   │   │   │   ├── RGB_2/
+│   │   │   │   ├── TEL_RGB/
+│   │   │   │   ├── gps/
+│   │   │   │   ├── imu/
+│   │   │   │   ├── lidar/
+│   │   │   │   ├── metadata.json
+│   │   │   │   └── speed/
+│   │   │   └── routes_town04_tiny/
+│   │   │       ├── RGB_0/
+│   │   │       ├── RGB_1/
+│   │   │       ├── RGB_2/
+│   │   │       ├── TEL_RGB/
+│   │   │       ├── gps/
+│   │   │       ├── imu/
+│   │   │       ├── lidar/
+│   │   │       ├── metadata.json
+│   │   │       └── speed/
+│   │   ├── map_05/
+│   │   │   ├── routes_town05_long/
+│   │   │   │   ├── RGB_0/
+│   │   │   │   ├── RGB_1/
+│   │   │   │   ├── RGB_2/
+│   │   │   │   ├── TEL_RGB/
+│   │   │   │   ├── gps/
+│   │   │   │   ├── imu/
+│   │   │   │   ├── lidar/
+│   │   │   │   ├── metadata.json
+│   │   │   │   └── speed/
+│   │   │   └── routes_town05_short/
+│   │   │       ├── RGB_0/
+│   │   │       ├── RGB_1/
+│   │   │       ├── RGB_2/
+│   │   │       ├── TEL_RGB/
+│   │   │       ├── gps/
+│   │   │       ├── imu/
+│   │   │       ├── lidar/
+│   │   │       ├── metadata.json
+│   │   │       └── speed/
+│   │   ├── map_06/
+│   │   │   ├── routes_town06_long/
+│   │   │   │   ├── RGB_0/
+│   │   │   │   ├── RGB_1/
+│   │   │   │   ├── RGB_2/
+│   │   │   │   ├── TEL_RGB/
+│   │   │   │   ├── gps/
+│   │   │   │   ├── imu/
+│   │   │   │   ├── lidar/
+│   │   │   │   ├── metadata.json
+│   │   │   │   └── speed/
+│   │   │   └── routes_town06_short/
+│   │   │       ├── RGB_0/
+│   │   │       ├── RGB_1/
+│   │   │       ├── RGB_2/
+│   │   │       ├── TEL_RGB/
+│   │   │       ├── gps/
+│   │   │       ├── imu/
+│   │   │       ├── lidar/
+│   │   │       ├── metadata.json
+│   │   │       └── speed/
+│   │   └── map_07/
+│   │       └── routes_town07_short/
+│   │           ├── RGB_0/
+│   │           ├── RGB_1/
+│   │           ├── RGB_2/
+│   │           ├── TEL_RGB/
+│   │           ├── gps/
+│   │           ├── imu/
+│   │           ├── lidar/
+│   │           ├── metadata.json
+│   │           └── speed/
+│   ├── weather_4/
+│   │   ├── map_01/
+│   │   │   ├── routes_town01_long/
+│   │   │   │   ├── RGB_0/
+│   │   │   │   ├── RGB_1/
+│   │   │   │   ├── RGB_2/
+│   │   │   │   ├── TEL_RGB/
+│   │   │   │   ├── gps/
+│   │   │   │   ├── imu/
+│   │   │   │   ├── lidar/
+│   │   │   │   ├── metadata.json
+│   │   │   │   └── speed/
+│   │   │   └── routes_town01_short/
+│   │   │       ├── RGB_0/
+│   │   │       ├── RGB_1/
+│   │   │       ├── RGB_2/
+│   │   │       ├── TEL_RGB/
+│   │   │       ├── gps/
+│   │   │       ├── imu/
+│   │   │       ├── lidar/
+│   │   │       ├── metadata.json
+│   │   │       └── speed/
+│   │   ├── map_02/
+│   │   │   ├── routes_town02_long/
+│   │   │   │   ├── RGB_0/
+│   │   │   │   ├── RGB_1/
+│   │   │   │   ├── RGB_2/
+│   │   │   │   ├── TEL_RGB/
+│   │   │   │   ├── gps/
+│   │   │   │   ├── imu/
+│   │   │   │   ├── lidar/
+│   │   │   │   ├── metadata.json
+│   │   │   │   └── speed/
+│   │   │   └── routes_town02_short/
+│   │   │       ├── RGB_0/
+│   │   │       ├── RGB_1/
+│   │   │       ├── RGB_2/
+│   │   │       ├── TEL_RGB/
+│   │   │       ├── gps/
+│   │   │       ├── imu/
+│   │   │       ├── lidar/
+│   │   │       ├── metadata.json
+│   │   │       └── speed/
+│   │   ├── map_03/
+│   │   │   ├── routes_town03_long/
+│   │   │   │   ├── RGB_0/
+│   │   │   │   ├── RGB_1/
+│   │   │   │   ├── RGB_2/
+│   │   │   │   ├── TEL_RGB/
+│   │   │   │   ├── gps/
+│   │   │   │   ├── imu/
+│   │   │   │   ├── lidar/
+│   │   │   │   ├── metadata.json
+│   │   │   │   └── speed/
+│   │   │   └── routes_town03_short/
+│   │   │       ├── RGB_0/
+│   │   │       ├── RGB_1/
+│   │   │       ├── RGB_2/
+│   │   │       ├── TEL_RGB/
+│   │   │       ├── gps/
+│   │   │       ├── imu/
+│   │   │       ├── lidar/
+│   │   │       ├── metadata.json
+│   │   │       └── speed/
+│   │   ├── map_04/
+│   │   │   ├── routes_town04_long/
+│   │   │   │   ├── RGB_0/
+│   │   │   │   ├── RGB_1/
+│   │   │   │   ├── RGB_2/
+│   │   │   │   ├── TEL_RGB/
+│   │   │   │   ├── gps/
+│   │   │   │   ├── imu/
+│   │   │   │   ├── lidar/
+│   │   │   │   ├── metadata.json
+│   │   │   │   └── speed/
+│   │   │   └── routes_town04_short/
+│   │   │       ├── RGB_0/
+│   │   │       ├── RGB_1/
+│   │   │       ├── RGB_2/
+│   │   │       ├── TEL_RGB/
+│   │   │       ├── gps/
+│   │   │       ├── imu/
+│   │   │       ├── lidar/
+│   │   │       ├── metadata.json
+│   │   │       └── speed/
+│   │   ├── map_05/
+│   │   │   ├── routes_town05_long/
+│   │   │   │   ├── RGB_0/
+│   │   │   │   ├── RGB_1/
+│   │   │   │   ├── RGB_2/
+│   │   │   │   ├── TEL_RGB/
+│   │   │   │   ├── gps/
+│   │   │   │   ├── imu/
+│   │   │   │   ├── lidar/
+│   │   │   │   ├── metadata.json
+│   │   │   │   └── speed/
+│   │   │   └── routes_town05_short/
+│   │   │       ├── RGB_0/
+│   │   │       ├── RGB_1/
+│   │   │       ├── RGB_2/
+│   │   │       ├── TEL_RGB/
+│   │   │       ├── gps/
+│   │   │       ├── imu/
+│   │   │       ├── lidar/
+│   │   │       ├── metadata.json
+│   │   │       └── speed/
+│   │   ├── map_06/
+│   │   │   ├── routes_town06_long/
+│   │   │   │   ├── RGB_0/
+│   │   │   │   ├── RGB_1/
+│   │   │   │   ├── RGB_2/
+│   │   │   │   ├── TEL_RGB/
+│   │   │   │   ├── gps/
+│   │   │   │   ├── imu/
+│   │   │   │   ├── lidar/
+│   │   │   │   ├── metadata.json
+│   │   │   │   └── speed/
+│   │   │   └── routes_town06_short/
+│   │   │       ├── RGB_0/
+│   │   │       ├── RGB_1/
+│   │   │       ├── RGB_2/
+│   │   │       ├── TEL_RGB/
+│   │   │       ├── gps/
+│   │   │       ├── imu/
+│   │   │       ├── lidar/
+│   │   │       ├── metadata.json
+│   │   │       └── speed/
+│   │   ├── map_07/
+│   │   │   ├── routes_town07_short/
+│   │   │   │   ├── RGB_0/
+│   │   │   │   ├── RGB_1/
+│   │   │   │   ├── RGB_2/
+│   │   │   │   ├── TEL_RGB/
+│   │   │   │   ├── gps/
+│   │   │   │   ├── imu/
+│   │   │   │   ├── lidar/
+│   │   │   │   ├── metadata.json
+│   │   │   │   └── speed/
+│   │   │   └── routes_town07_tiny/
+│   │   │       ├── RGB_0/
+│   │   │       ├── RGB_1/
+│   │   │       ├── RGB_2/
+│   │   │       ├── TEL_RGB/
+│   │   │       ├── gps/
+│   │   │       ├── imu/
+│   │   │       ├── lidar/
+│   │   │       ├── metadata.json
+│   │   │       └── speed/
+│   │   └── map_10/
+│   │       ├── routes_town10_short/
+│   │       │   ├── RGB_0/
+│   │       │   ├── RGB_1/
+│   │       │   ├── RGB_2/
+│   │       │   ├── TEL_RGB/
+│   │       │   ├── gps/
+│   │       │   ├── imu/
+│   │       │   ├── lidar/
+│   │       │   ├── metadata.json
+│   │       │   └── speed/
+│   │       └── routes_town10_tiny/
+│   │           ├── RGB_0/
+│   │           ├── RGB_1/
+│   │           ├── RGB_2/
+│   │           ├── TEL_RGB/
+│   │           ├── gps/
+│   │           ├── imu/
+│   │           ├── lidar/
+│   │           ├── metadata.json
+│   │           └── speed/
+│   ├── weather_5/
+│   │   ├── map_01/
+│   │   │   ├── routes_town01_long/
+│   │   │   │   ├── RGB_0/
+│   │   │   │   ├── RGB_1/
+│   │   │   │   ├── RGB_2/
+│   │   │   │   ├── TEL_RGB/
+│   │   │   │   ├── gps/
+│   │   │   │   ├── imu/
+│   │   │   │   ├── lidar/
+│   │   │   │   ├── metadata.json
+│   │   │   │   └── speed/
+│   │   │   ├── routes_town01_short/
+│   │   │   │   ├── RGB_0/
+│   │   │   │   ├── RGB_1/
+│   │   │   │   ├── RGB_2/
+│   │   │   │   ├── TEL_RGB/
+│   │   │   │   ├── gps/
+│   │   │   │   ├── imu/
+│   │   │   │   ├── lidar/
+│   │   │   │   ├── metadata.json
+│   │   │   │   └── speed/
+│   │   │   └── routes_town01_tiny/
+│   │   │       ├── RGB_0/
+│   │   │       ├── RGB_1/
+│   │   │       ├── RGB_2/
+│   │   │       ├── TEL_RGB/
+│   │   │       ├── gps/
+│   │   │       ├── imu/
+│   │   │       ├── lidar/
+│   │   │       ├── metadata.json
+│   │   │       └── speed/
+│   │   ├── map_02/
+│   │   │   ├── routes_town02_long/
+│   │   │   │   ├── RGB_0/
+│   │   │   │   ├── RGB_1/
+│   │   │   │   ├── RGB_2/
+│   │   │   │   ├── TEL_RGB/
+│   │   │   │   ├── gps/
+│   │   │   │   ├── imu/
+│   │   │   │   ├── lidar/
+│   │   │   │   ├── metadata.json
+│   │   │   │   └── speed/
+│   │   │   ├── routes_town02_short/
+│   │   │   │   ├── RGB_0/
+│   │   │   │   ├── RGB_1/
+│   │   │   │   ├── RGB_2/
+│   │   │   │   ├── TEL_RGB/
+│   │   │   │   ├── gps/
+│   │   │   │   ├── imu/
+│   │   │   │   ├── lidar/
+│   │   │   │   ├── metadata.json
+│   │   │   │   └── speed/
+│   │   │   └── routes_town02_tiny/
+│   │   │       ├── RGB_0/
+│   │   │       ├── RGB_1/
+│   │   │       ├── RGB_2/
+│   │   │       ├── TEL_RGB/
+│   │   │       ├── gps/
+│   │   │       ├── imu/
+│   │   │       ├── lidar/
+│   │   │       ├── metadata.json
+│   │   │       └── speed/
+│   │   ├── map_03/
+│   │   │   ├── routes_town03_long/
+│   │   │   │   ├── RGB_0/
+│   │   │   │   ├── RGB_1/
+│   │   │   │   ├── RGB_2/
+│   │   │   │   ├── TEL_RGB/
+│   │   │   │   ├── gps/
+│   │   │   │   ├── imu/
+│   │   │   │   ├── lidar/
+│   │   │   │   ├── metadata.json
+│   │   │   │   └── speed/
+│   │   │   ├── routes_town03_short/
+│   │   │   │   ├── RGB_0/
+│   │   │   │   ├── RGB_1/
+│   │   │   │   ├── RGB_2/
+│   │   │   │   ├── TEL_RGB/
+│   │   │   │   ├── gps/
+│   │   │   │   ├── imu/
+│   │   │   │   ├── lidar/
+│   │   │   │   ├── metadata.json
+│   │   │   │   └── speed/
+│   │   │   └── routes_town03_tiny/
+│   │   │       ├── RGB_0/
+│   │   │       ├── RGB_1/
+│   │   │       ├── RGB_2/
+│   │   │       ├── TEL_RGB/
+│   │   │       ├── gps/
+│   │   │       ├── imu/
+│   │   │       ├── lidar/
+│   │   │       ├── metadata.json
+│   │   │       └── speed/
+│   │   ├── map_04/
+│   │   │   ├── routes_town04_long/
+│   │   │   │   ├── RGB_0/
+│   │   │   │   ├── RGB_1/
+│   │   │   │   ├── RGB_2/
+│   │   │   │   ├── TEL_RGB/
+│   │   │   │   ├── gps/
+│   │   │   │   ├── imu/
+│   │   │   │   ├── lidar/
+│   │   │   │   ├── metadata.json
+│   │   │   │   └── speed/
+│   │   │   └── routes_town04_tiny/
+│   │   │       ├── RGB_0/
+│   │   │       ├── RGB_1/
+│   │   │       ├── RGB_2/
+│   │   │       ├── TEL_RGB/
+│   │   │       ├── gps/
+│   │   │       ├── imu/
+│   │   │       ├── lidar/
+│   │   │       ├── metadata.json
+│   │   │       └── speed/
+│   │   ├── map_05/
+│   │   │   ├── routes_town05_long/
+│   │   │   │   ├── RGB_0/
+│   │   │   │   ├── RGB_1/
+│   │   │   │   ├── RGB_2/
+│   │   │   │   ├── TEL_RGB/
+│   │   │   │   ├── gps/
+│   │   │   │   ├── imu/
+│   │   │   │   ├── lidar/
+│   │   │   │   ├── metadata.json
+│   │   │   │   └── speed/
+│   │   │   ├── routes_town05_short/
+│   │   │   │   ├── RGB_0/
+│   │   │   │   ├── RGB_1/
+│   │   │   │   ├── RGB_2/
+│   │   │   │   ├── TEL_RGB/
+│   │   │   │   ├── gps/
+│   │   │   │   ├── imu/
+│   │   │   │   ├── lidar/
+│   │   │   │   ├── metadata.json
+│   │   │   │   └── speed/
+│   │   │   └── routes_town05_tiny/
+│   │   │       ├── RGB_0/
+│   │   │       ├── RGB_1/
+│   │   │       ├── RGB_2/
+│   │   │       ├── TEL_RGB/
+│   │   │       ├── gps/
+│   │   │       ├── imu/
+│   │   │       ├── lidar/
+│   │   │       ├── metadata.json
+│   │   │       └── speed/
+│   │   ├── map_06/
+│   │   │   ├── routes_town06_long/
+│   │   │   │   ├── RGB_0/
+│   │   │   │   ├── RGB_1/
+│   │   │   │   ├── RGB_2/
+│   │   │   │   ├── TEL_RGB/
+│   │   │   │   ├── gps/
+│   │   │   │   ├── imu/
+│   │   │   │   ├── lidar/
+│   │   │   │   ├── metadata.json
+│   │   │   │   └── speed/
+│   │   │   ├── routes_town06_short/
+│   │   │   │   ├── RGB_0/
+│   │   │   │   ├── RGB_1/
+│   │   │   │   ├── RGB_2/
+│   │   │   │   ├── TEL_RGB/
+│   │   │   │   ├── gps/
+│   │   │   │   ├── imu/
+│   │   │   │   ├── lidar/
+│   │   │   │   ├── metadata.json
+│   │   │   │   └── speed/
+│   │   │   └── routes_town06_tiny/
+│   │   │       ├── RGB_0/
+│   │   │       ├── RGB_1/
+│   │   │       ├── RGB_2/
+│   │   │       ├── TEL_RGB/
+│   │   │       ├── gps/
+│   │   │       ├── imu/
+│   │   │       ├── lidar/
+│   │   │       ├── metadata.json
+│   │   │       └── speed/
+│   │   ├── map_07/
+│   │   │   ├── routes_town07_short/
+│   │   │   │   ├── RGB_0/
+│   │   │   │   ├── RGB_1/
+│   │   │   │   ├── RGB_2/
+│   │   │   │   ├── TEL_RGB/
+│   │   │   │   ├── gps/
+│   │   │   │   ├── imu/
+│   │   │   │   ├── lidar/
+│   │   │   │   ├── metadata.json
+│   │   │   │   └── speed/
+│   │   │   └── routes_town07_tiny/
+│   │   │       ├── RGB_0/
+│   │   │       ├── RGB_1/
+│   │   │       ├── RGB_2/
+│   │   │       ├── TEL_RGB/
+│   │   │       ├── gps/
+│   │   │       ├── imu/
+│   │   │       ├── lidar/
+│   │   │       ├── metadata.json
+│   │   │       └── speed/
+│   │   └── map_10/
+│   │       ├── routes_town10_short/
+│   │       │   ├── RGB_0/
+│   │       │   ├── RGB_1/
+│   │       │   ├── RGB_2/
+│   │       │   ├── TEL_RGB/
+│   │       │   ├── gps/
+│   │       │   ├── imu/
+│   │       │   ├── lidar/
+│   │       │   ├── metadata.json
+│   │       │   └── speed/
+│   │       └── routes_town10_tiny/
+│   │           ├── RGB_0/
+│   │           ├── RGB_1/
+│   │           ├── RGB_2/
+│   │           ├── TEL_RGB/
+│   │           ├── gps/
+│   │           ├── imu/
+│   │           ├── lidar/
+│   │           ├── metadata.json
+│   │           └── speed/
+│   ├── weather_6/
+│   │   ├── map_01/
+│   │   │   ├── routes_town01_long/
+│   │   │   │   ├── RGB_0/
+│   │   │   │   ├── RGB_1/
+│   │   │   │   ├── RGB_2/
+│   │   │   │   ├── TEL_RGB/
+│   │   │   │   ├── gps/
+│   │   │   │   ├── imu/
+│   │   │   │   ├── lidar/
+│   │   │   │   ├── metadata.json
+│   │   │   │   └── speed/
+│   │   │   ├── routes_town01_short/
+│   │   │   │   ├── RGB_0/
+│   │   │   │   ├── RGB_1/
+│   │   │   │   ├── RGB_2/
+│   │   │   │   ├── TEL_RGB/
+│   │   │   │   ├── gps/
+│   │   │   │   ├── imu/
+│   │   │   │   ├── lidar/
+│   │   │   │   ├── metadata.json
+│   │   │   │   └── speed/
+│   │   │   └── routes_town01_tiny/
+│   │   │       ├── RGB_0/
+│   │   │       ├── RGB_1/
+│   │   │       ├── RGB_2/
+│   │   │       ├── TEL_RGB/
+│   │   │       ├── gps/
+│   │   │       ├── imu/
+│   │   │       ├── lidar/
+│   │   │       ├── metadata.json
+│   │   │       └── speed/
+│   │   ├── map_02/
+│   │   │   ├── routes_town02_long/
+│   │   │   │   ├── RGB_0/
+│   │   │   │   ├── RGB_1/
+│   │   │   │   ├── RGB_2/
+│   │   │   │   ├── TEL_RGB/
+│   │   │   │   ├── gps/
+│   │   │   │   ├── imu/
+│   │   │   │   ├── lidar/
+│   │   │   │   ├── metadata.json
+│   │   │   │   └── speed/
+│   │   │   └── routes_town02_tiny/
+│   │   │       ├── RGB_0/
+│   │   │       ├── RGB_1/
+│   │   │       ├── RGB_2/
+│   │   │       ├── TEL_RGB/
+│   │   │       ├── gps/
+│   │   │       ├── imu/
+│   │   │       ├── lidar/
+│   │   │       ├── metadata.json
+│   │   │       └── speed/
+│   │   ├── map_03/
+│   │   │   ├── routes_town03_long/
+│   │   │   │   ├── RGB_0/
+│   │   │   │   ├── RGB_1/
+│   │   │   │   ├── RGB_2/
+│   │   │   │   ├── TEL_RGB/
+│   │   │   │   ├── gps/
+│   │   │   │   ├── imu/
+│   │   │   │   ├── lidar/
+│   │   │   │   ├── metadata.json
+│   │   │   │   └── speed/
+│   │   │   ├── routes_town03_short/
+│   │   │   │   ├── RGB_0/
+│   │   │   │   ├── RGB_1/
+│   │   │   │   ├── RGB_2/
+│   │   │   │   ├── TEL_RGB/
+│   │   │   │   ├── gps/
+│   │   │   │   ├── imu/
+│   │   │   │   ├── lidar/
+│   │   │   │   ├── metadata.json
+│   │   │   │   └── speed/
+│   │   │   └── routes_town03_tiny/
+│   │   │       ├── RGB_0/
+│   │   │       ├── RGB_1/
+│   │   │       ├── RGB_2/
+│   │   │       ├── TEL_RGB/
+│   │   │       ├── gps/
+│   │   │       ├── imu/
+│   │   │       ├── lidar/
+│   │   │       ├── metadata.json
+│   │   │       └── speed/
+│   │   ├── map_04/
+│   │   │   ├── routes_town04_long/
+│   │   │   │   ├── RGB_0/
+│   │   │   │   ├── RGB_1/
+│   │   │   │   ├── RGB_2/
+│   │   │   │   ├── TEL_RGB/
+│   │   │   │   ├── gps/
+│   │   │   │   ├── imu/
+│   │   │   │   ├── lidar/
+│   │   │   │   ├── metadata.json
+│   │   │   │   └── speed/
+│   │   │   └── routes_town04_tiny/
+│   │   │       ├── RGB_0/
+│   │   │       ├── RGB_1/
+│   │   │       ├── RGB_2/
+│   │   │       ├── TEL_RGB/
+│   │   │       ├── gps/
+│   │   │       ├── imu/
+│   │   │       ├── lidar/
+│   │   │       ├── metadata.json
+│   │   │       └── speed/
+│   │   ├── map_05/
+│   │   │   ├── routes_town05_long/
+│   │   │   │   ├── RGB_0/
+│   │   │   │   ├── RGB_1/
+│   │   │   │   ├── RGB_2/
+│   │   │   │   ├── TEL_RGB/
+│   │   │   │   ├── gps/
+│   │   │   │   ├── imu/
+│   │   │   │   ├── lidar/
+│   │   │   │   ├── metadata.json
+│   │   │   │   └── speed/
+│   │   │   └── routes_town05_tiny/
+│   │   │       ├── RGB_0/
+│   │   │       ├── RGB_1/
+│   │   │       ├── RGB_2/
+│   │   │       ├── TEL_RGB/
+│   │   │       ├── gps/
+│   │   │       ├── imu/
+│   │   │       ├── lidar/
+│   │   │       ├── metadata.json
+│   │   │       └── speed/
+│   │   ├── map_06/
+│   │   │   ├── routes_town06_long/
+│   │   │   │   ├── RGB_0/
+│   │   │   │   ├── RGB_1/
+│   │   │   │   ├── RGB_2/
+│   │   │   │   ├── TEL_RGB/
+│   │   │   │   ├── gps/
+│   │   │   │   ├── imu/
+│   │   │   │   ├── lidar/
+│   │   │   │   ├── metadata.json
+│   │   │   │   └── speed/
+│   │   │   └── routes_town06_tiny/
+│   │   │       ├── RGB_0/
+│   │   │       ├── RGB_1/
+│   │   │       ├── RGB_2/
+│   │   │       ├── TEL_RGB/
+│   │   │       ├── gps/
+│   │   │       ├── imu/
+│   │   │       ├── lidar/
+│   │   │       ├── metadata.json
+│   │   │       └── speed/
+│   │   ├── map_07/
+│   │   │   └── routes_town07_tiny/
+│   │   │       ├── RGB_0/
+│   │   │       ├── RGB_1/
+│   │   │       ├── RGB_2/
+│   │   │       ├── TEL_RGB/
+│   │   │       ├── gps/
+│   │   │       ├── imu/
+│   │   │       ├── lidar/
+│   │   │       ├── metadata.json
+│   │   │       └── speed/
+│   │   └── map_10/
+│   │       └── routes_town10_tiny/
+│   │           ├── RGB_0/
+│   │           ├── RGB_1/
+│   │           ├── RGB_2/
+│   │           ├── TEL_RGB/
+│   │           ├── gps/
+│   │           ├── imu/
+│   │           ├── lidar/
+│   │           ├── metadata.json
+│   │           └── speed/
+│   ├── weather_7/
+│   │   ├── map_01/
+│   │   │   ├── routes_town01_long/
+│   │   │   │   ├── RGB_0/
+│   │   │   │   ├── RGB_1/
+│   │   │   │   ├── RGB_2/
+│   │   │   │   ├── TEL_RGB/
+│   │   │   │   ├── gps/
+│   │   │   │   ├── imu/
+│   │   │   │   ├── lidar/
+│   │   │   │   ├── metadata.json
+│   │   │   │   └── speed/
+│   │   │   └── routes_town01_tiny/
+│   │   │       ├── RGB_0/
+│   │   │       ├── RGB_1/
+│   │   │       ├── RGB_2/
+│   │   │       ├── TEL_RGB/
+│   │   │       ├── gps/
+│   │   │       ├── imu/
+│   │   │       ├── lidar/
+│   │   │       ├── metadata.json
+│   │   │       └── speed/
+│   │   ├── map_02/
+│   │   │   ├── routes_town02_long/
+│   │   │   │   ├── RGB_0/
+│   │   │   │   ├── RGB_1/
+│   │   │   │   ├── RGB_2/
+│   │   │   │   ├── TEL_RGB/
+│   │   │   │   ├── gps/
+│   │   │   │   ├── imu/
+│   │   │   │   ├── lidar/
+│   │   │   │   ├── metadata.json
+│   │   │   │   └── speed/
+│   │   │   └── routes_town02_tiny/
+│   │   │       ├── RGB_0/
+│   │   │       ├── RGB_1/
+│   │   │       ├── RGB_2/
+│   │   │       ├── TEL_RGB/
+│   │   │       ├── gps/
+│   │   │       ├── imu/
+│   │   │       ├── lidar/
+│   │   │       ├── metadata.json
+│   │   │       └── speed/
+│   │   ├── map_03/
+│   │   │   ├── routes_town03_long/
+│   │   │   │   ├── RGB_0/
+│   │   │   │   ├── RGB_1/
+│   │   │   │   ├── RGB_2/
+│   │   │   │   ├── TEL_RGB/
+│   │   │   │   ├── gps/
+│   │   │   │   ├── imu/
+│   │   │   │   ├── lidar/
+│   │   │   │   ├── metadata.json
+│   │   │   │   └── speed/
+│   │   │   └── routes_town03_tiny/
+│   │   │       ├── RGB_0/
+│   │   │       ├── RGB_1/
+│   │   │       ├── RGB_2/
+│   │   │       ├── TEL_RGB/
+│   │   │       ├── gps/
+│   │   │       ├── imu/
+│   │   │       ├── lidar/
+│   │   │       ├── metadata.json
+│   │   │       └── speed/
+│   │   ├── map_04/
+│   │   │   └── routes_town04_long/
+│   │   │       ├── RGB_0/
+│   │   │       ├── RGB_1/
+│   │   │       ├── RGB_2/
+│   │   │       ├── TEL_RGB/
+│   │   │       ├── gps/
+│   │   │       ├── imu/
+│   │   │       ├── lidar/
+│   │   │       ├── metadata.json
+│   │   │       └── speed/
+│   │   ├── map_05/
+│   │   │   ├── routes_town05_long/
+│   │   │   │   ├── RGB_0/
+│   │   │   │   ├── RGB_1/
+│   │   │   │   ├── RGB_2/
+│   │   │   │   ├── TEL_RGB/
+│   │   │   │   ├── gps/
+│   │   │   │   ├── imu/
+│   │   │   │   ├── lidar/
+│   │   │   │   ├── metadata.json
+│   │   │   │   └── speed/
+│   │   │   └── routes_town05_tiny/
+│   │   │       ├── RGB_0/
+│   │   │       ├── RGB_1/
+│   │   │       ├── RGB_2/
+│   │   │       ├── TEL_RGB/
+│   │   │       ├── gps/
+│   │   │       ├── imu/
+│   │   │       ├── lidar/
+│   │   │       ├── metadata.json
+│   │   │       └── speed/
+│   │   ├── map_06/
+│   │   │   ├── routes_town06_long/
+│   │   │   │   ├── RGB_0/
+│   │   │   │   ├── RGB_1/
+│   │   │   │   ├── RGB_2/
+│   │   │   │   ├── TEL_RGB/
+│   │   │   │   ├── gps/
+│   │   │   │   ├── imu/
+│   │   │   │   ├── lidar/
+│   │   │   │   ├── metadata.json
+│   │   │   │   └── speed/
+│   │   │   └── routes_town06_tiny/
+│   │   │       ├── RGB_0/
+│   │   │       ├── RGB_1/
+│   │   │       ├── RGB_2/
+│   │   │       ├── TEL_RGB/
+│   │   │       ├── gps/
+│   │   │       ├── imu/
+│   │   │       ├── lidar/
+│   │   │       ├── metadata.json
+│   │   │       └── speed/
+│   │   ├── map_07/
+│   │   │   └── routes_town07_tiny/
+│   │   │       ├── RGB_0/
+│   │   │       ├── RGB_1/
+│   │   │       ├── RGB_2/
+│   │   │       ├── TEL_RGB/
+│   │   │       ├── gps/
+│   │   │       ├── imu/
+│   │   │       ├── lidar/
+│   │   │       ├── metadata.json
+│   │   │       └── speed/
+│   │   └── map_10/
+│   │       └── routes_town10_tiny/
+│   │           ├── RGB_0/
+│   │           ├── RGB_1/
+│   │           ├── RGB_2/
+│   │           ├── TEL_RGB/
+│   │           ├── gps/
+│   │           ├── imu/
+│   │           ├── lidar/
+│   │           ├── metadata.json
+│   │           └── speed/
+│   ├── weather_8/
+│   │   ├── map_01/
+│   │   │   ├── routes_town01_long/
+│   │   │   │   ├── RGB_0/
+│   │   │   │   ├── RGB_1/
+│   │   │   │   ├── RGB_2/
+│   │   │   │   ├── TEL_RGB/
+│   │   │   │   ├── gps/
+│   │   │   │   ├── imu/
+│   │   │   │   ├── lidar/
+│   │   │   │   ├── metadata.json
+│   │   │   │   └── speed/
+│   │   │   └── routes_town01_tiny/
+│   │   │       ├── RGB_0/
+│   │   │       ├── RGB_1/
+│   │   │       ├── RGB_2/
+│   │   │       ├── TEL_RGB/
+│   │   │       ├── gps/
+│   │   │       ├── imu/
+│   │   │       ├── lidar/
+│   │   │       ├── metadata.json
+│   │   │       └── speed/
+│   │   ├── map_02/
+│   │   │   ├── routes_town02_long/
+│   │   │   │   ├── RGB_0/
+│   │   │   │   ├── RGB_1/
+│   │   │   │   ├── RGB_2/
+│   │   │   │   ├── TEL_RGB/
+│   │   │   │   ├── gps/
+│   │   │   │   ├── imu/
+│   │   │   │   ├── lidar/
+│   │   │   │   ├── metadata.json
+│   │   │   │   └── speed/
+│   │   │   └── routes_town02_tiny/
+│   │   │       ├── RGB_0/
+│   │   │       ├── RGB_1/
+│   │   │       ├── RGB_2/
+│   │   │       ├── TEL_RGB/
+│   │   │       ├── gps/
+│   │   │       ├── imu/
+│   │   │       ├── lidar/
+│   │   │       ├── metadata.json
+│   │   │       └── speed/
+│   │   ├── map_03/
+│   │   │   ├── routes_town03_long/
+│   │   │   │   ├── RGB_0/
+│   │   │   │   ├── RGB_1/
+│   │   │   │   ├── RGB_2/
+│   │   │   │   ├── TEL_RGB/
+│   │   │   │   ├── gps/
+│   │   │   │   ├── imu/
+│   │   │   │   ├── lidar/
+│   │   │   │   ├── metadata.json
+│   │   │   │   └── speed/
+│   │   │   └── routes_town03_tiny/
+│   │   │       ├── RGB_0/
+│   │   │       ├── RGB_1/
+│   │   │       ├── RGB_2/
+│   │   │       ├── TEL_RGB/
+│   │   │       ├── gps/
+│   │   │       ├── imu/
+│   │   │       ├── lidar/
+│   │   │       ├── metadata.json
+│   │   │       └── speed/
+│   │   ├── map_04/
+│   │   │   ├── routes_town04_long/
+│   │   │   │   ├── RGB_0/
+│   │   │   │   ├── RGB_1/
+│   │   │   │   ├── RGB_2/
+│   │   │   │   ├── TEL_RGB/
+│   │   │   │   ├── gps/
+│   │   │   │   ├── imu/
+│   │   │   │   ├── lidar/
+│   │   │   │   ├── metadata.json
+│   │   │   │   └── speed/
+│   │   │   └── routes_town04_tiny/
+│   │   │       ├── RGB_0/
+│   │   │       ├── RGB_1/
+│   │   │       ├── RGB_2/
+│   │   │       ├── TEL_RGB/
+│   │   │       ├── gps/
+│   │   │       ├── imu/
+│   │   │       ├── lidar/
+│   │   │       ├── metadata.json
+│   │   │       └── speed/
+│   │   ├── map_05/
+│   │   │   ├── routes_town05_long/
+│   │   │   │   ├── RGB_0/
+│   │   │   │   ├── RGB_1/
+│   │   │   │   ├── RGB_2/
+│   │   │   │   ├── TEL_RGB/
+│   │   │   │   ├── gps/
+│   │   │   │   ├── imu/
+│   │   │   │   ├── lidar/
+│   │   │   │   ├── metadata.json
+│   │   │   │   └── speed/
+│   │   │   └── routes_town05_tiny/
+│   │   │       ├── RGB_0/
+│   │   │       ├── RGB_1/
+│   │   │       ├── RGB_2/
+│   │   │       ├── TEL_RGB/
+│   │   │       ├── gps/
+│   │   │       ├── imu/
+│   │   │       ├── lidar/
+│   │   │       ├── metadata.json
+│   │   │       └── speed/
+│   │   ├── map_06/
+│   │   │   ├── routes_town06_long/
+│   │   │   │   ├── RGB_0/
+│   │   │   │   ├── RGB_1/
+│   │   │   │   ├── RGB_2/
+│   │   │   │   ├── TEL_RGB/
+│   │   │   │   ├── gps/
+│   │   │   │   ├── imu/
+│   │   │   │   ├── lidar/
+│   │   │   │   ├── metadata.json
+│   │   │   │   └── speed/
+│   │   │   └── routes_town06_tiny/
+│   │   │       ├── RGB_0/
+│   │   │       ├── RGB_1/
+│   │   │       ├── RGB_2/
+│   │   │       ├── TEL_RGB/
+│   │   │       ├── gps/
+│   │   │       ├── imu/
+│   │   │       ├── lidar/
+│   │   │       ├── metadata.json
+│   │   │       └── speed/
+│   │   ├── map_07/
+│   │   │   └── routes_town07_tiny/
+│   │   │       ├── RGB_0/
+│   │   │       ├── RGB_1/
+│   │   │       ├── RGB_2/
+│   │   │       ├── TEL_RGB/
+│   │   │       ├── gps/
+│   │   │       ├── imu/
+│   │   │       ├── lidar/
+│   │   │       ├── metadata.json
+│   │   │       └── speed/
+│   │   └── map_10/
+│   │       └── routes_town10_tiny/
+│   │           ├── RGB_0/
+│   │           ├── RGB_1/
+│   │           ├── RGB_2/
+│   │           ├── TEL_RGB/
+│   │           ├── gps/
+│   │           ├── imu/
+│   │           ├── lidar/
+│   │           ├── metadata.json
+│   │           └── speed/
+│   └── weather_9/
+│       ├── map_01/
+│       │   └── routes_town01_long/
+│       │       ├── RGB_0/
+│       │       ├── RGB_1/
+│       │       ├── RGB_2/
+│       │       ├── TEL_RGB/
+│       │       ├── gps/
+│       │       ├── imu/
+│       │       ├── lidar/
+│       │       ├── metadata.json
+│       │       └── speed/
+│       ├── map_02/
+│       │   ├── routes_town02_long/
+│       │   │   ├── RGB_0/
+│       │   │   ├── RGB_1/
+│       │   │   ├── RGB_2/
+│       │   │   ├── TEL_RGB/
+│       │   │   ├── gps/
+│       │   │   ├── imu/
+│       │   │   ├── lidar/
+│       │   │   ├── metadata.json
+│       │   │   └── speed/
+│       │   └── routes_town02_tiny/
+│       │       ├── RGB_0/
+│       │       ├── RGB_1/
+│       │       ├── RGB_2/
+│       │       ├── TEL_RGB/
+│       │       ├── gps/
+│       │       ├── imu/
+│       │       ├── lidar/
+│       │       ├── metadata.json
+│       │       └── speed/
+│       ├── map_03/
+│       │   ├── routes_town03_long/
+│       │   │   ├── RGB_0/
+│       │   │   ├── RGB_1/
+│       │   │   ├── RGB_2/
+│       │   │   ├── TEL_RGB/
+│       │   │   ├── gps/
+│       │   │   ├── imu/
+│       │   │   ├── lidar/
+│       │   │   ├── metadata.json
+│       │   │   └── speed/
+│       │   └── routes_town03_tiny/
+│       │       ├── RGB_0/
+│       │       ├── RGB_1/
+│       │       ├── RGB_2/
+│       │       ├── TEL_RGB/
+│       │       ├── gps/
+│       │       ├── imu/
+│       │       ├── lidar/
+│       │       ├── metadata.json
+│       │       └── speed/
+│       ├── map_04/
+│       │   ├── routes_town04_long/
+│       │   │   ├── RGB_0/
+│       │   │   ├── RGB_1/
+│       │   │   ├── RGB_2/
+│       │   │   ├── TEL_RGB/
+│       │   │   ├── gps/
+│       │   │   ├── imu/
+│       │   │   ├── lidar/
+│       │   │   ├── metadata.json
+│       │   │   └── speed/
+│       │   └── routes_town04_tiny/
+│       │       ├── RGB_0/
+│       │       ├── RGB_1/
+│       │       ├── RGB_2/
+│       │       ├── TEL_RGB/
+│       │       ├── gps/
+│       │       ├── imu/
+│       │       ├── lidar/
+│       │       ├── metadata.json
+│       │       └── speed/
+│       ├── map_05/
+│       │   ├── routes_town05_long/
+│       │   │   ├── RGB_0/
+│       │   │   ├── RGB_1/
+│       │   │   ├── RGB_2/
+│       │   │   ├── TEL_RGB/
+│       │   │   ├── gps/
+│       │   │   ├── imu/
+│       │   │   ├── lidar/
+│       │   │   ├── metadata.json
+│       │   │   └── speed/
+│       │   └── routes_town05_tiny/
+│       │       ├── RGB_0/
+│       │       ├── RGB_1/
+│       │       ├── RGB_2/
+│       │       ├── TEL_RGB/
+│       │       ├── gps/
+│       │       ├── imu/
+│       │       ├── lidar/
+│       │       ├── metadata.json
+│       │       └── speed/
+│       ├── map_06/
+│       │   ├── routes_town06_long/
+│       │   │   ├── RGB_0/
+│       │   │   ├── RGB_1/
+│       │   │   ├── RGB_2/
+│       │   │   ├── TEL_RGB/
+│       │   │   ├── gps/
+│       │   │   ├── imu/
+│       │   │   ├── lidar/
+│       │   │   ├── metadata.json
+│       │   │   └── speed/
+│       │   └── routes_town06_tiny/
+│       │       ├── RGB_0/
+│       │       ├── RGB_1/
+│       │       ├── RGB_2/
+│       │       ├── TEL_RGB/
+│       │       ├── gps/
+│       │       ├── imu/
+│       │       ├── lidar/
+│       │       ├── metadata.json
+│       │       └── speed/
+│       ├── map_07/
+│       │   └── routes_town07_tiny/
+│       │       ├── RGB_0/
+│       │       ├── RGB_1/
+│       │       ├── RGB_2/
+│       │       ├── TEL_RGB/
+│       │       ├── gps/
+│       │       ├── imu/
+│       │       ├── lidar/
+│       │       ├── metadata.json
+│       │       └── speed/
+│       └── map_10/
+│           └── routes_town10_tiny/
+│               ├── RGB_0/
+│               ├── RGB_1/
+│               ├── RGB_2/
+│               ├── TEL_RGB/
+│               ├── gps/
+│               ├── imu/
+│               ├── lidar/
+│               ├── metadata.json
+│               └── speed/
+└── tcp/
+    ├── weather_0/
+    │   ├── map_01/
+    │   │   ├── routes_town01_long/
+    │   │   │   ├── bev/
+    │   │   │   ├── gps/
+    │   │   │   ├── imu/
+    │   │   │   ├── metadata.json
+    │   │   │   ├── rgb/
+    │   │   │   └── speed/
+    │   │   └── routes_town01_tiny/
+    │   │       ├── bev/
+    │   │       ├── gps/
+    │   │       ├── imu/
+    │   │       ├── metadata.json
+    │   │       ├── rgb/
+    │   │       └── speed/
+    │   ├── map_02/
+    │   │   ├── routes_town02_long/
+    │   │   │   ├── bev/
+    │   │   │   ├── gps/
+    │   │   │   ├── imu/
+    │   │   │   ├── metadata.json
+    │   │   │   ├── rgb/
+    │   │   │   └── speed/
+    │   │   └── routes_town02_tiny/
+    │   │       ├── bev/
+    │   │       ├── gps/
+    │   │       ├── imu/
+    │   │       ├── metadata.json
+    │   │       ├── rgb/
+    │   │       └── speed/
+    │   ├── map_03/
+    │   │   ├── routes_town03_long/
+    │   │   │   ├── bev/
+    │   │   │   ├── gps/
+    │   │   │   ├── imu/
+    │   │   │   ├── metadata.json
+    │   │   │   ├── rgb/
+    │   │   │   └── speed/
+    │   │   └── routes_town03_tiny/
+    │   │       ├── bev/
+    │   │       ├── gps/
+    │   │       ├── imu/
+    │   │       ├── metadata.json
+    │   │       ├── rgb/
+    │   │       └── speed/
+    │   ├── map_04/
+    │   │   ├── routes_town04_long/
+    │   │   │   ├── bev/
+    │   │   │   ├── gps/
+    │   │   │   ├── imu/
+    │   │   │   ├── metadata.json
+    │   │   │   ├── rgb/
+    │   │   │   └── speed/
+    │   │   └── routes_town04_tiny/
+    │   │       ├── bev/
+    │   │       ├── gps/
+    │   │       ├── imu/
+    │   │       ├── metadata.json
+    │   │       ├── rgb/
+    │   │       └── speed/
+    │   ├── map_05/
+    │   │   └── routes_town05_long/
+    │   │       ├── bev/
+    │   │       ├── gps/
+    │   │       ├── imu/
+    │   │       ├── metadata.json
+    │   │       ├── rgb/
+    │   │       └── speed/
+    │   ├── map_06/
+    │   │   ├── routes_town06_long/
+    │   │   │   ├── bev/
+    │   │   │   ├── gps/
+    │   │   │   ├── imu/
+    │   │   │   ├── metadata.json
+    │   │   │   ├── rgb/
+    │   │   │   └── speed/
+    │   │   └── routes_town06_tiny/
+    │   │       ├── bev/
+    │   │       ├── gps/
+    │   │       ├── imu/
+    │   │       ├── metadata.json
+    │   │       ├── rgb/
+    │   │       └── speed/
+    │   ├── map_07/
+    │   │   └── routes_town07_tiny/
+    │   │       ├── bev/
+    │   │       ├── gps/
+    │   │       ├── imu/
+    │   │       ├── metadata.json
+    │   │       ├── rgb/
+    │   │       └── speed/
+    │   └── map_10/
+    │       └── routes_town10_tiny/
+    │           ├── bev/
+    │           ├── gps/
+    │           ├── imu/
+    │           ├── metadata.json
+    │           ├── rgb/
+    │           └── speed/
+    ├── weather_1/
+    │   ├── map_01/
+    │   │   ├── routes_town01_long/
+    │   │   │   ├── bev/
+    │   │   │   ├── gps/
+    │   │   │   ├── imu/
+    │   │   │   ├── metadata.json
+    │   │   │   ├── rgb/
+    │   │   │   └── speed/
+    │   │   └── routes_town01_tiny/
+    │   │       ├── bev/
+    │   │       ├── gps/
+    │   │       ├── imu/
+    │   │       ├── metadata.json
+    │   │       ├── rgb/
+    │   │       └── speed/
+    │   ├── map_02/
+    │   │   ├── routes_town02_long/
+    │   │   │   ├── bev/
+    │   │   │   ├── gps/
+    │   │   │   ├── imu/
+    │   │   │   ├── metadata.json
+    │   │   │   ├── rgb/
+    │   │   │   └── speed/
+    │   │   └── routes_town02_tiny/
+    │   │       ├── bev/
+    │   │       ├── gps/
+    │   │       ├── imu/
+    │   │       ├── metadata.json
+    │   │       ├── rgb/
+    │   │       └── speed/
+    │   ├── map_03/
+    │   │   ├── routes_town03_long/
+    │   │   │   ├── bev/
+    │   │   │   ├── gps/
+    │   │   │   ├── imu/
+    │   │   │   ├── metadata.json
+    │   │   │   ├── rgb/
+    │   │   │   └── speed/
+    │   │   └── routes_town03_tiny/
+    │   │       ├── bev/
+    │   │       ├── gps/
+    │   │       ├── imu/
+    │   │       ├── metadata.json
+    │   │       ├── rgb/
+    │   │       └── speed/
+    │   ├── map_04/
+    │   │   ├── routes_town04_long/
+    │   │   │   ├── bev/
+    │   │   │   ├── gps/
+    │   │   │   ├── imu/
+    │   │   │   ├── metadata.json
+    │   │   │   ├── rgb/
+    │   │   │   └── speed/
+    │   │   └── routes_town04_tiny/
+    │   │       ├── bev/
+    │   │       ├── gps/
+    │   │       ├── imu/
+    │   │       ├── metadata.json
+    │   │       ├── rgb/
+    │   │       └── speed/
+    │   ├── map_05/
+    │   │   ├── routes_town05_long/
+    │   │   │   ├── bev/
+    │   │   │   ├── gps/
+    │   │   │   ├── imu/
+    │   │   │   ├── metadata.json
+    │   │   │   ├── rgb/
+    │   │   │   └── speed/
+    │   │   └── routes_town05_tiny/
+    │   │       ├── bev/
+    │   │       ├── gps/
+    │   │       ├── imu/
+    │   │       ├── metadata.json
+    │   │       ├── rgb/
+    │   │       └── speed/
+    │   ├── map_06/
+    │   │   ├── routes_town06_long/
+    │   │   │   ├── bev/
+    │   │   │   ├── gps/
+    │   │   │   ├── imu/
+    │   │   │   ├── metadata.json
+    │   │   │   ├── rgb/
+    │   │   │   └── speed/
+    │   │   └── routes_town06_tiny/
+    │   │       ├── bev/
+    │   │       ├── gps/
+    │   │       ├── imu/
+    │   │       ├── metadata.json
+    │   │       ├── rgb/
+    │   │       └── speed/
+    │   ├── map_07/
+    │   │   └── routes_town07_tiny/
+    │   │       ├── bev/
+    │   │       ├── gps/
+    │   │       ├── imu/
+    │   │       ├── metadata.json
+    │   │       ├── rgb/
+    │   │       └── speed/
+    │   └── map_10/
+    │       └── routes_town10_tiny/
+    │           ├── bev/
+    │           ├── gps/
+    │           ├── imu/
+    │           ├── metadata.json
+    │           ├── rgb/
+    │           └── speed/
+    ├── weather_10/
+    │   ├── map_01/
+    │   │   └── routes_town01_long/
+    │   │       ├── bev/
+    │   │       ├── gps/
+    │   │       ├── imu/
+    │   │       ├── metadata.json
+    │   │       ├── rgb/
+    │   │       └── speed/
+    │   ├── map_02/
+    │   │   ├── routes_town02_long/
+    │   │   │   ├── bev/
+    │   │   │   ├── gps/
+    │   │   │   ├── imu/
+    │   │   │   ├── metadata.json
+    │   │   │   ├── rgb/
+    │   │   │   └── speed/
+    │   │   └── routes_town02_short/
+    │   │       ├── bev/
+    │   │       ├── gps/
+    │   │       ├── imu/
+    │   │       ├── metadata.json
+    │   │       ├── rgb/
+    │   │       └── speed/
+    │   ├── map_03/
+    │   │   ├── routes_town03_long/
+    │   │   │   ├── bev/
+    │   │   │   ├── gps/
+    │   │   │   ├── imu/
+    │   │   │   ├── metadata.json
+    │   │   │   ├── rgb/
+    │   │   │   └── speed/
+    │   │   └── routes_town03_short/
+    │   │       ├── bev/
+    │   │       ├── gps/
+    │   │       ├── imu/
+    │   │       ├── metadata.json
+    │   │       ├── rgb/
+    │   │       └── speed/
+    │   ├── map_04/
+    │   │   ├── routes_town04_long/
+    │   │   │   ├── bev/
+    │   │   │   ├── gps/
+    │   │   │   ├── imu/
+    │   │   │   ├── metadata.json
+    │   │   │   ├── rgb/
+    │   │   │   └── speed/
+    │   │   └── routes_town04_short/
+    │   │       ├── bev/
+    │   │       ├── gps/
+    │   │       ├── imu/
+    │   │       ├── metadata.json
+    │   │       ├── rgb/
+    │   │       └── speed/
+    │   ├── map_05/
+    │   │   ├── routes_town05_long/
+    │   │   │   ├── bev/
+    │   │   │   ├── gps/
+    │   │   │   ├── imu/
+    │   │   │   ├── metadata.json
+    │   │   │   ├── rgb/
+    │   │   │   └── speed/
+    │   │   └── routes_town05_short/
+    │   │       ├── bev/
+    │   │       ├── gps/
+    │   │       ├── imu/
+    │   │       ├── metadata.json
+    │   │       ├── rgb/
+    │   │       └── speed/
+    │   ├── map_06/
+    │   │   ├── routes_town06_long/
+    │   │   │   ├── bev/
+    │   │   │   ├── gps/
+    │   │   │   ├── imu/
+    │   │   │   ├── metadata.json
+    │   │   │   ├── rgb/
+    │   │   │   └── speed/
+    │   │   └── routes_town06_short/
+    │   │       ├── bev/
+    │   │       ├── gps/
+    │   │       ├── imu/
+    │   │       ├── metadata.json
+    │   │       ├── rgb/
+    │   │       └── speed/
+    │   ├── map_07/
+    │   │   └── routes_town07_short/
+    │   │       ├── bev/
+    │   │       ├── gps/
+    │   │       ├── imu/
+    │   │       ├── metadata.json
+    │   │       ├── rgb/
+    │   │       └── speed/
+    │   └── map_10/
+    │       └── routes_town10_short/
+    │           ├── bev/
+    │           ├── gps/
+    │           ├── imu/
+    │           ├── metadata.json
+    │           ├── rgb/
+    │           └── speed/
+    ├── weather_11/
+    │   ├── map_01/
+    │   │   ├── routes_town01_long/
+    │   │   │   ├── bev/
+    │   │   │   ├── gps/
+    │   │   │   ├── imu/
+    │   │   │   ├── metadata.json
+    │   │   │   ├── rgb/
+    │   │   │   └── speed/
+    │   │   └── routes_town01_short/
+    │   │       ├── bev/
+    │   │       ├── gps/
+    │   │       ├── imu/
+    │   │       ├── metadata.json
+    │   │       ├── rgb/
+    │   │       └── speed/
+    │   ├── map_02/
+    │   │   ├── routes_town02_long/
+    │   │   │   ├── bev/
+    │   │   │   ├── gps/
+    │   │   │   ├── imu/
+    │   │   │   ├── metadata.json
+    │   │   │   ├── rgb/
+    │   │   │   └── speed/
+    │   │   └── routes_town02_short/
+    │   │       ├── bev/
+    │   │       ├── gps/
+    │   │       ├── imu/
+    │   │       ├── metadata.json
+    │   │       ├── rgb/
+    │   │       └── speed/
+    │   ├── map_03/
+    │   │   ├── routes_town03_long/
+    │   │   │   ├── bev/
+    │   │   │   ├── gps/
+    │   │   │   ├── imu/
+    │   │   │   ├── metadata.json
+    │   │   │   ├── rgb/
+    │   │   │   └── speed/
+    │   │   └── routes_town03_short/
+    │   │       ├── bev/
+    │   │       ├── gps/
+    │   │       ├── imu/
+    │   │       ├── metadata.json
+    │   │       ├── rgb/
+    │   │       └── speed/
+    │   ├── map_04/
+    │   │   ├── routes_town04_long/
+    │   │   │   ├── bev/
+    │   │   │   ├── gps/
+    │   │   │   ├── imu/
+    │   │   │   ├── metadata.json
+    │   │   │   ├── rgb/
+    │   │   │   └── speed/
+    │   │   └── routes_town04_short/
+    │   │       ├── bev/
+    │   │       ├── gps/
+    │   │       ├── imu/
+    │   │       ├── metadata.json
+    │   │       ├── rgb/
+    │   │       └── speed/
+    │   ├── map_05/
+    │   │   └── routes_town05_long/
+    │   │       ├── bev/
+    │   │       ├── gps/
+    │   │       ├── imu/
+    │   │       ├── metadata.json
+    │   │       ├── rgb/
+    │   │       └── speed/
+    │   ├── map_06/
+    │   │   ├── routes_town06_long/
+    │   │   │   ├── bev/
+    │   │   │   ├── gps/
+    │   │   │   ├── imu/
+    │   │   │   ├── metadata.json
+    │   │   │   ├── rgb/
+    │   │   │   └── speed/
+    │   │   └── routes_town06_short/
+    │   │       ├── bev/
+    │   │       ├── gps/
+    │   │       ├── imu/
+    │   │       ├── metadata.json
+    │   │       ├── rgb/
+    │   │       └── speed/
+    │   ├── map_07/
+    │   │   └── routes_town07_short/
+    │   │       ├── bev/
+    │   │       ├── gps/
+    │   │       ├── imu/
+    │   │       ├── metadata.json
+    │   │       ├── rgb/
+    │   │       └── speed/
+    │   └── map_10/
+    │       └── routes_town10_short/
+    │           ├── bev/
+    │           ├── gps/
+    │           ├── imu/
+    │           ├── metadata.json
+    │           ├── rgb/
+    │           └── speed/
+    ├── weather_12/
+    │   ├── map_01/
+    │   │   ├── routes_town01_long/
+    │   │   │   ├── bev/
+    │   │   │   ├── gps/
+    │   │   │   ├── imu/
+    │   │   │   ├── metadata.json
+    │   │   │   ├── rgb/
+    │   │   │   └── speed/
+    │   │   ├── routes_town01_short/
+    │   │   │   ├── bev/
+    │   │   │   ├── gps/
+    │   │   │   ├── imu/
+    │   │   │   ├── metadata.json
+    │   │   │   ├── rgb/
+    │   │   │   └── speed/
+    │   │   └── routes_town01_tiny/
+    │   │       ├── bev/
+    │   │       ├── gps/
+    │   │       ├── imu/
+    │   │       ├── metadata.json
+    │   │       ├── rgb/
+    │   │       └── speed/
+    │   ├── map_02/
+    │   │   ├── routes_town02_long/
+    │   │   │   ├── bev/
+    │   │   │   ├── gps/
+    │   │   │   ├── imu/
+    │   │   │   ├── metadata.json
+    │   │   │   ├── rgb/
+    │   │   │   └── speed/
+    │   │   ├── routes_town02_short/
+    │   │   │   ├── bev/
+    │   │   │   ├── gps/
+    │   │   │   ├── imu/
+    │   │   │   ├── metadata.json
+    │   │   │   ├── rgb/
+    │   │   │   └── speed/
+    │   │   └── routes_town02_tiny/
+    │   │       ├── bev/
+    │   │       ├── gps/
+    │   │       ├── imu/
+    │   │       ├── metadata.json
+    │   │       ├── rgb/
+    │   │       └── speed/
+    │   ├── map_03/
+    │   │   ├── routes_town03_long/
+    │   │   │   ├── bev/
+    │   │   │   ├── gps/
+    │   │   │   ├── imu/
+    │   │   │   ├── metadata.json
+    │   │   │   ├── rgb/
+    │   │   │   └── speed/
+    │   │   ├── routes_town03_short/
+    │   │   │   ├── bev/
+    │   │   │   ├── gps/
+    │   │   │   ├── imu/
+    │   │   │   ├── metadata.json
+    │   │   │   ├── rgb/
+    │   │   │   └── speed/
+    │   │   └── routes_town03_tiny/
+    │   │       ├── bev/
+    │   │       ├── gps/
+    │   │       ├── imu/
+    │   │       ├── metadata.json
+    │   │       ├── rgb/
+    │   │       └── speed/
+    │   ├── map_04/
+    │   │   ├── routes_town04_long/
+    │   │   │   ├── bev/
+    │   │   │   ├── gps/
+    │   │   │   ├── imu/
+    │   │   │   ├── metadata.json
+    │   │   │   ├── rgb/
+    │   │   │   └── speed/
+    │   │   ├── routes_town04_short/
+    │   │   │   ├── bev/
+    │   │   │   ├── gps/
+    │   │   │   ├── imu/
+    │   │   │   ├── metadata.json
+    │   │   │   ├── rgb/
+    │   │   │   └── speed/
+    │   │   └── routes_town04_tiny/
+    │   │       ├── bev/
+    │   │       ├── gps/
+    │   │       ├── imu/
+    │   │       ├── metadata.json
+    │   │       ├── rgb/
+    │   │       └── speed/
+    │   ├── map_05/
+    │   │   ├── routes_town05_long/
+    │   │   │   ├── bev/
+    │   │   │   ├── gps/
+    │   │   │   ├── imu/
+    │   │   │   ├── metadata.json
+    │   │   │   ├── rgb/
+    │   │   │   └── speed/
+    │   │   ├── routes_town05_short/
+    │   │   │   ├── bev/
+    │   │   │   ├── gps/
+    │   │   │   ├── imu/
+    │   │   │   ├── metadata.json
+    │   │   │   ├── rgb/
+    │   │   │   └── speed/
+    │   │   └── routes_town05_tiny/
+    │   │       ├── bev/
+    │   │       ├── gps/
+    │   │       ├── imu/
+    │   │       ├── metadata.json
+    │   │       ├── rgb/
+    │   │       └── speed/
+    │   ├── map_06/
+    │   │   ├── routes_town06_long/
+    │   │   │   ├── bev/
+    │   │   │   ├── gps/
+    │   │   │   ├── imu/
+    │   │   │   ├── metadata.json
+    │   │   │   ├── rgb/
+    │   │   │   └── speed/
+    │   │   ├── routes_town06_short/
+    │   │   │   ├── bev/
+    │   │   │   ├── gps/
+    │   │   │   ├── imu/
+    │   │   │   ├── metadata.json
+    │   │   │   ├── rgb/
+    │   │   │   └── speed/
+    │   │   └── routes_town06_tiny/
+    │   │       ├── bev/
+    │   │       ├── gps/
+    │   │       ├── imu/
+    │   │       ├── metadata.json
+    │   │       ├── rgb/
+    │   │       └── speed/
+    │   ├── map_07/
+    │   │   └── routes_town07_tiny/
+    │   │       ├── bev/
+    │   │       ├── gps/
+    │   │       ├── imu/
+    │   │       ├── metadata.json
+    │   │       ├── rgb/
+    │   │       └── speed/
+    │   └── map_10/
+    │       ├── routes_town10_short/
+    │       │   ├── bev/
+    │       │   ├── gps/
+    │       │   ├── imu/
+    │       │   ├── metadata.json
+    │       │   ├── rgb/
+    │       │   └── speed/
+    │       └── routes_town10_tiny/
+    │           ├── bev/
+    │           ├── gps/
+    │           ├── imu/
+    │           ├── metadata.json
+    │           ├── rgb/
+    │           └── speed/
+    ├── weather_13/
+    │   ├── map_01/
+    │   │   ├── routes_town01_long/
+    │   │   │   ├── bev/
+    │   │   │   ├── gps/
+    │   │   │   ├── imu/
+    │   │   │   ├── metadata.json
+    │   │   │   ├── rgb/
+    │   │   │   └── speed/
+    │   │   ├── routes_town01_short/
+    │   │   │   ├── bev/
+    │   │   │   ├── gps/
+    │   │   │   ├── imu/
+    │   │   │   ├── metadata.json
+    │   │   │   ├── rgb/
+    │   │   │   └── speed/
+    │   │   └── routes_town01_tiny/
+    │   │       ├── bev/
+    │   │       ├── gps/
+    │   │       ├── imu/
+    │   │       ├── metadata.json
+    │   │       ├── rgb/
+    │   │       └── speed/
+    │   ├── map_02/
+    │   │   ├── routes_town02_long/
+    │   │   │   ├── bev/
+    │   │   │   ├── gps/
+    │   │   │   ├── imu/
+    │   │   │   ├── metadata.json
+    │   │   │   ├── rgb/
+    │   │   │   └── speed/
+    │   │   └── routes_town02_tiny/
+    │   │       ├── bev/
+    │   │       ├── gps/
+    │   │       ├── imu/
+    │   │       ├── metadata.json
+    │   │       ├── rgb/
+    │   │       └── speed/
+    │   ├── map_03/
+    │   │   ├── routes_town03_long/
+    │   │   │   ├── bev/
+    │   │   │   ├── gps/
+    │   │   │   ├── imu/
+    │   │   │   ├── metadata.json
+    │   │   │   ├── rgb/
+    │   │   │   └── speed/
+    │   │   └── routes_town03_short/
+    │   │       ├── bev/
+    │   │       ├── gps/
+    │   │       ├── imu/
+    │   │       ├── metadata.json
+    │   │       ├── rgb/
+    │   │       └── speed/
+    │   ├── map_04/
+    │   │   ├── routes_town04_long/
+    │   │   │   ├── bev/
+    │   │   │   ├── gps/
+    │   │   │   ├── imu/
+    │   │   │   ├── metadata.json
+    │   │   │   ├── rgb/
+    │   │   │   └── speed/
+    │   │   ├── routes_town04_short/
+    │   │   │   ├── bev/
+    │   │   │   ├── gps/
+    │   │   │   ├── imu/
+    │   │   │   ├── metadata.json
+    │   │   │   ├── rgb/
+    │   │   │   └── speed/
+    │   │   └── routes_town04_tiny/
+    │   │       ├── bev/
+    │   │       ├── gps/
+    │   │       ├── imu/
+    │   │       ├── metadata.json
+    │   │       ├── rgb/
+    │   │       └── speed/
+    │   ├── map_05/
+    │   │   ├── routes_town05_long/
+    │   │   │   ├── bev/
+    │   │   │   ├── gps/
+    │   │   │   ├── imu/
+    │   │   │   ├── metadata.json
+    │   │   │   ├── rgb/
+    │   │   │   └── speed/
+    │   │   └── routes_town05_tiny/
+    │   │       ├── bev/
+    │   │       ├── gps/
+    │   │       ├── imu/
+    │   │       ├── metadata.json
+    │   │       ├── rgb/
+    │   │       └── speed/
+    │   ├── map_06/
+    │   │   ├── routes_town06_long/
+    │   │   │   ├── bev/
+    │   │   │   ├── gps/
+    │   │   │   ├── imu/
+    │   │   │   ├── metadata.json
+    │   │   │   ├── rgb/
+    │   │   │   └── speed/
+    │   │   ├── routes_town06_short/
+    │   │   │   ├── bev/
+    │   │   │   ├── gps/
+    │   │   │   ├── imu/
+    │   │   │   ├── metadata.json
+    │   │   │   ├── rgb/
+    │   │   │   └── speed/
+    │   │   └── routes_town06_tiny/
+    │   │       ├── bev/
+    │   │       ├── gps/
+    │   │       ├── imu/
+    │   │       ├── metadata.json
+    │   │       ├── rgb/
+    │   │       └── speed/
+    │   ├── map_07/
+    │   │   ├── routes_town07_short/
+    │   │   │   ├── bev/
+    │   │   │   ├── gps/
+    │   │   │   ├── imu/
+    │   │   │   ├── metadata.json
+    │   │   │   ├── rgb/
+    │   │   │   └── speed/
+    │   │   └── routes_town07_tiny/
+    │   │       ├── bev/
+    │   │       ├── gps/
+    │   │       ├── imu/
+    │   │       ├── metadata.json
+    │   │       ├── rgb/
+    │   │       └── speed/
+    │   └── map_10/
+    │       ├── routes_town10_short/
+    │       │   ├── bev/
+    │       │   ├── gps/
+    │       │   ├── imu/
+    │       │   ├── metadata.json
+    │       │   ├── rgb/
+    │       │   └── speed/
+    │       └── routes_town10_tiny/
+    │           ├── bev/
+    │           ├── gps/
+    │           ├── imu/
+    │           ├── metadata.json
+    │           ├── rgb/
+    │           └── speed/
+    ├── weather_14/
+    │   ├── map_01/
+    │   │   ├── routes_town01_long/
+    │   │   │   ├── bev/
+    │   │   │   ├── gps/
+    │   │   │   ├── imu/
+    │   │   │   ├── metadata.json
+    │   │   │   ├── rgb/
+    │   │   │   └── speed/
+    │   │   ├── routes_town01_short/
+    │   │   │   ├── bev/
+    │   │   │   ├── gps/
+    │   │   │   ├── imu/
+    │   │   │   ├── metadata.json
+    │   │   │   ├── rgb/
+    │   │   │   └── speed/
+    │   │   └── routes_town01_tiny/
+    │   │       ├── bev/
+    │   │       ├── gps/
+    │   │       ├── imu/
+    │   │       ├── metadata.json
+    │   │       ├── rgb/
+    │   │       └── speed/
+    │   ├── map_02/
+    │   │   ├── routes_town02_long/
+    │   │   │   ├── bev/
+    │   │   │   ├── gps/
+    │   │   │   ├── imu/
+    │   │   │   ├── metadata.json
+    │   │   │   ├── rgb/
+    │   │   │   └── speed/
+    │   │   ├── routes_town02_short/
+    │   │   │   ├── bev/
+    │   │   │   ├── gps/
+    │   │   │   ├── imu/
+    │   │   │   ├── metadata.json
+    │   │   │   ├── rgb/
+    │   │   │   └── speed/
+    │   │   └── routes_town02_tiny/
+    │   │       ├── bev/
+    │   │       ├── gps/
+    │   │       ├── imu/
+    │   │       ├── metadata.json
+    │   │       ├── rgb/
+    │   │       └── speed/
+    │   ├── map_03/
+    │   │   ├── routes_town03_long/
+    │   │   │   ├── bev/
+    │   │   │   ├── gps/
+    │   │   │   ├── imu/
+    │   │   │   ├── metadata.json
+    │   │   │   ├── rgb/
+    │   │   │   └── speed/
+    │   │   └── routes_town03_tiny/
+    │   │       ├── bev/
+    │   │       ├── gps/
+    │   │       ├── imu/
+    │   │       ├── metadata.json
+    │   │       ├── rgb/
+    │   │       └── speed/
+    │   ├── map_04/
+    │   │   ├── routes_town04_long/
+    │   │   │   ├── bev/
+    │   │   │   ├── gps/
+    │   │   │   ├── imu/
+    │   │   │   ├── metadata.json
+    │   │   │   ├── rgb/
+    │   │   │   └── speed/
+    │   │   └── routes_town04_tiny/
+    │   │       ├── bev/
+    │   │       ├── gps/
+    │   │       ├── imu/
+    │   │       ├── metadata.json
+    │   │       ├── rgb/
+    │   │       └── speed/
+    │   ├── map_05/
+    │   │   ├── routes_town05_long/
+    │   │   │   ├── bev/
+    │   │   │   ├── gps/
+    │   │   │   ├── imu/
+    │   │   │   ├── metadata.json
+    │   │   │   ├── rgb/
+    │   │   │   └── speed/
+    │   │   └── routes_town05_tiny/
+    │   │       ├── bev/
+    │   │       ├── gps/
+    │   │       ├── imu/
+    │   │       ├── metadata.json
+    │   │       ├── rgb/
+    │   │       └── speed/
+    │   ├── map_06/
+    │   │   ├── routes_town06_long/
+    │   │   │   ├── bev/
+    │   │   │   ├── gps/
+    │   │   │   ├── imu/
+    │   │   │   ├── metadata.json
+    │   │   │   ├── rgb/
+    │   │   │   └── speed/
+    │   │   └── routes_town06_tiny/
+    │   │       ├── bev/
+    │   │       ├── gps/
+    │   │       ├── imu/
+    │   │       ├── metadata.json
+    │   │       ├── rgb/
+    │   │       └── speed/
+    │   ├── map_07/
+    │   │   └── routes_town07_tiny/
+    │   │       ├── bev/
+    │   │       ├── gps/
+    │   │       ├── imu/
+    │   │       ├── metadata.json
+    │   │       ├── rgb/
+    │   │       └── speed/
+    │   └── map_10/
+    │       └── routes_town10_tiny/
+    │           ├── bev/
+    │           ├── gps/
+    │           ├── imu/
+    │           ├── metadata.json
+    │           ├── rgb/
+    │           └── speed/
+    ├── weather_2/
+    │   ├── map_01/
+    │   │   ├── routes_town01_long/
+    │   │   │   ├── bev/
+    │   │   │   ├── gps/
+    │   │   │   ├── imu/
+    │   │   │   ├── metadata.json
+    │   │   │   ├── rgb/
+    │   │   │   └── speed/
+    │   │   └── routes_town01_tiny/
+    │   │       ├── bev/
+    │   │       ├── gps/
+    │   │       ├── imu/
+    │   │       ├── metadata.json
+    │   │       ├── rgb/
+    │   │       └── speed/
+    │   ├── map_02/
+    │   │   ├── routes_town02_long/
+    │   │   │   ├── bev/
+    │   │   │   ├── gps/
+    │   │   │   ├── imu/
+    │   │   │   ├── metadata.json
+    │   │   │   ├── rgb/
+    │   │   │   └── speed/
+    │   │   └── routes_town02_tiny/
+    │   │       ├── bev/
+    │   │       ├── gps/
+    │   │       ├── imu/
+    │   │       ├── metadata.json
+    │   │       ├── rgb/
+    │   │       └── speed/
+    │   ├── map_03/
+    │   │   ├── routes_town03_long/
+    │   │   │   ├── bev/
+    │   │   │   ├── gps/
+    │   │   │   ├── imu/
+    │   │   │   ├── metadata.json
+    │   │   │   ├── rgb/
+    │   │   │   └── speed/
+    │   │   └── routes_town03_tiny/
+    │   │       ├── bev/
+    │   │       ├── gps/
+    │   │       ├── imu/
+    │   │       ├── metadata.json
+    │   │       ├── rgb/
+    │   │       └── speed/
+    │   ├── map_04/
+    │   │   ├── routes_town04_long/
+    │   │   │   ├── bev/
+    │   │   │   ├── gps/
+    │   │   │   ├── imu/
+    │   │   │   ├── metadata.json
+    │   │   │   ├── rgb/
+    │   │   │   └── speed/
+    │   │   └── routes_town04_tiny/
+    │   │       ├── bev/
+    │   │       ├── gps/
+    │   │       ├── imu/
+    │   │       ├── metadata.json
+    │   │       ├── rgb/
+    │   │       └── speed/
+    │   ├── map_05/
+    │   │   ├── routes_town05_long/
+    │   │   │   ├── bev/
+    │   │   │   ├── gps/
+    │   │   │   ├── imu/
+    │   │   │   ├── metadata.json
+    │   │   │   ├── rgb/
+    │   │   │   └── speed/
+    │   │   └── routes_town05_tiny/
+    │   │       ├── bev/
+    │   │       ├── gps/
+    │   │       ├── imu/
+    │   │       ├── metadata.json
+    │   │       ├── rgb/
+    │   │       └── speed/
+    │   ├── map_06/
+    │   │   └── routes_town06_long/
+    │   │       ├── bev/
+    │   │       ├── gps/
+    │   │       ├── imu/
+    │   │       ├── metadata.json
+    │   │       ├── rgb/
+    │   │       └── speed/
+    │   ├── map_07/
+    │   │   └── routes_town07_tiny/
+    │   │       ├── bev/
+    │   │       ├── gps/
+    │   │       ├── imu/
+    │   │       ├── metadata.json
+    │   │       ├── rgb/
+    │   │       └── speed/
+    │   └── map_10/
+    │       └── routes_town10_tiny/
+    │           ├── bev/
+    │           ├── gps/
+    │           ├── imu/
+    │           ├── metadata.json
+    │           ├── rgb/
+    │           └── speed/
+    ├── weather_3/
+    │   ├── map_01/
+    │   │   ├── routes_town01_long/
+    │   │   │   ├── bev/
+    │   │   │   ├── gps/
+    │   │   │   ├── imu/
+    │   │   │   ├── metadata.json
+    │   │   │   ├── rgb/
+    │   │   │   └── speed/
+    │   │   └── routes_town01_tiny/
+    │   │       ├── bev/
+    │   │       ├── gps/
+    │   │       ├── imu/
+    │   │       ├── metadata.json
+    │   │       ├── rgb/
+    │   │       └── speed/
+    │   ├── map_02/
+    │   │   ├── routes_town02_long/
+    │   │   │   ├── bev/
+    │   │   │   ├── gps/
+    │   │   │   ├── imu/
+    │   │   │   ├── metadata.json
+    │   │   │   ├── rgb/
+    │   │   │   └── speed/
+    │   │   ├── routes_town02_short/
+    │   │   │   ├── bev/
+    │   │   │   ├── gps/
+    │   │   │   ├── imu/
+    │   │   │   ├── metadata.json
+    │   │   │   ├── rgb/
+    │   │   │   └── speed/
+    │   │   └── routes_town02_tiny/
+    │   │       ├── bev/
+    │   │       ├── gps/
+    │   │       ├── imu/
+    │   │       ├── metadata.json
+    │   │       ├── rgb/
+    │   │       └── speed/
+    │   ├── map_03/
+    │   │   ├── routes_town03_long/
+    │   │   │   ├── bev/
+    │   │   │   ├── gps/
+    │   │   │   ├── imu/
+    │   │   │   ├── metadata.json
+    │   │   │   ├── rgb/
+    │   │   │   └── speed/
+    │   │   ├── routes_town03_short/
+    │   │   │   ├── bev/
+    │   │   │   ├── gps/
+    │   │   │   ├── imu/
+    │   │   │   ├── metadata.json
+    │   │   │   ├── rgb/
+    │   │   │   └── speed/
+    │   │   └── routes_town03_tiny/
+    │   │       ├── bev/
+    │   │       ├── gps/
+    │   │       ├── imu/
+    │   │       ├── metadata.json
+    │   │       ├── rgb/
+    │   │       └── speed/
+    │   ├── map_04/
+    │   │   ├── routes_town04_long/
+    │   │   │   ├── bev/
+    │   │   │   ├── gps/
+    │   │   │   ├── imu/
+    │   │   │   ├── metadata.json
+    │   │   │   ├── rgb/
+    │   │   │   └── speed/
+    │   │   ├── routes_town04_short/
+    │   │   │   ├── bev/
+    │   │   │   ├── gps/
+    │   │   │   ├── imu/
+    │   │   │   ├── metadata.json
+    │   │   │   ├── rgb/
+    │   │   │   └── speed/
+    │   │   └── routes_town04_tiny/
+    │   │       ├── bev/
+    │   │       ├── gps/
+    │   │       ├── imu/
+    │   │       ├── metadata.json
+    │   │       ├── rgb/
+    │   │       └── speed/
+    │   ├── map_05/
+    │   │   ├── routes_town05_long/
+    │   │   │   ├── bev/
+    │   │   │   ├── gps/
+    │   │   │   ├── imu/
+    │   │   │   ├── metadata.json
+    │   │   │   ├── rgb/
+    │   │   │   └── speed/
+    │   │   ├── routes_town05_short/
+    │   │   │   ├── bev/
+    │   │   │   ├── gps/
+    │   │   │   ├── imu/
+    │   │   │   ├── metadata.json
+    │   │   │   ├── rgb/
+    │   │   │   └── speed/
+    │   │   └── routes_town05_tiny/
+    │   │       ├── bev/
+    │   │       ├── gps/
+    │   │       ├── imu/
+    │   │       ├── metadata.json
+    │   │       ├── rgb/
+    │   │       └── speed/
+    │   ├── map_06/
+    │   │   ├── routes_town06_long/
+    │   │   │   ├── bev/
+    │   │   │   ├── gps/
+    │   │   │   ├── imu/
+    │   │   │   ├── metadata.json
+    │   │   │   ├── rgb/
+    │   │   │   └── speed/
+    │   │   └── routes_town06_tiny/
+    │   │       ├── bev/
+    │   │       ├── gps/
+    │   │       ├── imu/
+    │   │       ├── metadata.json
+    │   │       ├── rgb/
+    │   │       └── speed/
+    │   ├── map_07/
+    │   │   └── routes_town07_short/
+    │   │       ├── bev/
+    │   │       ├── gps/
+    │   │       ├── imu/
+    │   │       ├── metadata.json
+    │   │       ├── rgb/
+    │   │       └── speed/
+    │   └── map_10/
+    │       ├── routes_town10_short/
+    │       │   ├── bev/
+    │       │   ├── gps/
+    │       │   ├── imu/
+    │       │   ├── metadata.json
+    │       │   ├── rgb/
+    │       │   └── speed/
+    │       └── routes_town10_tiny/
+    │           ├── bev/
+    │           ├── gps/
+    │           ├── imu/
+    │           ├── metadata.json
+    │           ├── rgb/
+    │           └── speed/
+    ├── weather_4/
+    │   ├── map_01/
+    │   │   ├── routes_town01_long/
+    │   │   │   ├── bev/
+    │   │   │   ├── gps/
+    │   │   │   ├── imu/
+    │   │   │   ├── metadata.json
+    │   │   │   ├── rgb/
+    │   │   │   └── speed/
+    │   │   ├── routes_town01_short/
+    │   │   │   ├── bev/
+    │   │   │   ├── gps/
+    │   │   │   ├── imu/
+    │   │   │   ├── metadata.json
+    │   │   │   ├── rgb/
+    │   │   │   └── speed/
+    │   │   └── routes_town01_tiny/
+    │   │       ├── bev/
+    │   │       ├── gps/
+    │   │       ├── imu/
+    │   │       ├── metadata.json
+    │   │       ├── rgb/
+    │   │       └── speed/
+    │   ├── map_02/
+    │   │   ├── routes_town02_long/
+    │   │   │   ├── bev/
+    │   │   │   ├── gps/
+    │   │   │   ├── imu/
+    │   │   │   ├── metadata.json
+    │   │   │   ├── rgb/
+    │   │   │   └── speed/
+    │   │   ├── routes_town02_short/
+    │   │   │   ├── bev/
+    │   │   │   ├── gps/
+    │   │   │   ├── imu/
+    │   │   │   ├── metadata.json
+    │   │   │   ├── rgb/
+    │   │   │   └── speed/
+    │   │   └── routes_town02_tiny/
+    │   │       ├── bev/
+    │   │       ├── gps/
+    │   │       ├── imu/
+    │   │       ├── metadata.json
+    │   │       ├── rgb/
+    │   │       └── speed/
+    │   ├── map_03/
+    │   │   ├── routes_town03_long/
+    │   │   │   ├── bev/
+    │   │   │   ├── gps/
+    │   │   │   ├── imu/
+    │   │   │   ├── metadata.json
+    │   │   │   ├── rgb/
+    │   │   │   └── speed/
+    │   │   ├── routes_town03_short/
+    │   │   │   ├── bev/
+    │   │   │   ├── gps/
+    │   │   │   ├── imu/
+    │   │   │   ├── metadata.json
+    │   │   │   ├── rgb/
+    │   │   │   └── speed/
+    │   │   └── routes_town03_tiny/
+    │   │       ├── bev/
+    │   │       ├── gps/
+    │   │       ├── imu/
+    │   │       ├── metadata.json
+    │   │       ├── rgb/
+    │   │       └── speed/
+    │   ├── map_04/
+    │   │   ├── routes_town04_long/
+    │   │   │   ├── bev/
+    │   │   │   ├── gps/
+    │   │   │   ├── imu/
+    │   │   │   ├── metadata.json
+    │   │   │   ├── rgb/
+    │   │   │   └── speed/
+    │   │   └── routes_town04_short/
+    │   │       ├── bev/
+    │   │       ├── gps/
+    │   │       ├── imu/
+    │   │       ├── metadata.json
+    │   │       ├── rgb/
+    │   │       └── speed/
+    │   ├── map_05/
+    │   │   ├── routes_town05_long/
+    │   │   │   ├── bev/
+    │   │   │   ├── gps/
+    │   │   │   ├── imu/
+    │   │   │   ├── metadata.json
+    │   │   │   ├── rgb/
+    │   │   │   └── speed/
+    │   │   └── routes_town05_short/
+    │   │       ├── bev/
+    │   │       ├── gps/
+    │   │       ├── imu/
+    │   │       ├── metadata.json
+    │   │       ├── rgb/
+    │   │       └── speed/
+    │   ├── map_06/
+    │   │   ├── routes_town06_long/
+    │   │   │   ├── bev/
+    │   │   │   ├── gps/
+    │   │   │   ├── imu/
+    │   │   │   ├── metadata.json
+    │   │   │   ├── rgb/
+    │   │   │   └── speed/
+    │   │   ├── routes_town06_short/
+    │   │   │   ├── bev/
+    │   │   │   ├── gps/
+    │   │   │   ├── imu/
+    │   │   │   ├── metadata.json
+    │   │   │   ├── rgb/
+    │   │   │   └── speed/
+    │   │   └── routes_town06_tiny/
+    │   │       ├── bev/
+    │   │       ├── gps/
+    │   │       ├── imu/
+    │   │       ├── metadata.json
+    │   │       ├── rgb/
+    │   │       └── speed/
+    │   ├── map_07/
+    │   │   ├── routes_town07_short/
+    │   │   │   ├── bev/
+    │   │   │   ├── gps/
+    │   │   │   ├── imu/
+    │   │   │   ├── metadata.json
+    │   │   │   ├── rgb/
+    │   │   │   └── speed/
+    │   │   └── routes_town07_tiny/
+    │   │       ├── bev/
+    │   │       ├── gps/
+    │   │       ├── imu/
+    │   │       ├── metadata.json
+    │   │       ├── rgb/
+    │   │       └── speed/
+    │   └── map_10/
+    │       ├── routes_town10_short/
+    │       │   ├── bev/
+    │       │   ├── gps/
+    │       │   ├── imu/
+    │       │   ├── metadata.json
+    │       │   ├── rgb/
+    │       │   └── speed/
+    │       └── routes_town10_tiny/
+    │           ├── bev/
+    │           ├── gps/
+    │           ├── imu/
+    │           ├── metadata.json
+    │           ├── rgb/
+    │           └── speed/
+    ├── weather_5/
+    │   ├── map_01/
+    │   │   ├── routes_town01_long/
+    │   │   │   ├── bev/
+    │   │   │   ├── gps/
+    │   │   │   ├── imu/
+    │   │   │   ├── metadata.json
+    │   │   │   ├── rgb/
+    │   │   │   └── speed/
+    │   │   ├── routes_town01_short/
+    │   │   │   ├── bev/
+    │   │   │   ├── gps/
+    │   │   │   ├── imu/
+    │   │   │   ├── metadata.json
+    │   │   │   ├── rgb/
+    │   │   │   └── speed/
+    │   │   └── routes_town01_tiny/
+    │   │       ├── bev/
+    │   │       ├── gps/
+    │   │       ├── imu/
+    │   │       ├── metadata.json
+    │   │       ├── rgb/
+    │   │       └── speed/
+    │   ├── map_02/
+    │   │   ├── routes_town02_long/
+    │   │   │   ├── bev/
+    │   │   │   ├── gps/
+    │   │   │   ├── imu/
+    │   │   │   ├── metadata.json
+    │   │   │   ├── rgb/
+    │   │   │   └── speed/
+    │   │   └── routes_town02_tiny/
+    │   │       ├── bev/
+    │   │       ├── gps/
+    │   │       ├── imu/
+    │   │       ├── metadata.json
+    │   │       ├── rgb/
+    │   │       └── speed/
+    │   ├── map_03/
+    │   │   ├── routes_town03_long/
+    │   │   │   ├── bev/
+    │   │   │   ├── gps/
+    │   │   │   ├── imu/
+    │   │   │   ├── metadata.json
+    │   │   │   ├── rgb/
+    │   │   │   └── speed/
+    │   │   ├── routes_town03_short/
+    │   │   │   ├── bev/
+    │   │   │   ├── gps/
+    │   │   │   ├── imu/
+    │   │   │   ├── metadata.json
+    │   │   │   ├── rgb/
+    │   │   │   └── speed/
+    │   │   └── routes_town03_tiny/
+    │   │       ├── bev/
+    │   │       ├── gps/
+    │   │       ├── imu/
+    │   │       ├── metadata.json
+    │   │       ├── rgb/
+    │   │       └── speed/
+    │   ├── map_04/
+    │   │   ├── routes_town04_long/
+    │   │   │   ├── bev/
+    │   │   │   ├── gps/
+    │   │   │   ├── imu/
+    │   │   │   ├── metadata.json
+    │   │   │   ├── rgb/
+    │   │   │   └── speed/
+    │   │   ├── routes_town04_short/
+    │   │   │   ├── bev/
+    │   │   │   ├── gps/
+    │   │   │   ├── imu/
+    │   │   │   ├── metadata.json
+    │   │   │   ├── rgb/
+    │   │   │   └── speed/
+    │   │   └── routes_town04_tiny/
+    │   │       ├── bev/
+    │   │       ├── gps/
+    │   │       ├── imu/
+    │   │       ├── metadata.json
+    │   │       ├── rgb/
+    │   │       └── speed/
+    │   ├── map_05/
+    │   │   ├── routes_town05_long/
+    │   │   │   ├── bev/
+    │   │   │   ├── gps/
+    │   │   │   ├── imu/
+    │   │   │   ├── metadata.json
+    │   │   │   ├── rgb/
+    │   │   │   └── speed/
+    │   │   ├── routes_town05_short/
+    │   │   │   ├── bev/
+    │   │   │   ├── gps/
+    │   │   │   ├── imu/
+    │   │   │   ├── metadata.json
+    │   │   │   ├── rgb/
+    │   │   │   └── speed/
+    │   │   └── routes_town05_tiny/
+    │   │       ├── bev/
+    │   │       ├── gps/
+    │   │       ├── imu/
+    │   │       ├── metadata.json
+    │   │       ├── rgb/
+    │   │       └── speed/
+    │   ├── map_06/
+    │   │   ├── routes_town06_long/
+    │   │   │   ├── bev/
+    │   │   │   ├── gps/
+    │   │   │   ├── imu/
+    │   │   │   ├── metadata.json
+    │   │   │   ├── rgb/
+    │   │   │   └── speed/
+    │   │   ├── routes_town06_short/
+    │   │   │   ├── bev/
+    │   │   │   ├── gps/
+    │   │   │   ├── imu/
+    │   │   │   ├── metadata.json
+    │   │   │   ├── rgb/
+    │   │   │   └── speed/
+    │   │   └── routes_town06_tiny/
+    │   │       ├── bev/
+    │   │       ├── gps/
+    │   │       ├── imu/
+    │   │       ├── metadata.json
+    │   │       ├── rgb/
+    │   │       └── speed/
+    │   ├── map_07/
+    │   │   └── routes_town07_tiny/
+    │   │       ├── bev/
+    │   │       ├── gps/
+    │   │       ├── imu/
+    │   │       ├── metadata.json
+    │   │       ├── rgb/
+    │   │       └── speed/
+    │   └── map_10/
+    │       ├── routes_town10_short/
+    │       │   ├── bev/
+    │       │   ├── gps/
+    │       │   ├── imu/
+    │       │   ├── metadata.json
+    │       │   ├── rgb/
+    │       │   └── speed/
+    │       └── routes_town10_tiny/
+    │           ├── bev/
+    │           ├── gps/
+    │           ├── imu/
+    │           ├── metadata.json
+    │           ├── rgb/
+    │           └── speed/
+    ├── weather_6/
+    │   ├── map_01/
+    │   │   ├── routes_town01_long/
+    │   │   │   ├── bev/
+    │   │   │   ├── gps/
+    │   │   │   ├── imu/
+    │   │   │   ├── metadata.json
+    │   │   │   ├── rgb/
+    │   │   │   └── speed/
+    │   │   ├── routes_town01_short/
+    │   │   │   ├── bev/
+    │   │   │   ├── gps/
+    │   │   │   ├── imu/
+    │   │   │   ├── metadata.json
+    │   │   │   ├── rgb/
+    │   │   │   └── speed/
+    │   │   └── routes_town01_tiny/
+    │   │       ├── bev/
+    │   │       ├── gps/
+    │   │       ├── imu/
+    │   │       ├── metadata.json
+    │   │       ├── rgb/
+    │   │       └── speed/
+    │   ├── map_02/
+    │   │   ├── routes_town02_long/
+    │   │   │   ├── bev/
+    │   │   │   ├── gps/
+    │   │   │   ├── imu/
+    │   │   │   ├── metadata.json
+    │   │   │   ├── rgb/
+    │   │   │   └── speed/
+    │   │   ├── routes_town02_short/
+    │   │   │   ├── bev/
+    │   │   │   ├── gps/
+    │   │   │   ├── imu/
+    │   │   │   ├── metadata.json
+    │   │   │   ├── rgb/
+    │   │   │   └── speed/
+    │   │   └── routes_town02_tiny/
+    │   │       ├── bev/
+    │   │       ├── gps/
+    │   │       ├── imu/
+    │   │       ├── metadata.json
+    │   │       ├── rgb/
+    │   │       └── speed/
+    │   ├── map_03/
+    │   │   ├── routes_town03_long/
+    │   │   │   ├── bev/
+    │   │   │   ├── gps/
+    │   │   │   ├── imu/
+    │   │   │   ├── metadata.json
+    │   │   │   ├── rgb/
+    │   │   │   └── speed/
+    │   │   └── routes_town03_tiny/
+    │   │       ├── bev/
+    │   │       ├── gps/
+    │   │       ├── imu/
+    │   │       ├── metadata.json
+    │   │       ├── rgb/
+    │   │       └── speed/
+    │   ├── map_04/
+    │   │   ├── routes_town04_long/
+    │   │   │   ├── bev/
+    │   │   │   ├── gps/
+    │   │   │   ├── imu/
+    │   │   │   ├── metadata.json
+    │   │   │   ├── rgb/
+    │   │   │   └── speed/
+    │   │   └── routes_town04_tiny/
+    │   │       ├── bev/
+    │   │       ├── gps/
+    │   │       ├── imu/
+    │   │       ├── metadata.json
+    │   │       ├── rgb/
+    │   │       └── speed/
+    │   ├── map_05/
+    │   │   ├── routes_town05_long/
+    │   │   │   ├── bev/
+    │   │   │   ├── gps/
+    │   │   │   ├── imu/
+    │   │   │   ├── metadata.json
+    │   │   │   ├── rgb/
+    │   │   │   └── speed/
+    │   │   └── routes_town05_tiny/
+    │   │       ├── bev/
+    │   │       ├── gps/
+    │   │       ├── imu/
+    │   │       ├── metadata.json
+    │   │       ├── rgb/
+    │   │       └── speed/
+    │   ├── map_06/
+    │   │   └── routes_town06_long/
+    │   │       ├── bev/
+    │   │       ├── gps/
+    │   │       ├── imu/
+    │   │       ├── metadata.json
+    │   │       ├── rgb/
+    │   │       └── speed/
+    │   ├── map_07/
+    │   │   └── routes_town07_tiny/
+    │   │       ├── bev/
+    │   │       ├── gps/
+    │   │       ├── imu/
+    │   │       ├── metadata.json
+    │   │       ├── rgb/
+    │   │       └── speed/
+    │   └── map_10/
+    │       └── routes_town10_tiny/
+    │           ├── bev/
+    │           ├── gps/
+    │           ├── imu/
+    │           ├── metadata.json
+    │           ├── rgb/
+    │           └── speed/
+    ├── weather_7/
+    │   ├── map_01/
+    │   │   ├── routes_town01_long/
+    │   │   │   ├── bev/
+    │   │   │   ├── gps/
+    │   │   │   ├── imu/
+    │   │   │   ├── metadata.json
+    │   │   │   ├── rgb/
+    │   │   │   └── speed/
+    │   │   └── routes_town01_tiny/
+    │   │       ├── bev/
+    │   │       ├── gps/
+    │   │       ├── imu/
+    │   │       ├── metadata.json
+    │   │       ├── rgb/
+    │   │       └── speed/
+    │   ├── map_02/
+    │   │   ├── routes_town02_long/
+    │   │   │   ├── bev/
+    │   │   │   ├── gps/
+    │   │   │   ├── imu/
+    │   │   │   ├── metadata.json
+    │   │   │   ├── rgb/
+    │   │   │   └── speed/
+    │   │   └── routes_town02_tiny/
+    │   │       ├── bev/
+    │   │       ├── gps/
+    │   │       ├── imu/
+    │   │       ├── metadata.json
+    │   │       ├── rgb/
+    │   │       └── speed/
+    │   ├── map_03/
+    │   │   ├── routes_town03_long/
+    │   │   │   ├── bev/
+    │   │   │   ├── gps/
+    │   │   │   ├── imu/
+    │   │   │   ├── metadata.json
+    │   │   │   ├── rgb/
+    │   │   │   └── speed/
+    │   │   └── routes_town03_tiny/
+    │   │       ├── bev/
+    │   │       ├── gps/
+    │   │       ├── imu/
+    │   │       ├── metadata.json
+    │   │       ├── rgb/
+    │   │       └── speed/
+    │   ├── map_04/
+    │   │   ├── routes_town04_long/
+    │   │   │   ├── bev/
+    │   │   │   ├── gps/
+    │   │   │   ├── imu/
+    │   │   │   ├── metadata.json
+    │   │   │   ├── rgb/
+    │   │   │   └── speed/
+    │   │   └── routes_town04_tiny/
+    │   │       ├── bev/
+    │   │       ├── gps/
+    │   │       ├── imu/
+    │   │       ├── metadata.json
+    │   │       ├── rgb/
+    │   │       └── speed/
+    │   ├── map_05/
+    │   │   ├── routes_town05_long/
+    │   │   │   ├── bev/
+    │   │   │   ├── gps/
+    │   │   │   ├── imu/
+    │   │   │   ├── metadata.json
+    │   │   │   ├── rgb/
+    │   │   │   └── speed/
+    │   │   └── routes_town05_tiny/
+    │   │       ├── bev/
+    │   │       ├── gps/
+    │   │       ├── imu/
+    │   │       ├── metadata.json
+    │   │       ├── rgb/
+    │   │       └── speed/
+    │   └── map_06/
+    │       └── routes_town06_long/
+    │           ├── bev/
+    │           ├── gps/
+    │           ├── imu/
+    │           ├── metadata.json
+    │           ├── rgb/
+    │           └── speed/
+    ├── weather_8/
+    │   ├── map_01/
+    │   │   └── routes_town01_long/
+    │   │       ├── bev/
+    │   │       ├── gps/
+    │   │       ├── imu/
+    │   │       ├── metadata.json
+    │   │       ├── rgb/
+    │   │       └── speed/
+    │   ├── map_02/
+    │   │   └── routes_town02_long/
+    │   │       ├── bev/
+    │   │       ├── gps/
+    │   │       ├── imu/
+    │   │       ├── metadata.json
+    │   │       ├── rgb/
+    │   │       └── speed/
+    │   ├── map_03/
+    │   │   └── routes_town03_long/
+    │   │       ├── bev/
+    │   │       ├── gps/
+    │   │       ├── imu/
+    │   │       ├── metadata.json
+    │   │       ├── rgb/
+    │   │       └── speed/
+    │   ├── map_04/
+    │   │   └── routes_town04_long/
+    │   │       ├── bev/
+    │   │       ├── gps/
+    │   │       ├── imu/
+    │   │       ├── metadata.json
+    │   │       ├── rgb/
+    │   │       └── speed/
+    │   ├── map_05/
+    │   │   └── routes_town05_long/
+    │   │       ├── bev/
+    │   │       ├── gps/
+    │   │       ├── imu/
+    │   │       ├── metadata.json
+    │   │       ├── rgb/
+    │   │       └── speed/
+    │   └── map_06/
+    │       └── routes_town06_long/
+    │           ├── bev/
+    │           ├── gps/
+    │           ├── imu/
+    │           ├── metadata.json
+    │           ├── rgb/
+    │           └── speed/
+    └── weather_9/
+        ├── map_01/
+        │   └── routes_town01_long/
+        │       ├── bev/
+        │       ├── gps/
+        │       ├── imu/
+        │       ├── metadata.json
+        │       ├── rgb/
+        │       └── speed/
+        ├── map_02/
+        │   └── routes_town02_long/
+        │       ├── bev/
+        │       ├── gps/
+        │       ├── imu/
+        │       ├── metadata.json
+        │       ├── rgb/
+        │       └── speed/
+        ├── map_03/
+        │   └── routes_town03_long/
+        │       ├── bev/
+        │       ├── gps/
+        │       ├── imu/
+        │       ├── metadata.json
+        │       ├── rgb/
+        │       └── speed/
+        ├── map_04/
+        │   └── routes_town04_long/
+        │       ├── bev/
+        │       ├── gps/
+        │       ├── imu/
+        │       ├── metadata.json
+        │       ├── rgb/
+        │       └── speed/
+        ├── map_05/
+        │   └── routes_town05_long/
+        │       ├── bev/
+        │       ├── gps/
+        │       ├── imu/
+        │       ├── metadata.json
+        │       ├── rgb/
+        │       └── speed/
+        ├── map_06/
+        │   └── routes_town06_long/
+        │       ├── bev/
+        │       ├── gps/
+        │       ├── imu/
+        │       ├── metadata.json
+        │       ├── rgb/
+        │       └── speed/
+        └── map_10/
+            └── routes_town10_short/
+                ├── bev/
+                ├── gps/
+                ├── imu/
+                ├── metadata.json
+                ├── rgb/
+                └── speed/
