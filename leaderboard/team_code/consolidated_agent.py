@@ -45,7 +45,92 @@ class ConsolidatedAgent(AutonomousAgent):
         {'type': 'sensor.other.gnss', 'x': 0.0, 'y': 0.0, 'z': 0.0, 'roll': 0.0, 'pitch': 0.0, 'yaw': 0.0, 'id': 'gps'},
         {'type': 'sensor.speedometer', 'id': 'speed'}
     ]
-    
+
+    # ---- NEW: weather helper presets and application ----
+    _WEATHER_PRESETS = [
+        "ClearNoon","CloudyNoon","WetNoon","WetCloudyNoon",
+        "MidRainyNoon","HardRainNoon","SoftRainNoon",
+        "ClearSunset","CloudySunset","WetSunset","WetCloudySunset",
+        "MidRainSunset","HardRainSunset","SoftRainSunset",
+    ]
+
+    def _resolve_weather_from_env(self):
+        """
+        Resolve a carla.WeatherParameters from env:
+          - WEATHER_PRESET (e.g., 'ClearNoon')
+          - or WEATHER_INDEX (0–13 or 1–14)
+        Returns (name, WeatherParameters) or (None, None) if not specified/invalid.
+        """
+        preset_env = os.environ.get('WEATHER_PRESET', '').strip()
+        index_env = os.environ.get('WEATHER_INDEX', '').strip()
+
+        name = None
+        wp = None
+
+        # Prefer explicit preset name if provided
+        if preset_env:
+            if hasattr(carla.WeatherParameters, preset_env):
+                name = preset_env
+                wp = getattr(carla.WeatherParameters, name)
+            else:
+                print(f"ConsolidatedAgent: WARNING - WEATHER_PRESET '{preset_env}' not found in carla.WeatherParameters")
+
+        # Fallback to index
+        if wp is None and index_env:
+            try:
+                idx = int(index_env)
+                # accept 1–14 or 0–13
+                if 1 <= idx <= 14:
+                    idx -= 1
+                idx = max(0, min(idx, len(self._WEATHER_PRESETS) - 1))
+                name = self._WEATHER_PRESETS[idx]
+                wp = getattr(carla.WeatherParameters, name)
+            except Exception:
+                print(f"ConsolidatedAgent: WARNING - Invalid WEATHER_INDEX '{index_env}'")
+
+        return name, wp
+
+    def _apply_weather_from_env(self):
+        """
+        Apply the resolved weather to the current CARLA world if available.
+        Stores summary in self._weather_applied for later metadata logging.
+        """
+        name, wp = self._resolve_weather_from_env()
+        if not wp:
+            return  # nothing to do
+
+        world = None
+        try:
+            world = CarlaDataProvider.get_world()
+        except Exception as e:
+            print(f"ConsolidatedAgent: get_world() not ready yet: {e}")
+
+        # If DataProvider world isn't ready (rare), attempt direct client
+        if world is None:
+            try:
+                host = os.environ.get("CARLA_HOST", os.environ.get("HOST", "127.0.0.1"))
+                port = int(os.environ.get("CARLA_PORT", os.environ.get("PORT", "2000")))
+                client = carla.Client(host, port)
+                client.set_timeout(5.0)
+                world = client.get_world()
+            except Exception as e:
+                print(f"ConsolidatedAgent: Unable to acquire world via client to set weather: {e}")
+
+        if world is not None:
+            try:
+                world.set_weather(wp)
+                self._weather_applied = {
+                    "index": os.environ.get('WEATHER_INDEX', ''),
+                    "preset": name,
+                }
+                print(f"ConsolidatedAgent: Applied weather -> {name} (WEATHER_INDEX={os.environ.get('WEATHER_INDEX','')})")
+            except Exception as e:
+                print(f"ConsolidatedAgent: Failed to apply weather '{name}': {e}")
+        else:
+            print("ConsolidatedAgent: WARNING - No CARLA world available; cannot apply weather")
+
+    # -------------------------------------------------------------------------
+
     def setup(self, path_to_config_yaml):
         print(f"ConsolidatedAgent: Loading configuration from {path_to_config_yaml}")
         with open(path_to_config_yaml, 'r') as f:
@@ -82,6 +167,9 @@ class ConsolidatedAgent(AutonomousAgent):
         if 'model_components' in self.config:
             print(f"  Model components: {len(self.config['model_components'])} components")
         print(f"  Sensors: {len(self.sensor_config)} configured")
+
+        # ---- NEW: apply weather as early as possible in setup() ----
+        self._apply_weather_from_env()
         
         self._load_model()
         self._initialize_data_collection()
@@ -866,6 +954,16 @@ class ConsolidatedAgent(AutonomousAgent):
             'timestamp': self._get_timestamp(),
             'frames': []
         }
+
+        # ---- NEW: record applied weather in metadata, if any ----
+        if hasattr(self, '_weather_applied'):
+            self.metadata['weather'] = dict(self._weather_applied)
+        else:
+            # still store intent if provided
+            self.metadata['weather'] = {
+                'index': os.environ.get('WEATHER_INDEX', ''),
+                'preset': os.environ.get('WEATHER_PRESET', '')
+            }
 
         print("ConsolidatedAgent: Data collection initialized")
         print(f"  Save path: {self.save_path}")
