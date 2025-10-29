@@ -78,14 +78,14 @@ export EVAL_CMD_TEMPLATE
 export EVAL_ENTRYPOINT=""
 
 # --- Quick smoke check (non-fatal) ------------------------------------------
-echo "[start_job] Smoke check: list /workspace inside container"
-singularity exec --nv --pwd /workspace "${CARLA_SIF}" bash -lc 'ls -la . || true'
+#echo "[start_job] Smoke check: list /workspace inside container"
+#singularity exec --nv --pwd /workspace "${CARLA_SIF}" bash -lc 'ls -la . || true'
 
-echo "[start_job] Smoke check: python can import leaderboard.leaderboard_evaluator"
+#echo "[start_job] Smoke check: python can import leaderboard.leaderboard_evaluator"
 # Preserve container PYTHONPATH (which includes the CARLA egg) and just prepend repo paths.
-singularity exec --nv --pwd /workspace "${CARLA_SIF}" bash -lc \
-  'PYTHONPATH="/workspace:/workspace/leaderboard:/workspace/scenario_runner:$PYTHONPATH" \
-   python3 -c "import leaderboard.leaderboard_evaluator as L; print(getattr(L, \"__file__\", \"ok\"))" || true'
+#singularity exec --nv --pwd /workspace "${CARLA_SIF}" bash -lc \
+#  'PYTHONPATH="/workspace:/workspace/leaderboard:/workspace/scenario_runner:$PYTHONPATH" \
+#   python3 -c "import leaderboard.leaderboard_evaluator as L; print(getattr(L, \"__file__\", \"ok\"))" || true'
 
 # --- Kick off orchestration --------------------------------------------------
 # Reset any stale state (non-fatal if empty)
@@ -93,5 +93,5 @@ python3 "${PROJECT_ROOT}/continuous_cli.py" reset || true
 
 # Adjust these SLURM flags to your cluster defaults if needed
 python3 "${PROJECT_ROOT}/continuous_cli.py" --persistent start --slurm \
-  --slurm-nodelist="hpc-pr-a-pod10,hpc-pr-a-pod11" \
-  --slurm-gpus=8 --slurm-nodes=2 --slurm-time=168:00:00
+  --slurm-nodelist="hpc-pr-a-pod10" \
+  --slurm-gpus=8 --slurm-nodes=1 --slurm-time=336:00:00

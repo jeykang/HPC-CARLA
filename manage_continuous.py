@@ -713,24 +713,85 @@ class ContinuousManager:
         eval_cmd_template = os.environ.get('EVAL_CMD_TEMPLATE', '').strip()
         host = str(host); port = str(port); tm_port = str(tm_port)
         env = os.environ.copy()
-        env.update({
-            'AGENT_CFG': str(agent_cfg),
-            'ROUTES_FILE': str(routes_file),
-            'SCENARIOS_FILE': str(scenarios_file),
-            'WEATHER_INDEX': str(weather_idx),
-            'CARLA_HOST': host,
-            'CARLA_PORT': port,
-            'TM_PORT': tm_port,
-        })
 
+        # Core job context always available here:
         route_stem = Path(routes_file).stem  # e.g., "routes_town04_tiny"
+
+        # Fill base env first
         env.update({
-            'AGENT_NAME': str(agent_name),
-            'ROUTE_NAME': str(route_stem),
-            'TOWN_NUM': str(town_num) if town_num is not None else '',
-            'DATASET_DIR': env.get('DATASET_DIR', str(self.project_root / 'dataset')),
+            'AGENT_CFG':       str(agent_cfg),
+            'ROUTES_FILE':     str(routes_file),
+            'SCENARIOS_FILE':  str(scenarios_file),
+            'WEATHER_INDEX':   str(weather_idx),
+            'CARLA_HOST':      host,
+            'CARLA_PORT':      port,
+            'TM_PORT':         tm_port,
+
+            'AGENT_NAME':      str(agent_name),
+            'ROUTE_NAME':      str(route_stem),
+            'TOWN_NUM':        str(town_num) if town_num is not None else '',
+            'DATASET_DIR':     env.get('DATASET_DIR', str(self.project_root / 'dataset')),
         })
 
+        # Derive normalized labels exactly like consolidated_agent
+        def _label_weather(wi):
+            try:  return f"weather_{int(wi)}"
+            except: return f"weather_{str(wi)}"
+
+        def _label_map(tn):
+            try:
+                return f"map_{int(tn):02d}"
+            except:
+                return f"map_{tn or 'unknown'}"
+
+        weather_label = _label_weather(env['WEATHER_INDEX'])
+        map_label     = _label_map(env.get('TOWN_NUM', ''))
+
+        # Construct the per-job SAVE_PATH and CHECKPOINT_ENDPOINT (where LB writes results.json)
+        save_path = os.path.join(env['DATASET_DIR'], env['AGENT_NAME'], weather_label, map_label, env['ROUTE_NAME'])
+        env.update({
+            'SAVE_PATH':            save_path,
+            'CHECKPOINT_ENDPOINT':  os.path.join(save_path, 'results.json'),
+        })
+        
+        if 'WEATHER_PRESET' in os.environ and os.environ['WEATHER_PRESET'].strip():
+            env['WEATHER_PRESET'] = os.environ['WEATHER_PRESET'].strip()
+
+        # Labels for tidy per-job paths (also used by your agent)
+        def _label_weather(wi):
+            try:  return f"weather_{int(wi)}"
+            except: return f"weather_{str(wi)}"
+
+        def _label_map(tn):
+            try:  return f"map_{int(tn):02d}"
+            except: return f"map_{tn or 'unknown'}"
+
+        route_stem   = Path(routes_file).stem
+        weather_lbl  = _label_weather(env['WEATHER_INDEX'])
+        map_lbl      = _label_map(env.get('TOWN_NUM',''))
+        dataset_root = env.get('DATASET_DIR', str(self.project_root / 'dataset'))
+        save_path    = os.path.join(dataset_root, env['AGENT_NAME'], weather_lbl, map_lbl, route_stem)
+
+        env['SAVE_PATH']           = save_path
+        env['CHECKPOINT_ENDPOINT'] = os.path.join(save_path, 'results.json')
+
+        # Hard forward into container env
+        def _mirror(keys):
+            for k in keys:
+                if k in env and env[k] is not None:
+                    env['SINGULARITYENV_' + k] = str(env[k])
+                    env['APPTAINERENV_' + k]   = str(env[k])
+
+        _mirror([
+            'AGENT_CFG','ROUTES_FILE','SCENARIOS_FILE',
+            'AGENT_NAME','ROUTE_NAME','TOWN_NUM','DATASET_DIR',
+            'WEATHER_INDEX','WEATHER_PRESET',
+            'CARLA_HOST','CARLA_PORT','TM_PORT',
+            'SAVE_PATH','CHECKPOINT_ENDPOINT'
+        ])
+
+
+        # Proceed to build the command as before (EVAL_CMD_TEMPLATE or fallback)
         if eval_cmd_template:
             fmt = eval_cmd_template.format(
                 AGENT_CFG=str(agent_cfg),
@@ -750,8 +811,7 @@ class ContinuousManager:
                 '--agent-config', str(agent_cfg),
                 '--host', host, '--port', port, '--trafficManagerPort', tm_port
             ]
-            if extra_args:
-                cmd.extend(extra_args)
+
 
         print(f"[RUN] Job {job['id']} agent={agent_name} route={route_name} weather={weather_idx}")
         gpu_id_for_display = job['gpu'] if job.get('gpu') is not None else self._derive_gpu_id(port)

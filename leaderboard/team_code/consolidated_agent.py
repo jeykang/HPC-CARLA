@@ -31,9 +31,13 @@ class ConsolidatedAgent(AutonomousAgent):
     
     DEFAULT_SENSORS = [
         {'type': 'sensor.camera.rgb', 'x': 1.3, 'y': 0.0, 'z': 2.3, 'roll': 0.0, 'pitch': 0.0, 'yaw': 0.0,
-         'width': 900, 'height': 256, 'fov': 100, 'id': 'rgb_front'},
+         'width': 900, 'height': 256, 'fov': 100, "enable_postprocess_effects": True,
+        "gamma": 2.2,
+        "exposure_mode": "histogram", 'id': 'rgb_front'},
         {'type': 'sensor.camera.rgb', 'x': 0.0, 'y': 0.0, 'z': 50.0, 'roll': 0.0, 'pitch': -90.0, 'yaw': 0.0,
-         'width': 512, 'height': 512, 'fov': 110, 'id': 'bev'},
+         'width': 512, 'height': 512, 'fov': 110, "enable_postprocess_effects": True,
+        "gamma": 2.2,
+        "exposure_mode": "histogram", 'id': 'bev'},
         {'type': 'sensor.camera.semantic_segmentation', 'x': 1.3, 'y': 0.0, 'z': 2.3, 
          'roll': 0.0, 'pitch': 0.0, 'yaw': 0.0, 'width': 900, 'height': 256, 'fov': 100, 'id': 'semantic_front'},
         {'type': 'sensor.camera.depth', 'x': 1.3, 'y': 0.0, 'z': 2.3, 
@@ -53,6 +57,9 @@ class ConsolidatedAgent(AutonomousAgent):
         "ClearSunset","CloudySunset","WetSunset","WetCloudySunset",
         "MidRainSunset","HardRainSunset","SoftRainSunset",
     ]
+    
+    _ENFORCE_W_N_TICKS = int(os.environ.get("WEATHER_ENFORCE_TICKS", "120"))  # ~6s @20Hz, ~2s @60Hz
+    _ENFORCE_EVERY_N   = int(os.environ.get("WEATHER_ENFORCE_EVERY", "10"))   # re-apply cadence during warmup
 
     def _resolve_weather_from_env(self):
         """
@@ -89,6 +96,61 @@ class ConsolidatedAgent(AutonomousAgent):
                 print(f"ConsolidatedAgent: WARNING - Invalid WEATHER_INDEX '{index_env}'")
 
         return name, wp
+    
+    def _force_weather_if_needed(self, world, frame):
+        if self._target_weather is None or world is None:
+            return
+        must_force = (frame <= self._weather_force_until) \
+                    or (frame - self._last_weather_apply) >= self._weather_refresh_every
+        if must_force:
+            try:
+                # Only call set_weather if different (cheap check)
+                if world.get_weather() != self._target_weather:
+                    world.set_weather(self._target_weather)
+                self._last_weather_apply = frame
+            except Exception as e:
+                print(f"ConsolidatedAgent: weather force skipped: {e}")
+
+
+
+    def _resolve_weather_from_env(self):
+        """
+        Resolve a carla.WeatherParameters from env:
+        - WEATHER_PRESET (e.g., 'ClearNoon')
+        - or WEATHER_INDEX (0–13 or 1–14)
+        Returns (name, WeatherParameters) or (None, None).
+        """
+        preset_env = os.environ.get('WEATHER_PRESET', '').strip()
+        index_env  = os.environ.get('WEATHER_INDEX', '').strip()
+
+        name, wp = None, None
+        if preset_env:
+            if hasattr(carla.WeatherParameters, preset_env):
+                name = preset_env
+                wp   = getattr(carla.WeatherParameters, name)
+
+        if wp is None and index_env:
+            try:
+                idx = int(index_env)
+                if 1 <= idx <= len(self._WEATHER_PRESETS):  # accept 1-based
+                    idx -= 1
+                idx  = max(0, min(idx, len(self._WEATHER_PRESETS)-1))
+                name = self._WEATHER_PRESETS[idx]
+                wp   = getattr(carla.WeatherParameters, name)
+            except Exception:
+                print(f"[ConsolidatedAgent] Invalid WEATHER_INDEX='{index_env}'")
+
+        return name, wp
+
+    def _apply_weather(self, world, name, wp):
+        try:
+            world.set_weather(wp)
+            self._weather_applied = {"name": name}
+            print(f"[ConsolidatedAgent] Weather applied: {name}")
+            return True
+        except Exception as e:
+            print(f"[ConsolidatedAgent] Failed to set weather '{name}': {e}")
+            return False
 
     def _apply_weather_from_env(self):
         """
@@ -132,6 +194,7 @@ class ConsolidatedAgent(AutonomousAgent):
     # -------------------------------------------------------------------------
 
     def setup(self, path_to_config_yaml):
+        self._weather_enforced_once = False
         print(f"ConsolidatedAgent: Loading configuration from {path_to_config_yaml}")
         with open(path_to_config_yaml, 'r') as f:
             self.config = yaml.safe_load(f)
@@ -168,8 +231,21 @@ class ConsolidatedAgent(AutonomousAgent):
             print(f"  Model components: {len(self.config['model_components'])} components")
         print(f"  Sensors: {len(self.sensor_config)} configured")
 
-        # ---- NEW: apply weather as early as possible in setup() ----
-        self._apply_weather_from_env()
+        # Resolve desired weather from env and apply once
+        self._desired_weather = self._resolve_weather_from_env()
+        self._weather_enforce_until = 0
+        self._last_weather_apply_frame = -999999
+
+        if self._desired_weather[1] is not None:
+            world = CarlaDataProvider.get_world()
+            if world:
+                if self._apply_weather(world, *self._desired_weather):
+                    # Keep re-applying for a short warmup window, since LB/ScenarioRunner
+                    # may overwrite weather once scenarios start.
+                    frame = world.get_snapshot().frame if world.get_snapshot() else 0
+                    self._weather_enforce_until = frame + _ENFORCE_W_N_TICKS
+                    self._last_weather_apply_frame = frame
+
         
         self._load_model()
         self._initialize_data_collection()
@@ -565,6 +641,32 @@ class ConsolidatedAgent(AutonomousAgent):
             self.sensor_data_paths[sensor_id] = sensor_path
     
     def run_step(self, input_data, timestamp):
+        # Enforce / heal weather
+        if getattr(self, "_desired_weather", (None, None))[1] is not None:
+            world = CarlaDataProvider.get_world()
+            if world:
+                snap = world.get_snapshot()
+                frame = snap.frame if snap else 0
+                desired_name, desired_wp = self._desired_weather
+
+                # During warm-up, re-apply every N frames
+                if frame <= self._weather_enforce_until:
+                    if frame - self._last_weather_apply_frame >= _ENFORCE_EVERY_N:
+                        self._apply_weather(world, desired_name, desired_wp)
+                        self._last_weather_apply_frame = frame
+                else:
+                    # After warm-up, heal if someone toggled it later
+                    current = world.get_weather()
+                    # Compare by fields because WeatherParameters has no __eq__
+                    def _as_tuple(w):
+                        return (w.cloudiness, w.precipitation, w.precipitation_deposits,
+                                w.wind_intensity, w.sun_azimuth_angle, w.sun_altitude_angle,
+                                w.fog_density, w.fog_distance, w.wetness, w.fog_falloff)
+                    if _as_tuple(current) != _as_tuple(desired_wp):
+                        self._apply_weather(world, desired_name, desired_wp)
+                        self._last_weather_apply_frame = frame
+
+
         try:
             self._save_sensor_data(input_data, timestamp)
         except Exception as e:
@@ -1094,6 +1196,7 @@ class ConsolidatedAgent(AutonomousAgent):
                 meta = dict(self.metadata)
                 if 'frames' in meta and len(meta['frames']) > 100:
                     meta['frames'] = meta['frames'][-100:]
+                meta["applied_weather"] = getattr(self, "_weather_applied", {})
                 json.dump(meta, f, indent=2)
         except Exception as e:
             print(f"Warning: Failed to save metadata: {e}")
