@@ -7,12 +7,12 @@
 # Output naming: <subfolder>.mp4 or <subfolder>.gif placed in the same directory as the image set.
 #
 # Usage:
-#   ./make_timelapses.sh ROOT_DIR [--format mp4|gif] [--fps 60] [--recursive] [--force] [--dry-run]
+#   ./make_timelapses.sh ROOT_DIR [--format mp4|gif] [--fps 60] [--force] [--dry-run]
 #
 # Options:
 #   --format mp4|gif    Output container (default: mp4)
 #   --fps N             Frames per second (default: 60)
-#   --recursive         Scan nested subdirectories (default: only immediate children)
+#   (Automatically recurses all nested subdirectories; no depth limit)
 #   --force             Rebuild even if output exists and is newer than sources
 #   --dry-run           Show what would be done without invoking ffmpeg
 #   --min N             Minimum number of images required (default: 2)
@@ -28,7 +28,6 @@ IFS=$'\n\t'
 ROOT=""
 FORMAT="mp4"
 FPS=60
-RECURSIVE=0
 FORCE=0
 DRYRUN=0
 MIN_IMAGES=2
@@ -52,7 +51,6 @@ parse_args() {
     case "$1" in
       --format) FORMAT="$2"; shift 2 ;;
       --fps) FPS="$2"; shift 2 ;;
-      --recursive) RECURSIVE=1; shift ;;
       --force) FORCE=1; shift ;;
       --dry-run) DRYRUN=1; shift ;;
       --min) MIN_IMAGES="$2"; shift 2 ;;
@@ -69,11 +67,7 @@ parse_args() {
 }
 
 collect_candidate_dirs() {
-  if (( RECURSIVE )); then
-    find "$ROOT" -type d ! -path "$ROOT" -print
-  else
-    find "$ROOT" -mindepth 1 -maxdepth 1 -type d -print
-  fi
+  find "$ROOT" -type d ! -path "$ROOT" -print
 }
 
 # Determine if a directory contains only images (and at least MIN_IMAGES)
@@ -152,7 +146,7 @@ build_gif() {
 main() {
   parse_args "$@"
   have_ffmpeg || { err "ffmpeg not found in PATH"; exit 1; }
-  log "Root: $ROOT | format: $FORMAT | fps: $FPS | recursive: $RECURSIVE | force: $FORCE | dry-run: $DRYRUN | min: $MIN_IMAGES | sort: $SORT_MODE"
+  log "Root: $ROOT | format: $FORMAT | fps: $FPS | force: $FORCE | dry-run: $DRYRUN | min: $MIN_IMAGES | sort: $SORT_MODE | depth: unlimited"
   local dirs=( $(collect_candidate_dirs) )
   [[ ${#dirs[@]} -gt 0 ]] || { err "No subdirectories found"; exit 1; }
 
