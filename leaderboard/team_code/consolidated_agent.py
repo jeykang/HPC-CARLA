@@ -87,8 +87,8 @@ class ConsolidatedAgent(AutonomousAgent):
             try:
                 idx = int(index_env)
                 # accept 1–14 or 0–13
-                if 1 <= idx <= 14:
-                    idx -= 1
+                #if 1 <= idx <= 14:
+                #    idx -= 1
                 idx = max(0, min(idx, len(self._WEATHER_PRESETS) - 1))
                 name = self._WEATHER_PRESETS[idx]
                 wp = getattr(carla.WeatherParameters, name)
@@ -132,8 +132,8 @@ class ConsolidatedAgent(AutonomousAgent):
         if wp is None and index_env:
             try:
                 idx = int(index_env)
-                if 1 <= idx <= len(self._WEATHER_PRESETS):  # accept 1-based
-                    idx -= 1
+                #if 1 <= idx <= len(self._WEATHER_PRESETS):  # accept 1-based
+                #    idx -= 1
                 idx  = max(0, min(idx, len(self._WEATHER_PRESETS)-1))
                 name = self._WEATHER_PRESETS[idx]
                 wp   = getattr(carla.WeatherParameters, name)
