@@ -1,5 +1,15 @@
 # TCP Agent Configuration
-model_type: generic
+
+agent_config:
+  # Path to the original TCP agent implementation
+  agent_file: /workspace/leaderboard/team_code/tcp_agent.py
+  # Class name defined in tcp_agent.py
+  agent_class: TCPAgent
+  # Path to the pre-trained TCP checkpoint (what TCPAgent expects)
+  config_path: /workspace/leaderboard/team_code/tcp/tcp_model.ckpt
+
+
+model_type: tcp
 model_path: /workspace/leaderboard/team_code/tcp/tcp_model.ckpt
 
 # TCP specific sensor configuration

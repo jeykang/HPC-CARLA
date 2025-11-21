@@ -1,4 +1,11 @@
 # LAV Agent Configuration
+agent_config:
+  # Path to the original LAV agent implementation
+  agent_file: /workspace/leaderboard/team_code/lav_agent.py
+  # Class name defined in lav_agent.py
+  agent_class: LAVAgent
+  config_path: /workspace/leaderboard/team_code/lav/config.yaml
+
 model_type: lav
 
 model_components:
