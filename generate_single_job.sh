@@ -3,6 +3,19 @@
 # In persistent mode (CLIENT_ONLY=1 or PERSISTENT=1), this script WILL NOT start CARLA.
 set -euo pipefail
 
+# ADAPTATION FOR DGX SPARK
+if [[ -n "${FORCE_LOGICAL_GPUS:-}" ]]; then
+    # We are masquerading. The "GPU_ID" is just a Logical ID for ports.
+    # The Physical GPU is defined in the env, or defaults to 0.
+    export NVIDIA_VISIBLE_DEVICES="${PHYSICAL_GPU_ID:-0}"
+    export CUDA_VISIBLE_DEVICES="${PHYSICAL_GPU_ID:-0}"
+    echo "[generate_single_job] Logical GPU ${GPU_ID} mapped to Physical GPU ${NVIDIA_VISIBLE_DEVICES}"
+else
+    # Standard Cluster Behavior
+    export NVIDIA_VISIBLE_DEVICES="${GPU_ID}"
+    export CUDA_VISIBLE_DEVICES="${GPU_ID}"
+fi
+
 : "${PROJECT_ROOT:=$(pwd)}"
 : "${CARLA_SIF:=carla_official.sif}"
 : "${UE4_QUALITY:=Epic}"
@@ -35,7 +48,6 @@ launch_carla() {
   bash -lc "fuser -k -TERM ${rpc}/tcp || true"
   bash -lc "lsof -ti tcp:${rpc} | xargs -r kill -TERM || true"
 
-  NVIDIA_VISIBLE_DEVICES="${GPU_ID}" \
   singularity exec --nv -B "${PROJECT_ROOT}:/workspace" "${CARLA_SIF}" \
     bash -lc 'ulimit -c 0 ;
               DISABLE_PYTHON=1 SDL_VIDEODRIVER=offscreen

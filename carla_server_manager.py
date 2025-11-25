@@ -75,9 +75,18 @@ def launch_server(gpu_id: int, rpc_port: int, tm_port: int) -> subprocess.Popen:
     log_f = open(log_path, "ab", buffering=0)
 
     env = os.environ.copy()
-    # Singularity honors NVIDIA_VISIBLE_DEVICES; set CUDA_VISIBLE_DEVICES too for safety
-    env["NVIDIA_VISIBLE_DEVICES"] = str(gpu_id)
-    env["CUDA_VISIBLE_DEVICES"] = str(gpu_id)
+    
+    # ADAPTATION FOR DGX SPARK:
+    # If utilizing logical GPUs, force the visible device to the physical one (usually 0).
+    if os.environ.get("FORCE_LOGICAL_GPUS"):
+        physical_id = os.environ.get("PHYSICAL_GPU_ID", "0")
+        env["NVIDIA_VISIBLE_DEVICES"] = physical_id
+        env["CUDA_VISIBLE_DEVICES"] = physical_id
+    else:
+        # Original logic
+        env["NVIDIA_VISIBLE_DEVICES"] = str(gpu_id)
+        env["CUDA_VISIBLE_DEVICES"] = str(gpu_id)
+        
     env["CARLA_SERVER"] = "1"
 
     # Only warn about missing host-side script if user explicitly points into /workspace
@@ -216,14 +225,19 @@ def parse_args():
 
     return p.parse_args()
 
-
 def discover_gpus() -> List[int]:
-    # Respect CUDA_VISIBLE_DEVICES if present
+    # ADAPTATION FOR DGX SPARK:
+    # If FORCE_LOGICAL_GPUS is set, ignore hardware and return logical list.
+    if os.environ.get("FORCE_LOGICAL_GPUS"):
+        count = int(os.environ["FORCE_LOGICAL_GPUS"])
+        print(f"[manager] FORCE_LOGICAL_GPUS detected. Virtualizing {count} GPUs on single device.")
+        return list(range(count))
+
+    # Original logic below...
     cvd = os.environ.get("CUDA_VISIBLE_DEVICES")
     if cvd:
         mapping = [x for x in cvd.split(",") if x.strip() != ""]
         return list(range(len(mapping)))
-    # Fallback: assume 0..N-1 where N comes from SLURM or nvidia-smi
     n = int(os.environ.get("SLURM_GPUS_ON_NODE", os.environ.get("NGPUS", "1")))
     return list(range(n))
 
