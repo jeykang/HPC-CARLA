@@ -48,6 +48,12 @@ services:
       # This CARLA image only includes a subset of maps. Restrict queued routes accordingly.
       CARLA_ALLOWED_TOWNS: ${CARLA_ALLOWED_TOWNS:-01,02,03,04,05}
 
+      # Storage control: disable dataset writing while keeping metrics/checkpoints.
+      # (Honored by leaderboard/team_code/consolidated_agent.py)
+      HPC_CARLA_COLLECT_DATA: ${HPC_CARLA_COLLECT_DATA:-}
+      COLLECT_DATA: ${COLLECT_DATA:-}
+      DISABLE_DATA_COLLECTION: ${DISABLE_DATA_COLLECTION:-}
+
     entrypoint: ["/workspace/docker/node_entrypoint.sh"]
 
     # Compose v2 GPU reservation (works on most modern Docker installs).
