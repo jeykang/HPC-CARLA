@@ -20,4 +20,13 @@ export CARLA_PORT="${RPC_PORT}"
 export TM_PORT="${TM_PORT}"
 
 echo "[GPU ${GPU_ID}] persistent_carla_worker: client-only against ${CARLA_HOST}:${CARLA_PORT}"
-bash ./generate_single_job.sh
+
+while true; do
+	python3 -u manage_continuous.py run --host "${CARLA_HOST}" --port "${CARLA_PORT}" --trafficManagerPort "${TM_PORT}" || rc=$?
+	rc=${rc:-0}
+	if [[ "${rc}" -eq 2 ]]; then
+		echo "[GPU ${GPU_ID}] No pending jobs; worker exiting."
+		break
+	fi
+	unset rc
+done

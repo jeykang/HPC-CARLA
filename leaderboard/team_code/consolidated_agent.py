@@ -552,6 +552,32 @@ class ConsolidatedAgent(AutonomousAgent):
 
         self.collect_data = bool(self._config.get("collect_data", True))
 
+        # Global override to disable data collection (useful on low-storage nodes).
+        # Keeps evaluation metrics/checkpoints intact.
+        # Accepted env vars:
+        # - HPC_CARLA_COLLECT_DATA=0/1
+        # - COLLECT_DATA=0/1
+        # - DISABLE_DATA_COLLECTION=1
+        def _env_bool(name: str) -> Optional[bool]:
+            raw = os.environ.get(name)
+            if raw is None:
+                return None
+            v = str(raw).strip().lower()
+            if v in ("1", "true", "yes", "y", "on"):
+                return True
+            if v in ("0", "false", "no", "n", "off"):
+                return False
+            return None
+
+        if _env_bool("DISABLE_DATA_COLLECTION") is True:
+            self.collect_data = False
+        else:
+            forced = _env_bool("HPC_CARLA_COLLECT_DATA")
+            if forced is None:
+                forced = _env_bool("COLLECT_DATA")
+            if forced is not None:
+                self.collect_data = bool(forced)
+
         if not self.collect_data:
             return
 

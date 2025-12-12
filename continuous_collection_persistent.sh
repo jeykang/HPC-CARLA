@@ -11,10 +11,21 @@ set -euo pipefail
 : "${TM_OFFSET:=${TM_OFFSET:-5000}}"
 : "${CARLA_SIF:=carla_official.sif}"
 
+# Optional virtualization:
+# - Set VIRTUAL_GPUS (or NUM_GPUS) to spawn that many independent CARLA servers/clients.
+# - Set PHYSICAL_CUDA_DEVICE to pin all servers to one physical CUDA device.
+: "${VIRTUAL_GPUS:=${VIRTUAL_GPUS:-${NUM_GPUS:-}}}"
+: "${PHYSICAL_CUDA_DEVICE:=${PHYSICAL_CUDA_DEVICE:-}}"
+
 cd "${PROJECT_ROOT}"
 
 # Discover GPUs on this node (honors CUDA_VISIBLE_DEVICES if set)
 discover_gpus() {
+  # Virtual mode: slots are 0..VIRTUAL_GPUS-1
+  if [[ -n "${VIRTUAL_GPUS:-}" ]]; then
+    seq 0 $((VIRTUAL_GPUS-1))
+    return 0
+  fi
   if [[ -n "${CUDA_VISIBLE_DEVICES:-}" ]]; then
     IFS=',' read -r -a map <<< "${CUDA_VISIBLE_DEVICES}"
     echo "${!map[@]}"
@@ -27,8 +38,17 @@ discover_gpus() {
 
 start_persistent_servers() {
   echo "[node $(hostname)] Starting persistent CARLA servers..."
+  local -a GPUS=($(discover_gpus))
+  local GPUS_ARG
+  GPUS_ARG=$(IFS=, ; echo "${GPUS[*]}")
+
+  # If PHYSICAL_CUDA_DEVICE is set, the manager will pin all slots to that device.
+  if [[ -n "${PHYSICAL_CUDA_DEVICE:-}" ]]; then
+    export PHYSICAL_CUDA_DEVICE
+  fi
+
   python3 -u carla_server_manager.py start \
-    --gpus auto \
+    --gpus "${GPUS_ARG}" \
     --base-rpc-port "${BASE_RPC_PORT}" \
     --port-spacing "${PORT_SPACING}" \
     --tm-offset "${TM_OFFSET}"
@@ -67,9 +87,17 @@ run_worker() {
   export TM_PORT="${TM_PORT}"
   export BASE_RPC_PORT PORT_SPACING TM_OFFSET
 
-  # Call the existing single-job launcher; it MUST NOT launch CARLA in persistent mode.
-  # (We ship a fixed version of generate_single_job.sh that respects CLIENT_ONLY/PERSISTENT.)
-  bash ./generate_single_job.sh
+  # Loop until the queue is empty.
+  while true; do
+    python3 -u manage_continuous.py run --host "${CARLA_HOST}" --port "${CARLA_PORT}" --trafficManagerPort "${TM_PORT}" || rc=$?
+    rc=${rc:-0}
+    if [[ "${rc}" -eq 2 ]]; then
+      echo "[GPU ${GPU_ID}] No pending jobs; worker exiting."
+      break
+    fi
+    # Any other exit code indicates the job failed (already recorded in DB); continue.
+    unset rc
+  done
 }
 
 main() {
