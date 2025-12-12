@@ -145,7 +145,7 @@ class ContinuousManager:
             id=int(job["id"]),
             agent=self._safe_filename(job["agent"]),
             weather=int(job["weather"]),
-            town=self._safe_filename(str(job.get("town") or "")),
+            town=self._safe_filename(str(job["town"] or "")),
             route=self._safe_filename(route_stem),
         )
         return ckpt_dir / fname
