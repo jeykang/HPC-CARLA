@@ -220,3 +220,6 @@ wandb/
 *.tar
 *.th
 *.ckpt
+
+# Copilot
+DOCKERIZATION_PROGRESS.md

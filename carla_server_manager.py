@@ -40,6 +40,15 @@ SINGULARITY_IMAGE = os.environ.get("CARLA_SIF", "carla_official.sif")
 # Use container-native path by default; expand inside container shell.
 UE4_LAUNCH = os.environ.get("UE4_LAUNCH", "${CARLA_ROOT}/CarlaUE4.sh")
 
+# Backend selection:
+# - singularity: historical cluster mode (default if singularity exists)
+# - native: run CarlaUE4.sh directly (Docker/local)
+CARLA_LAUNCH_BACKEND = os.environ.get("CARLA_LAUNCH_BACKEND")
+
+# Optional virtualization: run multiple “virtual GPUs” (slots) on a single physical CUDA device.
+# If PHYSICAL_CUDA_DEVICE is set, every slot maps to that CUDA device.
+PHYSICAL_CUDA_DEVICE = os.environ.get("PHYSICAL_CUDA_DEVICE")
+
 
 def tcp_listening(host: str, port: int, timeout: float = 0.25) -> bool:
     import socket as _socket
@@ -65,6 +74,22 @@ def kill_port(port: int):
             pass
 
 
+def _detect_backend() -> str:
+    if CARLA_LAUNCH_BACKEND in {"singularity", "native"}:
+        return CARLA_LAUNCH_BACKEND
+    # Auto-detect for backwards compatibility
+    if subprocess.run(["which", "singularity"], check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode == 0:
+        return "singularity"
+    return "native"
+
+
+def _resolve_cuda_device(slot_id: int) -> str:
+    # If we are simulating N “GPUs” on one physical device, pin all processes to the same CUDA device.
+    if PHYSICAL_CUDA_DEVICE is not None and str(PHYSICAL_CUDA_DEVICE).strip() != "":
+        return str(PHYSICAL_CUDA_DEVICE).strip()
+    return str(slot_id)
+
+
 def launch_server(gpu_id: int, rpc_port: int, tm_port: int) -> subprocess.Popen:
     # Extra paranoia: free ports in case a zombie is around
     kill_port(rpc_port)
@@ -75,9 +100,11 @@ def launch_server(gpu_id: int, rpc_port: int, tm_port: int) -> subprocess.Popen:
     log_f = open(log_path, "ab", buffering=0)
 
     env = os.environ.copy()
-    # Singularity honors NVIDIA_VISIBLE_DEVICES; set CUDA_VISIBLE_DEVICES too for safety
-    env["NVIDIA_VISIBLE_DEVICES"] = str(gpu_id)
-    env["CUDA_VISIBLE_DEVICES"] = str(gpu_id)
+    cuda_dev = _resolve_cuda_device(gpu_id)
+    # In Docker, NVIDIA_VISIBLE_DEVICES typically names host GPUs. CUDA_VISIBLE_DEVICES is what the process sees.
+    # We set CUDA_VISIBLE_DEVICES deterministically; NVIDIA_VISIBLE_DEVICES is left as-is unless unset.
+    env["CUDA_VISIBLE_DEVICES"] = cuda_dev
+    env.setdefault("NVIDIA_VISIBLE_DEVICES", cuda_dev)
     env["CARLA_SERVER"] = "1"
 
     # Only warn about missing host-side script if user explicitly points into /workspace
@@ -86,26 +113,38 @@ def launch_server(gpu_id: int, rpc_port: int, tm_port: int) -> subprocess.Popen:
         if not host_ue4.exists():
             log_f.write(f"[manager] WARNING: UE4 launch script not found at {host_ue4}\n".encode())
 
+    backend = _detect_backend()
+
     # Headless launch. Add SDL_VIDEODRIVER=offscreen to avoid X dependencies.
-    cmd = [
-        "singularity", "exec", "--nv",
-        "-B", f"{PROJECT_ROOT}:/workspace",
-        SINGULARITY_IMAGE,
-        "bash", "-lc",
-        (
-            "ulimit -c 0 ; "
-            "DISABLE_PYTHON=1 "
-            "SDL_VIDEODRIVER=offscreen "
-            f"{UE4_LAUNCH} "
-            f"-opengl -RenderOffScreen -nosound -quality-level={DEFAULT_UE4_QUALITY} "
-            f"-carla-rpc-port={rpc_port} -carla-streaming-port=0 -world-port={rpc_port} -server"
-        ),
-    ]
+    launch_str = (
+        "ulimit -c 0 ; "
+        "DISABLE_PYTHON=1 "
+        "SDL_VIDEODRIVER=offscreen "
+        f"{UE4_LAUNCH} "
+        f"-opengl -RenderOffScreen -nosound -quality-level={DEFAULT_UE4_QUALITY} "
+        f"-carla-rpc-port={rpc_port} -carla-streaming-port=0 -world-port={rpc_port} -server"
+    )
+
+    if backend == "singularity":
+        cmd = [
+            "singularity", "exec", "--nv",
+            "-B", f"{PROJECT_ROOT}:/workspace",
+            SINGULARITY_IMAGE,
+            "bash", "-lc",
+            launch_str,
+        ]
+    else:
+        # Docker/local: run directly inside the carlasim/carla image.
+        if os.geteuid() == 0:
+            # CARLA refuses to run as root; use the 'carla' user when present.
+            cmd = ["su", "-p", "-s", "/bin/bash", "carla", "-c", launch_str]
+        else:
+            cmd = ["bash", "-lc", launch_str]
 
     # Log the exact command and environment hints
     log_f.write(
-        f"[manager] launching gpu={gpu_id} rpc={rpc_port} tm={tm_port} "
-        f"sif={SINGULARITY_IMAGE} ue4={UE4_LAUNCH}\n".encode()
+        f"[manager] launching slot={gpu_id} cuda={cuda_dev} rpc={rpc_port} tm={tm_port} "
+        f"backend={backend} sif={SINGULARITY_IMAGE} ue4={UE4_LAUNCH}\n".encode()
     )
 
     proc = subprocess.Popen(cmd, env=env, stdout=log_f, stderr=log_f)
@@ -202,7 +241,8 @@ def health() -> int:
 
 def parse_args():
     p = argparse.ArgumentParser("carla_server_manager")
-    sub = p.add_subparsers(dest="cmd", required=True)
+    # Python 3.6 argparse doesn't support add_subparsers(required=...).
+    sub = p.add_subparsers(dest="cmd")
 
     sp = sub.add_parser("start", help="start persistent server pool")
     sp.add_argument("--gpus", type=str, default="auto",
@@ -214,7 +254,11 @@ def parse_args():
     sub.add_parser("stop", help="stop persistent server pool")
     sub.add_parser("health", help="check pool health")
 
-    return p.parse_args()
+    args = p.parse_args()
+    if not getattr(args, "cmd", None):
+        p.print_help()
+        sys.exit(2)
+    return args
 
 
 def discover_gpus() -> List[int]:

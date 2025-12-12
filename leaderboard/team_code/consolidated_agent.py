@@ -33,7 +33,7 @@ import time
 import datetime
 import pathlib
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 import importlib
 import importlib.util
@@ -148,8 +148,14 @@ class ConsolidatedAgent(AutonomousAgent):
     # The Leaderboard expects each agent to define this
     track = Track.SENSORS
 
-    def __init__(self) -> None:
-        super().__init__()
+    def __init__(self, path_to_conf_file: str = "") -> None:
+        # NOTE: The CARLA Leaderboard instantiates agents as:
+        #   agent = AgentClass(args.agent_config)
+        # and the base `AutonomousAgent.__init__` immediately calls `setup()`.
+        # Therefore, we must:
+        #   1) accept `path_to_conf_file` here,
+        #   2) initialize our own fields BEFORE calling `super().__init__`,
+        #      because `setup()` relies on them.
 
         # Runtime config (from YAML)
         self._config: Optional[Dict[str, Any]] = None
@@ -170,6 +176,8 @@ class ConsolidatedAgent(AutonomousAgent):
 
         # Cached sensor list built in Stage 1
         self._sensor_list: Optional[List[Dict[str, Any]]] = None
+
+        super().__init__(path_to_conf_file)
 
     # ------------------------------------------------------------------
     # Configuration / setup
@@ -569,18 +577,63 @@ class ConsolidatedAgent(AutonomousAgent):
         if self._config is None:
             self._ensure_config_loaded(path_hint=None)
 
-        agent_cfg = self._config.get("agent", {})
+        # Support two schemas:
+        #   (A) New schema:
+        #       agent:
+        #         module: team_code.interfuser_agent_orig
+        #         class_name: InterfuserAgent
+        #         config_file: /path/to/conf
+        #   (B) Existing HPC-CARLA schema:
+        #       agent_config:
+        #         agent_file: /workspace/leaderboard/team_code/interfuser_agent.py
+        #         agent_class: InterfuserAgent
+        #         config_path: /workspace/leaderboard/team_code/interfuser/interfuser_config.py
+
+        agent_cfg = self._config.get("agent") or self._config.get("agent_config") or {}
+
         module_path = agent_cfg.get("module")
         class_name = agent_cfg.get("class_name") or agent_cfg.get("class")
+        agent_file = agent_cfg.get("agent_file")
+        agent_class = agent_cfg.get("agent_class")
 
-        if not module_path or not class_name:
+        if module_path and class_name:
+            AgentClass = _dynamic_import(module_path, class_name)
+            inner_conf = agent_cfg.get("config_file") or self._config_path
+        elif agent_file and agent_class:
+            agent_file = self._resolve_agent_file_path(agent_file)
+            module = self._import_module_from_path(agent_file)
+            try:
+                AgentClass = getattr(module, agent_class)
+            except AttributeError as exc:
+                raise ImportError(
+                    f"Class '{agent_class}' not found in agent_file '{agent_file}'"
+                ) from exc
+            inner_conf = agent_cfg.get("config_path") or self._config_path
+        else:
             raise ValueError(
-                "YAML must define agent.module and agent.class_name "
-                "for dynamic loading."
+                "YAML must define either (agent.module + agent.class_name) or "
+                "(agent_config.agent_file + agent_config.agent_class)."
             )
 
-        AgentClass = _dynamic_import(module_path, class_name)
-        self._inner_agent = AgentClass()
+        # Let the inner agent perform its own configuration. We keep this
+        # very close to original semantics to preserve leaderboard-level
+        # behaviour.
+        # Some provided configs historically point at a non-existent 'config.py'
+        # while shipping 'interfuser_config.py'. If the requested config path
+        # doesn't exist, try a small, safe fallback.
+        inner_conf = self._resolve_config_path(inner_conf)
+
+        # Instantiate the inner agent.
+        # Prefer passing the config path first since most Leaderboard agents
+        # inherit AutonomousAgent and require it in __init__.
+        initialized_with_conf = True
+        try:
+            self._inner_agent = AgentClass(inner_conf)
+        except TypeError:
+            initialized_with_conf = False
+            self._inner_agent = AgentClass()
+            if hasattr(self._inner_agent, "setup"):
+                self._inner_agent.setup(inner_conf)
 
         # If the underlying agent defines its own track, respect it; fall
         # back to SENSORS otherwise.
@@ -588,13 +641,6 @@ class ConsolidatedAgent(AutonomousAgent):
             self.track = self._inner_agent.track
         else:
             self.track = Track.SENSORS
-
-        # Let the inner agent perform its own configuration. We keep this
-        # very close to original semantics to preserve leaderboard-level
-        # behaviour.
-        inner_conf = agent_cfg.get("config_file") or self._config_path
-        if hasattr(self._inner_agent, "setup"):
-            self._inner_agent.setup(inner_conf)
 
         # Optionally pass the wrapper's external_config object if the
         # inner agent knows how to use it.
@@ -653,10 +699,23 @@ class ConsolidatedAgent(AutonomousAgent):
         if not spec:
             return None
 
+        # Shorthand: allow external_config: /path/to/file.py (or .yaml)
+        # Used by existing configs in this repo.
+        if isinstance(spec, str):
+            path = self._resolve_config_path(spec)
+            if path.endswith((".yaml", ".yml")):
+                return _load_yaml(path)
+            if path.endswith(".py"):
+                return self._import_module_from_path(path)
+            # Fallback: try import as module path
+            return importlib.import_module(path)
+
         fmt = spec.get("format") or spec.get("type") or "python"
         path = spec.get("path")
         if not path:
             raise ValueError("external_config must specify a 'path'.")
+
+        path = self._resolve_config_path(path)
 
         if fmt.lower() in ("yaml", "yml"):
             return _load_yaml(path)
@@ -686,6 +745,54 @@ class ConsolidatedAgent(AutonomousAgent):
             return cfg_obj
 
         raise ValueError(f"Unsupported external_config format: {fmt!r}")
+
+    def _import_module_from_path(self, path: str):
+        """Import either a Python file path or a dotted module path."""
+        # If it looks like a file path (or exists), load from file.
+        if path.endswith(".py"):
+            if not os.path.exists(path):
+                raise ImportError(f"Python file not found: {path}")
+
+            module_name = Path(path).stem + "_dynmod"
+            spec_obj = importlib.util.spec_from_file_location(module_name, path)
+            if spec_obj is None or spec_obj.loader is None:
+                raise ImportError(f"Cannot load module from {path}")
+            module = importlib.util.module_from_spec(spec_obj)
+            spec_obj.loader.exec_module(module)
+            return module
+        return importlib.import_module(path)
+
+    def _resolve_config_path(self, path: Optional[str]) -> Optional[str]:
+        """Best-effort fixups for config paths inside /workspace mounts."""
+        if not path:
+            return path
+        if os.path.exists(path):
+            return path
+
+        # Common InterFuser config typo in provided YAMLs.
+        base_dir = os.path.dirname(path)
+        if os.path.basename(path) == "config.py":
+            candidate = os.path.join(base_dir, "interfuser_config.py")
+            if os.path.exists(candidate):
+                return candidate
+
+        return path
+
+    def _resolve_agent_file_path(self, path: str) -> str:
+        """Resolve legacy agent_file paths like /team_code/foo_agent.py -> /team_code/foo/foo_agent.py."""
+        if os.path.exists(path):
+            return path
+
+        base_dir = os.path.dirname(path)
+        base_name = os.path.basename(path)
+
+        if base_name.endswith("_agent.py"):
+            prefix = base_name[: -len("_agent.py")]
+            candidate = os.path.join(base_dir, prefix, base_name)
+            if os.path.exists(candidate):
+                return candidate
+
+        return path
 
     @staticmethod
     def _is_module_path(path: str) -> bool:

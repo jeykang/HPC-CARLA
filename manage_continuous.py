@@ -35,7 +35,8 @@ class ContinuousManager:
 
     def _get_conn(self):
         """Get a database connection with Row factory enabled."""
-        conn = sqlite3.connect(self.db_path, timeout=60.0) # High timeout for safety
+        # Python 3.6 sqlite3.connect does not reliably accept PathLike; use str.
+        conn = sqlite3.connect(str(self.db_path), timeout=60.0) # High timeout for safety
         conn.row_factory = sqlite3.Row
         # WAL mode is CRITICAL for concurrency (allows readers while writing)
         conn.execute("PRAGMA journal_mode=WAL")
@@ -227,12 +228,19 @@ class ContinuousManager:
                 """, (datetime.utcnow().isoformat(), gpu_id, job_data['id']))
                 
                 # Update GPU Status
-                conn.execute("""
-                    INSERT INTO gpu_status (node, gpu_id, status, current_job_id, last_heartbeat)
-                    VALUES (?, ?, 'busy', ?, ?)
-                    ON CONFLICT(node, gpu_id) DO UPDATE SET
-                        status='busy', current_job_id=excluded.current_job_id, last_heartbeat=excluded.last_heartbeat
-                """, (node_name, gpu_id, job_data['id'], time.time()))
+                cur2 = conn.execute("""
+                    UPDATE gpu_status
+                    SET status='busy', current_job_id=?, last_heartbeat=?
+                    WHERE node=? AND gpu_id=?
+                """, (job_data['id'], time.time(), node_name, gpu_id))
+
+                # SQLite < 3.24 doesn't support ON CONFLICT DO UPDATE; do update-then-insert.
+                # If no row existed, insert it.
+                if getattr(cur2, "rowcount", 0) == 0:
+                    conn.execute(
+                        "INSERT INTO gpu_status (node, gpu_id, status, current_job_id, last_heartbeat) VALUES (?, ?, 'busy', ?, ?)",
+                        (node_name, gpu_id, job_data['id'], time.time()),
+                    )
             
             # Commit happens automatically on exit of context manager
         
@@ -253,19 +261,39 @@ class ContinuousManager:
         # 3. RUN EVALUATOR
         print(f"[RUN] Job {job_data['id']} ({job_data['agent']}/{job_data['route']}) on GPU {gpu_id}")
         
-        cmd = [
-            'singularity', 'exec', '--nv', 
-            os.environ.get('CARLA_SIF', 'carla_official.sif'),
-            'python3', '-m', 'leaderboard.leaderboard_evaluator',
-            '--routes', str(routes_file),
-            '--scenarios', str(scenarios_file),
-            '--agent', str(agent_code),
-            '--agent-config', str(agent_cfg),
-            '--host', str(host), 
-            '--port', str(port), 
-            '--trafficManagerPort', str(tm_port)
-        ]
-        if extra_args: cmd.extend(extra_args)
+        # Execution backend:
+        # - If EVAL_CMD_TEMPLATE is set (HPC/Singularity path), format and run it via bash -lc
+        # - Otherwise, run evaluator directly in the current Python environment (Docker/local path)
+        eval_template = os.environ.get('EVAL_CMD_TEMPLATE')
+
+        if eval_template:
+            rendered = eval_template.format(
+                ROUTES_FILE=str(routes_file),
+                SCENARIOS_FILE=str(scenarios_file),
+                AGENT_CODE=str(agent_code),
+                AGENT_CFG=str(agent_cfg),
+                HOST=str(host),
+                PORT=str(port),
+                TM_PORT=str(tm_port),
+            )
+            cmd = ['bash', '-lc', rendered]
+            if extra_args:
+                # Extra args in template mode must already be represented in the template
+                # (kept for API compatibility; no-op here)
+                pass
+        else:
+            cmd = [
+                'python3', '-m', 'leaderboard.leaderboard_evaluator',
+                '--routes', str(routes_file),
+                '--scenarios', str(scenarios_file),
+                '--agent', str(agent_code),
+                '--agent-config', str(agent_cfg),
+                '--host', str(host),
+                '--port', str(port),
+                '--trafficManagerPort', str(tm_port)
+            ]
+            if extra_args:
+                cmd.extend(extra_args)
         
         env = os.environ.copy()
         env['WEATHER_INDEX'] = str(job_data['weather'])
@@ -298,11 +326,12 @@ class ContinuousManager:
             # Update Runtime Estimate (Weighted Average)
             if rc == 0:
                 key = f"{job_data['agent']}_{job_data['route']}"
-                conn.execute("""
-                    INSERT INTO runtime_estimates (key, estimate) VALUES (?, ?)
-                    ON CONFLICT(key) DO UPDATE SET
-                    estimate = (estimate * 0.7) + (excluded.estimate * 0.3)
-                """, (key, duration))
+                row = conn.execute("SELECT estimate FROM runtime_estimates WHERE key=?", (key,)).fetchone()
+                if row and row[0] is not None:
+                    new_est = (float(row[0]) * 0.7) + (duration * 0.3)
+                    conn.execute("UPDATE runtime_estimates SET estimate=? WHERE key=?", (new_est, key))
+                else:
+                    conn.execute("INSERT INTO runtime_estimates (key, estimate) VALUES (?, ?)", (key, duration))
 
         return rc
 
