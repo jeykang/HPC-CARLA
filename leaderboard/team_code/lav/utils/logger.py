@@ -1,5 +1,42 @@
 import yaml
-import wandb
+import os
+
+def _wandb_disabled() -> bool:
+    v = (os.environ.get("ENABLE_WANDB") or "0").strip().lower()
+    return v not in ("1", "true", "yes")
+
+try:
+    import wandb  # type: ignore
+    if _wandb_disabled():
+        raise ImportError("wandb disabled")
+except Exception:  # pragma: no cover
+    class _WandbDummyRun:
+        dir = "/tmp"
+
+    class _WandbDummy:
+        run = _WandbDummyRun()
+
+        def init(self, *args, **kwargs):
+            return self.run
+
+        def log(self, *args, **kwargs):
+            return None
+
+        def watch(self, *args, **kwargs):
+            return None
+
+        def save(self, *args, **kwargs):
+            return None
+
+        class Image:
+            def __init__(self, *args, **kwargs):
+                pass
+
+        class Histogram:
+            def __init__(self, *args, **kwargs):
+                pass
+
+    wandb = _WandbDummy()
 import numpy as np
 import matplotlib
 import matplotlib.pyplot as plt

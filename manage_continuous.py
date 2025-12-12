@@ -99,6 +99,20 @@ class ContinuousManager:
                 scenario_file = self.scenarios_dir / f'town{town_num}_all_scenarios.json'
                 if scenario_file.exists():
                     town_routes.setdefault(town_num, []).append(route_file.name)
+
+        # Optional: restrict to a known set of towns.
+        # This is useful in Docker images that ship only a subset of maps.
+        allowed_raw = os.environ.get("CARLA_ALLOWED_TOWNS")
+        if allowed_raw:
+            allowed: set = set()
+            for token in re.split(r"[\s,]+", allowed_raw.strip()):
+                if not token:
+                    continue
+                m = re.search(r"(?:town)?0*(\d+)", token, flags=re.IGNORECASE)
+                if m:
+                    allowed.add(m.group(1).zfill(2))
+            if allowed:
+                town_routes = {k: v for k, v in town_routes.items() if k.zfill(2) in allowed}
         
         for town in town_routes: town_routes[town].sort()
         return town_routes
@@ -175,6 +189,22 @@ class ContinuousManager:
                 "INSERT INTO jobs (agent, weather, route, town) VALUES (:agent, :weather, :route, :town)",
                 combinations
             )
+
+            # Ensure there is a runtime estimate for each (agent, route) pair.
+            # Scheduling uses these estimates to run shorter jobs first.
+            estimates = []
+            for combo in combinations:
+                key = f"{combo['agent']}_{combo['route']}"
+                est = 3600
+                if 'short' in combo['route']:
+                    est = 1800
+                elif 'long' in combo['route']:
+                    est = 5400
+                estimates.append((key, est))
+            conn.executemany(
+                "INSERT OR IGNORE INTO runtime_estimates (key, estimate) VALUES (?, ?)",
+                estimates,
+            )
         print(f"Added {len(combinations)} jobs for {agent}.")
 
     def retry_failed(self, max_attempts: int = 3):
@@ -209,14 +239,20 @@ class ContinuousManager:
             # BEGIN IMMEDIATE prevents other writers from starting a transaction
             # ensuring we don't grab the same job as another worker.
             conn.execute("BEGIN IMMEDIATE")
-            
-            cursor = conn.execute("""
-                SELECT id, agent, route, town, weather, attempts 
-                FROM jobs 
-                WHERE status='pending' 
-                ORDER BY id ASC 
+
+            # Intelligent scheduling: run the shortest estimated jobs first.
+            # Estimates are tracked in runtime_estimates keyed by "<agent>_<route>".
+            cursor = conn.execute(
+                """
+                SELECT j.id, j.agent, j.route, j.town, j.weather, j.attempts
+                FROM jobs AS j
+                LEFT JOIN runtime_estimates AS r
+                  ON r.key = (j.agent || '_' || j.route)
+                WHERE j.status='pending'
+                ORDER BY COALESCE(r.estimate, 999999.0) ASC, j.id ASC
                 LIMIT 1
-            """)
+                """
+            )
             job_data = cursor.fetchone()
             
             if job_data:
@@ -297,6 +333,15 @@ class ContinuousManager:
         
         env = os.environ.copy()
         env['WEATHER_INDEX'] = str(job_data['weather'])
+        # Used by ConsolidatedAgent for dataset path + metadata.
+        env.setdefault('WEATHER', str(job_data['weather']))
+        env.setdefault('WEATHERS', str(job_data['weather']))
+        env.setdefault('ROUTES', str(routes_file))
+
+        # Prefer writing all collected outputs under the dedicated dataset dir.
+        # docker-compose sets DATASET_DIR=/workspace/dataset.
+        if 'DATASET_DIR' in env and env['DATASET_DIR']:
+            env.setdefault('HPC_CARLA_DATASET_ROOT', env['DATASET_DIR'])
 
         start_ts = time.time()
         try:

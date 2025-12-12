@@ -52,10 +52,10 @@ RUN python3 -m pip install --no-cache-dir --use-deprecated=legacy-resolver -r /t
       # and many modern ML utilities (torchmetrics, fsspec, etc.) now require >=3.8.
       # InterFuser/LAV/TCP primarily need torch(+vision) and a few lightweight extras.
       python3 -m pip install --no-cache-dir --use-deprecated=legacy-resolver --prefer-binary \
-        filelock==3.0.12 typing-extensions==4.1.1 \
+        filelock==3.0.12 typing-extensions==4.1.1 packaging==21.3 fsspec==2022.1.0 \
         torch==1.10.1+cu113 torchvision==0.11.2+cu113 \
           -f https://download.pytorch.org/whl/cu113/torch_stable.html \
-        easydict==1.13 timm==0.6.12 wandb==0.12.21 \
+        easydict==1.13 timm==0.6.12 pytorch-lightning==1.2.5 torchmetrics==0.8.2 \
     ; fi
 
 # Runtime wiring

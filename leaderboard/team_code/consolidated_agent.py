@@ -364,6 +364,42 @@ class ConsolidatedAgent(AutonomousAgent):
 
         return control
 
+    def set_global_plan(self, global_plan_gps, global_plan_world_coord) -> None:
+        """Propagate the global plan to both wrapper and inner agent.
+
+        Many agents (notably TCP) expect `self._global_plan` to be set via
+        the Leaderboard calling `set_global_plan(...)` on the agent instance.
+        Since we delegate `run_step` to an inner agent object, we must forward
+        the plan as well.
+        """
+        super().set_global_plan(global_plan_gps, global_plan_world_coord)
+
+        # Ensure inner agent exists before forwarding
+        self._ensure_config_loaded(path_hint=None)
+        self._ensure_inner_agent_loaded()
+
+        if hasattr(self._inner_agent, "set_global_plan"):
+            self._inner_agent.set_global_plan(global_plan_gps, global_plan_world_coord)
+        else:
+            # Best-effort: mirror the downsampled plan into the inner agent
+            try:
+                setattr(self._inner_agent, "_global_plan", getattr(self, "_global_plan", None))
+                setattr(
+                    self._inner_agent,
+                    "_global_plan_world_coord",
+                    getattr(self, "_global_plan_world_coord", None),
+                )
+            except Exception:
+                pass
+
+    def destroy(self) -> None:
+        """Forward destroy() to the inner agent if implemented."""
+        try:
+            if self._inner_agent is not None and hasattr(self._inner_agent, "destroy"):
+                self._inner_agent.destroy()
+        finally:
+            return
+
     def _initialize_data_collection(self) -> None:
         """
         Initialize dataset output directories and metadata.
@@ -391,21 +427,46 @@ class ConsolidatedAgent(AutonomousAgent):
         if not self.collect_data:
             return
 
+        project_root = os.environ.get("PROJECT_ROOT") or os.getcwd()
+
+        # Prefer the repo's dedicated dataset directory by default.
+        # Priority:
+        #   1) HPC_CARLA_DATASET_ROOT (explicit override)
+        #   2) DATASET_DIR (docker-compose sets this to /workspace/dataset)
+        #   3) <PROJECT_ROOT>/dataset if it exists
+        #   4) SAVE_PATH (legacy)
+        #   5) cwd
+        dataset_dir = os.environ.get("DATASET_DIR")
+        default_repo_dataset = os.path.join(project_root, "dataset")
         base_root = (
             os.environ.get("HPC_CARLA_DATASET_ROOT")
+            or dataset_dir
+            or (default_repo_dataset if os.path.isdir(default_repo_dataset) else None)
             or os.environ.get("SAVE_PATH")
             or os.getcwd()
         )
         self.save_root = base_root
 
-        agent_cfg = self._config.get("agent", {})
-        agent_name = agent_cfg.get("name") or agent_cfg.get("id") or "agent"
+        agent_cfg = self._config.get("agent", {}) or {}
+        legacy_agent_cfg = self._config.get("agent_config", {}) or {}
+        agent_name = (
+            agent_cfg.get("name")
+            or agent_cfg.get("id")
+            or self._config.get("model_type")
+            or legacy_agent_cfg.get("agent_class")
+            or "agent"
+        )
 
         routes_path = os.environ.get("ROUTES", "route_unknown.xml")
         route_stem = Path(routes_path).stem
 
-        # Weather name or index – depends on your orchestration; we keep it generic
-        weather = os.environ.get("WEATHERS") or os.environ.get("WEATHER") or "unknown"
+        # Weather name or index – depends on orchestration.
+        weather = (
+            os.environ.get("WEATHERS")
+            or os.environ.get("WEATHER")
+            or os.environ.get("WEATHER_INDEX")
+            or "unknown"
+        )
 
         # Compose final path
         run_tag = _now_string()
@@ -415,8 +476,8 @@ class ConsolidatedAgent(AutonomousAgent):
         # Initialize metadata file
         meta = {
             "agent_name": agent_name,
-            "agent_module": agent_cfg.get("module"),
-            "agent_class": agent_cfg.get("class_name"),
+            "agent_module": agent_cfg.get("module") or legacy_agent_cfg.get("agent_file"),
+            "agent_class": agent_cfg.get("class_name") or legacy_agent_cfg.get("agent_class"),
             "route": routes_path,
             "weather": weather,
             "created_at": datetime.datetime.now().isoformat(),

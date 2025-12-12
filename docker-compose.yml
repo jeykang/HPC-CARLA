@@ -32,6 +32,11 @@ services:
       LOG_DIR: /workspace/logs
       DATASET_DIR: /workspace/dataset
 
+      # Optional: permission controls for bind mounts (helps avoid root-owned files on host)
+      HOST_UID: ${HOST_UID:-}
+      HOST_GID: ${HOST_GID:-}
+      UMASK: ${UMASK:-0002}
+
       # Use docker/native backend for server manager & evaluator
       CARLA_LAUNCH_BACKEND: ${CARLA_LAUNCH_BACKEND:-native}
 
@@ -39,6 +44,9 @@ services:
       IDLE_SLEEP_S: ${IDLE_SLEEP_S:-10}
       EXIT_ON_IDLE: ${EXIT_ON_IDLE:-0}
       AUTO_RESET: ${AUTO_RESET:-0}
+
+      # This CARLA image only includes a subset of maps. Restrict queued routes accordingly.
+      CARLA_ALLOWED_TOWNS: ${CARLA_ALLOWED_TOWNS:-01,02,03,04,05}
 
     entrypoint: ["/workspace/docker/node_entrypoint.sh"]
 

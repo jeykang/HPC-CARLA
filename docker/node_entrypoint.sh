@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Create group-writable files by default (helps on bind mounts).
+umask "${UMASK:-0002}"
+
 cd /workspace
 
 : "${PROJECT_ROOT:=/workspace}"
@@ -20,6 +23,13 @@ cd /workspace
 : "${AUTO_RESET:=0}"
 
 mkdir -p "$STATE_DIR" "$LOG_DIR" "$DATASET_DIR"
+
+# Optional: align ownership of bind-mounted folders with the host user.
+# Set HOST_UID/HOST_GID in your environment (or .env) if you want the DB/logs
+# to be removable/editable from the host without sudo.
+if [[ -n "${HOST_UID:-}" && -n "${HOST_GID:-}" ]]; then
+  chown -R "${HOST_UID}:${HOST_GID}" "$STATE_DIR" "$LOG_DIR" "$DATASET_DIR" 2>/dev/null || true
+fi
 
 # Ensure CARLA python egg is on PYTHONPATH if present.
 # Carla images contain a single egg under ${CARLA_ROOT}/PythonAPI/carla/dist/
