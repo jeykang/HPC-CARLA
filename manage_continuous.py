@@ -14,7 +14,7 @@ import re
 import json # Only for exporting results
 from pathlib import Path
 from datetime import datetime, timedelta
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Tuple
 
 class ContinuousManager:
     def __init__(self, state_dir: str = None):
@@ -86,6 +86,201 @@ class ContinuousManager:
                     PRIMARY KEY (node, gpu_id)
                 )
             """)
+
+            # Parsed Leaderboard results per job (summary)
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS job_results (
+                    job_id INTEGER PRIMARY KEY,
+                    checkpoint_path TEXT,
+                    progress_current INTEGER,
+                    progress_total INTEGER,
+                    global_status TEXT,
+                    score_route REAL,
+                    score_penalty REAL,
+                    score_composed REAL,
+                    global_infractions_json TEXT,
+                    global_meta_json TEXT,
+                    parsed_at TIMESTAMP
+                )
+                """
+            )
+
+            # Parsed Leaderboard records per route (one row per RouteScenario_*)
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS job_route_results (
+                    job_id INTEGER NOT NULL,
+                    record_index INTEGER NOT NULL,
+                    route_id TEXT,
+                    status TEXT,
+                    score_route REAL,
+                    score_penalty REAL,
+                    score_composed REAL,
+                    infractions_json TEXT,
+                    meta_json TEXT,
+                    PRIMARY KEY (job_id, record_index)
+                )
+                """
+            )
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_job_route_results_job_id ON job_route_results(job_id)")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_job_route_results_route_id ON job_route_results(route_id)")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_job_route_results_status ON job_route_results(status)")
+
+
+    # --- Results parsing / logging ---
+
+    @staticmethod
+    def _safe_filename(s: str) -> str:
+        s = str(s)
+        s = re.sub(r"[^A-Za-z0-9._-]+", "_", s)
+        s = re.sub(r"_+", "_", s).strip("_")
+        return s or "item"
+
+    def _make_checkpoint_path(self, job: sqlite3.Row) -> Path:
+        ckpt_dir = self.state_dir / "checkpoints"
+        ckpt_dir.mkdir(parents=True, exist_ok=True)
+        route_stem = Path(str(job["route"])).stem
+        fname = "job_{id}_{agent}_w{weather}_town{town}_{route}.json".format(
+            id=int(job["id"]),
+            agent=self._safe_filename(job["agent"]),
+            weather=int(job["weather"]),
+            town=self._safe_filename(str(job.get("town") or "")),
+            route=self._safe_filename(route_stem),
+        )
+        return ckpt_dir / fname
+
+    @staticmethod
+    def _json_dumps(obj: Any) -> str:
+        return json.dumps(obj, ensure_ascii=False, sort_keys=False)
+
+    @staticmethod
+    def _summarize_infractions(infractions: Any) -> Dict[str, Any]:
+        # Records store infractions as lists of strings; global_record stores floats.
+        if not isinstance(infractions, dict):
+            return {}
+        out: Dict[str, Any] = {}
+        for k, v in infractions.items():
+            if isinstance(v, list):
+                out[k] = len(v)
+            else:
+                out[k] = v
+        return out
+
+    def _parse_and_store_checkpoint(self, job_row: sqlite3.Row, checkpoint_path: Path) -> None:
+        if not checkpoint_path.exists():
+            return
+
+        try:
+            payload = json.loads(checkpoint_path.read_text())
+        except Exception:
+            return
+
+        ckpt = payload.get("_checkpoint") if isinstance(payload, dict) else None
+        if not isinstance(ckpt, dict):
+            return
+
+        progress = ckpt.get("progress") or [None, None]
+        progress_current = None
+        progress_total = None
+        try:
+            progress_current = int(progress[0])
+            progress_total = int(progress[1])
+        except Exception:
+            progress_current, progress_total = None, None
+
+        global_record = ckpt.get("global_record") or {}
+        if not isinstance(global_record, dict):
+            global_record = {}
+
+        scores = global_record.get("scores") or {}
+        infractions = global_record.get("infractions") or {}
+        meta = global_record.get("meta") or {}
+        status = global_record.get("status")
+
+        def fget(d, k):
+            try:
+                return float(d.get(k))
+            except Exception:
+                return None
+
+        score_route = fget(scores, "score_route")
+        score_penalty = fget(scores, "score_penalty")
+        score_composed = fget(scores, "score_composed")
+
+        parsed_at = datetime.utcnow().isoformat()
+
+        # Store summary + per-route records
+        records = ckpt.get("records") or []
+        if not isinstance(records, list):
+            records = []
+
+        with self._get_conn() as conn:
+            conn.execute(
+                """
+                INSERT OR REPLACE INTO job_results (
+                    job_id, checkpoint_path, progress_current, progress_total,
+                    global_status, score_route, score_penalty, score_composed,
+                    global_infractions_json, global_meta_json, parsed_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    int(job_row["id"]),
+                    str(checkpoint_path),
+                    progress_current,
+                    progress_total,
+                    str(status) if status is not None else None,
+                    score_route,
+                    score_penalty,
+                    score_composed,
+                    self._json_dumps(infractions if isinstance(infractions, dict) else {}),
+                    self._json_dumps(meta if isinstance(meta, dict) else {}),
+                    parsed_at,
+                ),
+            )
+
+            # Replace route records for this job_id
+            conn.execute("DELETE FROM job_route_results WHERE job_id=?", (int(job_row["id"]),))
+
+            to_insert = []
+            for rec in records:
+                if not isinstance(rec, dict):
+                    continue
+                rid = rec.get("route_id")
+                rstatus = rec.get("status")
+                rscores = rec.get("scores") or {}
+                rinfractions = rec.get("infractions") or {}
+                rmeta = rec.get("meta") or {}
+                idx = rec.get("index")
+                try:
+                    idx_i = int(idx)
+                except Exception:
+                    continue
+
+                to_insert.append(
+                    (
+                        int(job_row["id"]),
+                        idx_i,
+                        str(rid) if rid is not None else None,
+                        str(rstatus) if rstatus is not None else None,
+                        fget(rscores, "score_route"),
+                        fget(rscores, "score_penalty"),
+                        fget(rscores, "score_composed"),
+                        self._json_dumps(rinfractions if isinstance(rinfractions, dict) else {}),
+                        self._json_dumps(rmeta if isinstance(rmeta, dict) else {}),
+                    )
+                )
+            if to_insert:
+                conn.executemany(
+                    """
+                    INSERT OR REPLACE INTO job_route_results (
+                        job_id, record_index, route_id, status,
+                        score_route, score_penalty, score_composed,
+                        infractions_json, meta_json
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    to_insert,
+                )
     
     # --- Discovery Logic (Unchanged) ---
     def _discover_routes_and_scenarios(self) -> Dict[str, List[str]]:
@@ -296,6 +491,10 @@ class ContinuousManager:
         
         # 3. RUN EVALUATOR
         print(f"[RUN] Job {job_data['id']} ({job_data['agent']}/{job_data['route']}) on GPU {gpu_id}")
+
+        checkpoint_path = self._make_checkpoint_path(job_data)
+        # Ensure directory exists (it should, but be safe).
+        checkpoint_path.parent.mkdir(parents=True, exist_ok=True)
         
         # Execution backend:
         # - If EVAL_CMD_TEMPLATE is set (HPC/Singularity path), format and run it via bash -lc
@@ -311,6 +510,7 @@ class ContinuousManager:
                 HOST=str(host),
                 PORT=str(port),
                 TM_PORT=str(tm_port),
+                CHECKPOINT=str(checkpoint_path),
             )
             cmd = ['bash', '-lc', rendered]
             if extra_args:
@@ -326,7 +526,8 @@ class ContinuousManager:
                 '--agent-config', str(agent_cfg),
                 '--host', str(host),
                 '--port', str(port),
-                '--trafficManagerPort', str(tm_port)
+                '--trafficManagerPort', str(tm_port),
+                '--checkpoint', str(checkpoint_path),
             ]
             if extra_args:
                 cmd.extend(extra_args)
@@ -337,6 +538,7 @@ class ContinuousManager:
         env.setdefault('WEATHER', str(job_data['weather']))
         env.setdefault('WEATHERS', str(job_data['weather']))
         env.setdefault('ROUTES', str(routes_file))
+        env.setdefault('CHECKPOINT_PATH', str(checkpoint_path))
 
         # Prefer writing all collected outputs under the dedicated dataset dir.
         # docker-compose sets DATASET_DIR=/workspace/dataset.
@@ -378,6 +580,13 @@ class ContinuousManager:
                 else:
                     conn.execute("INSERT INTO runtime_estimates (key, estimate) VALUES (?, ?)", (key, duration))
 
+        # 5. Parse and store detailed Leaderboard checkpoint results (best-effort)
+        try:
+            self._parse_and_store_checkpoint(job_data, checkpoint_path)
+        except Exception:
+            # Never fail the worker due to logging.
+            pass
+
         return rc
 
     # --- Reporting ---
@@ -408,15 +617,132 @@ class ContinuousManager:
 
     def export_results(self, output_file: str):
         with self._get_conn() as conn:
-            # Fetch completed jobs as dicts
-            rows = conn.execute("SELECT * FROM jobs WHERE status='completed'").fetchall()
-            jobs = [dict(row) for row in rows]
-            
-            data = {
-                "summary": {"total_completed": len(jobs), "exported_at": datetime.now().isoformat()},
-                "jobs": jobs
+            job_rows = conn.execute("SELECT * FROM jobs ORDER BY id ASC").fetchall()
+            jobs = [dict(r) for r in job_rows]
+
+            # Attach parsed leaderboard summary when available
+            results_rows = conn.execute("SELECT * FROM job_results").fetchall()
+            results_by_job = {int(r["job_id"]): dict(r) for r in results_rows}
+
+            # Route-level summaries (small) for export
+            route_rows = conn.execute(
+                """
+                SELECT job_id, record_index, route_id, status,
+                       score_route, score_penalty, score_composed,
+                       infractions_json, meta_json
+                FROM job_route_results
+                ORDER BY job_id ASC, record_index ASC
+                """
+            ).fetchall()
+            route_by_job: Dict[int, List[Dict[str, Any]]] = {}
+            for r in route_rows:
+                job_id = int(r["job_id"])
+                infra = {}
+                meta = {}
+                try:
+                    infra = json.loads(r["infractions_json"] or "{}")
+                except Exception:
+                    infra = {}
+                try:
+                    meta = json.loads(r["meta_json"] or "{}")
+                except Exception:
+                    meta = {}
+
+                route_by_job.setdefault(job_id, []).append(
+                    {
+                        "record_index": int(r["record_index"]),
+                        "route_id": r["route_id"],
+                        "status": r["status"],
+                        "scores": {
+                            "score_route": r["score_route"],
+                            "score_penalty": r["score_penalty"],
+                            "score_composed": r["score_composed"],
+                        },
+                        "infractions": self._summarize_infractions(infra),
+                        "meta": meta,
+                    }
+                )
+
+            runs: List[Dict[str, Any]] = []
+            index = {
+                "by_agent": {},
+                "by_weather": {},
+                "by_town": {},
+                "by_route": {},
+                "by_agent_weather_town_route": {},
             }
-            
+
+            status_counts: Dict[str, int] = {}
+            for job in jobs:
+                job_id = int(job.get("id"))
+                agent = str(job.get("agent"))
+                weather = str(job.get("weather"))
+                town = str(job.get("town") or "")
+                route = str(job.get("route"))
+                status = str(job.get("status"))
+                status_counts[status] = status_counts.get(status, 0) + 1
+
+                def add_idx(bucket: Dict[str, List[int]], key: str):
+                    bucket.setdefault(key, []).append(job_id)
+
+                add_idx(index["by_agent"], agent)
+                add_idx(index["by_weather"], weather)
+                add_idx(index["by_town"], town)
+                add_idx(index["by_route"], route)
+                combo_key = f"{agent}|{weather}|{town}|{route}"
+                # In case of retries/duplicates, store a list.
+                prev = index["by_agent_weather_town_route"].get(combo_key)
+                if prev is None:
+                    index["by_agent_weather_town_route"][combo_key] = [job_id]
+                else:
+                    prev.append(job_id)
+
+                jr = results_by_job.get(job_id)
+                leaderboard = None
+                if jr:
+                    try:
+                        leaderboard = {
+                            "checkpoint_path": jr.get("checkpoint_path"),
+                            "progress": [jr.get("progress_current"), jr.get("progress_total")],
+                            "global_status": jr.get("global_status"),
+                            "scores": {
+                                "score_route": jr.get("score_route"),
+                                "score_penalty": jr.get("score_penalty"),
+                                "score_composed": jr.get("score_composed"),
+                            },
+                            "global_infractions": json.loads(jr.get("global_infractions_json") or "{}"),
+                            "global_meta": json.loads(jr.get("global_meta_json") or "{}"),
+                            "parsed_at": jr.get("parsed_at"),
+                        }
+                    except Exception:
+                        leaderboard = {
+                            "checkpoint_path": jr.get("checkpoint_path"),
+                            "progress": [jr.get("progress_current"), jr.get("progress_total")],
+                            "global_status": jr.get("global_status"),
+                        }
+
+                runs.append(
+                    {
+                        "job": job,
+                        "leaderboard": leaderboard,
+                        "route_records": route_by_job.get(job_id, []),
+                    }
+                )
+
+            data = {
+                "schema_version": 2,
+                "exported_at": datetime.now().isoformat(),
+                "summary": {
+                    "total_jobs": len(jobs),
+                    "status_counts": status_counts,
+                },
+                "index": index,
+                "runs": runs,
+
+                # Backwards-ish compatibility with older exports.
+                "jobs": jobs,
+            }
+
             with open(output_file, 'w') as f:
                 json.dump(data, f, indent=2)
             print(f"Exported {len(jobs)} jobs to {output_file}")
@@ -473,6 +799,7 @@ def main():
     
     exp = subparsers.add_parser('export')
     exp.add_argument('output', nargs='?', default='results.json')
+    exp.add_argument('--output', dest='output_flag', default=None)
 
     # State Dir (Backwards compat)
     parser.add_argument('--state-dir', default=None)
@@ -498,7 +825,8 @@ def main():
     elif args.command == 'retry':
         manager.retry_failed()
     elif args.command == 'export':
-        manager.export_results(args.output)
+        out = args.output_flag or args.output
+        manager.export_results(out)
     elif args.command == 'analyze':
         manager.analyze()
 

@@ -664,8 +664,7 @@ class ContinuousCLI:
     
     def export(self, output: str = 'collection_results.json'):
         """Export results"""
-        subprocess.run(['python3', str(self.manager_script), 'export',
-                       '--output', output])
+        subprocess.run(['python3', str(self.manager_script), 'export', output])
     
     def optimize(self):
         """Optimize runtime estimates"""

@@ -45,6 +45,13 @@ import yaml
 import carla
 from leaderboard.autoagents.autonomous_agent import AutonomousAgent, Track
 
+# Import in a way that works whether the module is loaded as team_code.* or
+# leaderboard.team_code.* depending on PYTHONPATH.
+try:
+    from team_code.pipeline_engine import PipelineEngine  # type: ignore
+except Exception:  # pragma: no cover
+    from leaderboard.team_code.pipeline_engine import PipelineEngine  # type: ignore
+
 
 # -------------------------------------------------------------------------
 # Helper utilities
@@ -167,6 +174,12 @@ class ConsolidatedAgent(AutonomousAgent):
         # Underlying "real" agent (InterFuser/LAV/TCP/...)
         self._inner_agent: Optional[Any] = None
 
+        # Optional config-defined pipeline for *new* agents
+        self._pipeline: Optional[PipelineEngine] = None
+
+        # Last output control (for pipeline warmup / frame skipping)
+        self._pipeline_last_control: Optional[carla.VehicleControl] = None
+
         # Data collection
         self.collect_data: bool = False
         self.save_root: Optional[str] = None
@@ -176,6 +189,13 @@ class ConsolidatedAgent(AutonomousAgent):
 
         # Cached sensor list built in Stage 1
         self._sensor_list: Optional[List[Dict[str, Any]]] = None
+
+        # Cache sensor types by id (used for stable dataset folder naming)
+        self._sensor_type_by_id: Dict[str, str] = {}
+
+        # Optional extension hooks (all no-op unless configured)
+        self._extensions_loaded: bool = False
+        self._extensions: List[Any] = []
 
         super().__init__(path_to_conf_file)
 
@@ -200,8 +220,12 @@ class ConsolidatedAgent(AutonomousAgent):
 
         # Stage 0: load wrapper config & initialize inner agent / dataset.
         self._ensure_config_loaded(path_hint=path_to_conf_file)
-        self._ensure_inner_agent_loaded()
+        self._ensure_extensions_loaded()
+        self._ensure_pipeline_or_inner_loaded()
         self._initialize_data_collection()
+
+        # Allow extensions to do any late initialization.
+        self._call_extension_hook("on_setup")
 
     # ------------------------------------------------------------------
     # Stage 1 – Sensor specification
@@ -220,16 +244,35 @@ class ConsolidatedAgent(AutonomousAgent):
 
         # Make sure we have a config (needed even for sensors)
         self._ensure_config_loaded(path_hint=None)
-        self._ensure_inner_agent_loaded()
+        self._ensure_extensions_loaded()
+        self._ensure_pipeline_or_inner_loaded()
 
         sensor_specs = self._config.get("sensors", None)
 
-        if sensor_specs is None and hasattr(self._inner_agent, "sensors"):
+        if sensor_specs is None and self._pipeline is None and hasattr(self._inner_agent, "sensors"):
             # Directly reuse underlying agent's sensors definition
             sensors = self._inner_agent.sensors()
         else:
             # Build sensors from YAML's generic list
             sensors = self._build_sensors_from_config(sensor_specs or [])
+
+        if not isinstance(sensors, list):
+            raise TypeError(f"Agent sensors() must return a list, got {type(sensors)!r}")
+
+        # Allow extensions to modify the sensor list (opt-in).
+        sensors = self._call_extension_hook_chain("on_sensors", sensors) or sensors
+        if not isinstance(sensors, list):
+            raise TypeError(f"Extension on_sensors must return a list, got {type(sensors)!r}")
+
+        # Cache sensor types by id for stable folder naming later.
+        try:
+            self._sensor_type_by_id = {
+                s.get("id"): s.get("type")
+                for s in sensors
+                if isinstance(s, dict) and s.get("id") and s.get("type")
+            }
+        except Exception:
+            self._sensor_type_by_id = {}
 
         # Attach per-sensor output directories
         self._setup_sensor_directories(sensors)
@@ -349,15 +392,46 @@ class ConsolidatedAgent(AutonomousAgent):
         # Ensure full initialization (for the first call when run_step is
         # invoked before setup() for any reason).
         self._ensure_config_loaded(path_hint=None)
-        self._ensure_inner_agent_loaded()
+        self._ensure_extensions_loaded()
+        self._ensure_pipeline_or_inner_loaded()
         self._initialize_data_collection()
 
         # Stage 2: standardized dataset output
         if self.collect_data:
             self._save_sensor_data(input_data, timestamp)
 
-        # Stage 3: delegate to original agent
-        control = self._inner_agent.run_step(input_data, timestamp)
+        # Optional: allow extensions to transform the input before inference.
+        input_data = self._call_extension_hook_chain("on_before_run_step", input_data, timestamp) or input_data
+        if not isinstance(input_data, dict):
+            raise TypeError(
+                f"Extension on_before_run_step must return a dict, got {type(input_data)!r}"
+            )
+
+        # Stage 3: inference
+        if self._pipeline is not None:
+            ctx = {
+                "agent": self,
+                "input_data": input_data,
+                "timestamp": timestamp,
+                "global_step": self._global_step,
+                "last_control": self._pipeline_last_control,
+                "config": self._config,
+                "external_config": self.external_config,
+            }
+            ctx = self._pipeline.run(ctx)
+            control = ctx.get("control")
+        else:
+            control = self._inner_agent.run_step(input_data, timestamp)
+
+        control = self._coerce_control(control)
+        if self._pipeline is not None:
+            self._pipeline_last_control = control
+
+        # Optional: allow extensions to postprocess control with access to inputs.
+        control = (
+            self._call_extension_hook_chain("on_after_run_step", control, input_data, timestamp)
+            or control
+        )
 
         # Stage 4: global safety / sanity adjustments
         control = self._postprocess_control(control)
@@ -395,10 +469,64 @@ class ConsolidatedAgent(AutonomousAgent):
     def destroy(self) -> None:
         """Forward destroy() to the inner agent if implemented."""
         try:
+            self._call_extension_hook("on_destroy")
             if self._inner_agent is not None and hasattr(self._inner_agent, "destroy"):
                 self._inner_agent.destroy()
         finally:
             return
+
+    def _coerce_control(self, control) -> carla.VehicleControl:
+        """Coerce pipeline/agent output into carla.VehicleControl.
+
+        Supported inputs:
+        - carla.VehicleControl
+        - dict with keys:
+            - {steer, throttle, brake} (preferred)
+            - {steer, acc} where acc>=0 -> throttle, acc<0 -> brake
+            - {steer, throttle} (brake defaults to 0)
+        - tuple/list length 3 (order configurable via YAML):
+            pipeline_control_tuple_order: [steer, throttle, brake] (default)
+        """
+        if isinstance(control, carla.VehicleControl):
+            return control
+        if isinstance(control, (tuple, list)) and len(control) == 3:
+            order = None
+            try:
+                if isinstance(self._config, dict):
+                    order = self._config.get("pipeline_control_tuple_order")
+            except Exception:
+                order = None
+
+            if not order:
+                order = ["steer", "throttle", "brake"]
+            if not isinstance(order, list) or len(order) != 3:
+                raise ValueError(
+                    "pipeline_control_tuple_order must be a list of 3 strings, e.g. [steer, throttle, brake]"
+                )
+
+            as_dict = {str(order[i]): control[i] for i in range(3)}
+            return self._coerce_control(as_dict)
+        if isinstance(control, dict):
+            steer = float(control.get("steer", 0.0))
+
+            # Preferred explicit keys
+            if "throttle" in control or "brake" in control:
+                throttle = float(control.get("throttle", 0.0))
+                brake = float(control.get("brake", 0.0))
+                return carla.VehicleControl(steer=steer, throttle=throttle, brake=brake)
+
+            # Alternative common convention: acceleration + steer
+            if "acc" in control:
+                acc = float(control.get("acc", 0.0))
+                if acc >= 0.0:
+                    return carla.VehicleControl(steer=steer, throttle=min(1.0, acc), brake=0.0)
+                return carla.VehicleControl(steer=steer, throttle=0.0, brake=min(1.0, abs(acc)))
+
+            # Last-resort: only steer
+            return carla.VehicleControl(steer=steer, throttle=0.0, brake=0.0)
+        if control is None:
+            return carla.VehicleControl()
+        raise TypeError(f"Unsupported control type: {type(control)!r}")
 
     def _initialize_data_collection(self) -> None:
         """
@@ -505,13 +633,17 @@ class ConsolidatedAgent(AutonomousAgent):
             if sensor_id not in self.sensor_data_paths:
                 # This can happen if the sensor list was overridden by the
                 # agent; in that case, we lazily create a directory.
-                folder_name = self._get_sensor_folder_name(str(type(raw)), sensor_id)
+                sensor_type = self._sensor_type_by_id.get(sensor_id, "")
+                folder_name = self._get_sensor_folder_name(sensor_type, sensor_id)
                 sensor_path = os.path.join(self.save_path, folder_name)
                 os.makedirs(sensor_path, exist_ok=True)
                 self.sensor_data_paths[sensor_id] = sensor_path
 
             sensor_dir = self.sensor_data_paths[sensor_id]
             self._save_single_sensor(sensor_id, sensor_dir, frame, raw, timestamp)
+
+            # Optional: extensions can save additional representations.
+            self._call_extension_hook("on_save_sensor", sensor_id, sensor_dir, frame, raw, timestamp)
 
     def _save_single_sensor(
         self,
@@ -623,6 +755,98 @@ class ConsolidatedAgent(AutonomousAgent):
         else:
             self.external_config = None
 
+    # ------------------------------------------------------------------
+    # Extension hooks (optional, opt-in)
+    # ------------------------------------------------------------------
+
+    def _ensure_extensions_loaded(self) -> None:
+        """Load optional extensions from config.
+
+        This keeps compatibility by defaulting to no extensions.
+
+        YAML schema:
+
+            extensions:
+              - module: some_pkg.some_mod
+                class_name: SomeExtension
+                args: { ... }
+
+        Each extension may implement any of these methods (all optional):
+            - on_setup(self)
+            - on_sensors(self, sensors) -> sensors
+            - on_before_run_step(self, input_data, timestamp) -> input_data
+            - on_after_run_step(self, control, input_data, timestamp) -> control
+            - on_save_sensor(self, sensor_id, sensor_dir, frame, raw, timestamp)
+            - on_destroy(self)
+        """
+        if self._extensions_loaded:
+            return
+        self._extensions_loaded = True
+
+        if self._config is None:
+            return
+
+        specs = self._config.get("extensions") or []
+        if not specs:
+            return
+
+        if not isinstance(specs, list):
+            raise ValueError("'extensions' must be a list")
+
+        loaded: List[Any] = []
+        for spec in specs:
+            if not isinstance(spec, dict):
+                raise ValueError(f"Invalid extension spec (expected dict): {spec!r}")
+            module_path = spec.get("module")
+            class_name = spec.get("class_name") or spec.get("class")
+            args = spec.get("args") or {}
+            if not module_path or not class_name:
+                raise ValueError(f"Extension spec must include module and class_name: {spec!r}")
+            if not isinstance(args, dict):
+                raise ValueError(f"Extension args must be a dict: {spec!r}")
+
+            ExtClass = _dynamic_import(module_path, class_name)
+            try:
+                ext = ExtClass(**args)
+            except TypeError:
+                # Allow extensions with a no-arg constructor.
+                ext = ExtClass()
+                for k, v in args.items():
+                    setattr(ext, k, v)
+            loaded.append(ext)
+
+        self._extensions = loaded
+
+    def _call_extension_hook(self, hook_name: str, *args):
+        if not self._extensions:
+            return None
+        for ext in self._extensions:
+            fn = getattr(ext, hook_name, None)
+            if callable(fn):
+                try:
+                    fn(self, *args)
+                except TypeError:
+                    # Back-compat with extensions that don't accept agent.
+                    fn(*args)
+        return None
+
+    def _call_extension_hook_chain(self, hook_name: str, value, *args):
+        """Call hook sequentially where each hook can transform `value`."""
+        if not self._extensions:
+            return value
+        out = value
+        for ext in self._extensions:
+            fn = getattr(ext, hook_name, None)
+            if not callable(fn):
+                continue
+            try:
+                res = fn(self, out, *args)
+            except TypeError:
+                res = fn(out, *args)
+            if res is not None:
+                out = res
+        return out
+
     def _ensure_inner_agent_loaded(self) -> None:
         """
         Dynamically import and set up the underlying driving agent.
@@ -707,6 +931,33 @@ class ConsolidatedAgent(AutonomousAgent):
         # inner agent knows how to use it.
         if self.external_config is not None:
             setattr(self._inner_agent, "external_config", self.external_config)
+
+    def _ensure_pipeline_or_inner_loaded(self) -> None:
+        """Choose pipeline mode (new agents) or legacy inner-agent proxy mode."""
+        if self._pipeline is not None or self._inner_agent is not None:
+            return
+
+        if self._config is None:
+            self._ensure_config_loaded(path_hint=None)
+
+        pipeline_specs = self._config.get("pipeline")
+
+        # Avoid ambiguous configs: either you define a pipeline (new agent)
+        # or you point at a legacy agent implementation.
+        if pipeline_specs is not None:
+            if self._config.get("agent") is not None or self._config.get("agent_config") is not None:
+                raise ValueError(
+                    "Config must use either 'pipeline' (composed agent) OR 'agent/agent_config' (legacy), not both."
+                )
+
+        # If 'pipeline' is present, we treat this config as a composed/new agent.
+        # Otherwise we preserve existing behavior and load the legacy agent.
+        if pipeline_specs is not None:
+            self._pipeline = PipelineEngine(pipeline_specs)
+            self._pipeline.setup(self, self._config)
+            return
+
+        self._ensure_inner_agent_loaded()
 
     # ------------------------------------------------------------------
     # Stage 4 – Global control post-processing
