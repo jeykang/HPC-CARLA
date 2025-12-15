@@ -20,7 +20,8 @@ log="$LOG_DIR/worker_${NODE_NAME}_gpu${GPU_ID}.log"
 
 # Derive per-GPU RPC/TM ports
 RPC_PORT=$(( BASE_RPC_PORT + PORT_SPACING * GPU_ID ))
-TM_PORT=$(( TM_OFFSET + PORT_SPACING * GPU_ID ))
+# TM is offset from the per-GPU RPC port (must match carla_server_manager.py and carla_health_manager.py)
+TM_PORT=$(( RPC_PORT + TM_OFFSET ))
 
 # Emit initial heartbeat (format expected by carla_health_manager.py)
 python3 - <<'PY' "$STATE_DIR" "$NODE_NAME" "$GPU_ID" "$RPC_PORT" "$TM_PORT"
@@ -69,6 +70,22 @@ while true; do
   fi
 
   set +e
+
+  # Ensure CARLA is up for this GPU before running an evaluator job.
+  # If the simulator is down, the Leaderboard evaluator will block for ~10 minutes.
+  python3 "$PROJECT_ROOT/carla_server_manager.py" ensure \
+    --gpu "$GPU_ID" \
+    --base-rpc-port "$BASE_RPC_PORT" \
+    --port-spacing "$PORT_SPACING" \
+    --tm-offset "$TM_OFFSET" >>"$log" 2>&1
+  ensure_rc=$?
+  if [[ "$ensure_rc" -ne 0 ]]; then
+    echo "[worker] CARLA ensure failed (rc=$ensure_rc); sleeping before retry" | tee -a "$log"
+    sleep 10
+    set -e
+    continue
+  fi
+
   python3 "$PROJECT_ROOT/manage_continuous.py" run \
     --host 127.0.0.1 \
     --port "$RPC_PORT" \
