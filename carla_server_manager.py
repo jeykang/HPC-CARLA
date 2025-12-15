@@ -23,6 +23,7 @@ LOG_DIR.mkdir(parents=True, exist_ok=True)
 DEFAULT_BASE      = int(os.environ.get("BASE_RPC_PORT", 2000))
 DEFAULT_SPACING   = int(os.environ.get("PORT_SPACING", 100))
 DEFAULT_TM_OFFSET = int(os.environ.get("TM_OFFSET", 5000))
+DEFAULT_START_TIMEOUT = float(os.environ.get("CARLA_START_TIMEOUT", "300"))
 
 # Use container’s default CARLA_ROOT (/home/carla per your .def) via %environment/%runscript.
 SIF_PATH   = str(os.environ.get("CARLA_SIF", PROJECT_ROOT / "carla_official.sif"))
@@ -58,7 +59,11 @@ def _read_state() -> Dict:
         return {"node": NODE_NAME, "servers": {}}
 
 def _write_state(state: Dict) -> None:
-    tmp = STATE_FILE.with_suffix(".tmp")
+    # IMPORTANT: This function is called concurrently by multiple workers.
+    # Using a fixed temp path (STATE_FILE.tmp) can race: one process can
+    # os.replace() the temp file while another still has it open, leaving the
+    # second process with no path to replace.
+    tmp = STATE_FILE.with_suffix(f".{os.getpid()}.tmp")
     with open(tmp, "w") as f:
         json.dump(state, f, indent=2)
     os.replace(tmp, STATE_FILE)
@@ -109,22 +114,97 @@ def _container_env_for_gpu(gpu_id: int) -> Dict[str, str]:
 
 def _build_run_args(rpc: int, tm: int) -> List[str]:
     """
-    Use 'singularity run' so the container's %runscript invokes ${CARLA_ROOT}/CarlaUE4.sh.
-    All UE4/CARLA flags are passed as args to the runscript.
+    Launch CARLA directly via 'singularity exec'.
+
+    We intentionally avoid 'singularity run' here because some images/runscripts
+    perform setup steps (e.g., chmod) that can fail on read-only SIF filesystems,
+    causing the server to exit immediately.
     """
+    bind_spec = f"{str(PROJECT_ROOT)}:/workspace"
+    # Avoid duplicate binds if the submission script already set SINGULARITY_BINDPATH/APPTAINER_BINDPATH.
+    bindpath = os.environ.get("SINGULARITY_BINDPATH") or os.environ.get("APPTAINER_BINDPATH") or ""
+    add_bind = f",{bind_spec}," not in f",{bindpath},"
+
     args = [
-        "singularity", "run", "--nv",
-        "-B", f"{str(PROJECT_ROOT)}:/workspace",  # mount project at /workspace for Python sidecars
-        SIF_PATH,
-        "-opengl",
-        "-RenderOffscreen",
-        "-quality-level=Epic",
-        f"-carla-rpc-port={rpc}",
-        f"-trafficManagerPort={tm}",
-        "-carla-server",
+        "singularity", "exec", "--nv",
+        # Allow writes even when the image is a read-only SIF.
+        # CARLA's startup scripts/binaries commonly try to chmod or write runtime files.
+        "--writable-tmpfs",
     ]
-    # If your image expects '-nosound' (your %runscript already adds it), no need to pass it again.
+    if add_bind:
+        # Mount project at /workspace for Python sidecars and logs.
+        args.extend(["-B", bind_spec])
+
+    # Launch the UE4 shipping binary directly.
+    # The CarlaUE4.sh wrapper in many images tries to chmod binaries at runtime,
+    # which fails on HPC setups where the container user is not root.
+    carla_dir = "/home/carla/CarlaUE4"
+    carla_bin = "/home/carla/CarlaUE4/Binaries/Linux/CarlaUE4-Linux-Shipping"
+
+    # TrafficManager port is negotiated from the client side; passing it here is harmless.
+    inner = (
+        f"cd {carla_dir} && "
+        f"{carla_bin} -opengl -RenderOffscreen -quality-level=Epic "
+        f"-carla-rpc-port={int(rpc)} -trafficManagerPort={int(tm)} -carla-server"
+    )
+    args.extend([
+        SIF_PATH,
+        "bash",
+        "-lc",
+        inner,
+    ])
     return args
+
+
+def _pid_is_alive(pid: Optional[int]) -> bool:
+    try:
+        if not pid:
+            return False
+        os.kill(int(pid), 0)
+        return True
+    except Exception:
+        return False
+
+
+def _tail_file(path: Path, max_lines: int = 80, max_bytes: int = 64 * 1024) -> str:
+    """Return a best-effort tail of a potentially large log file."""
+    try:
+        if not path.exists():
+            return ""
+        # Read last max_bytes for efficiency, then split lines.
+        with open(path, "rb") as f:
+            try:
+                f.seek(0, os.SEEK_END)
+                size = f.tell()
+                f.seek(max(0, size - max_bytes), os.SEEK_SET)
+            except Exception:
+                pass
+            data = f.read().decode("utf-8", errors="ignore")
+        lines = data.splitlines()[-max_lines:]
+        return "\n".join(lines)
+    except Exception:
+        return ""
+
+
+def _socket_diag(port: int) -> str:
+    """Best-effort socket diagnostic via ss/netstat."""
+    cmds = [
+        ["ss", "-ltnp"],
+        ["netstat", "-ltnp"],
+    ]
+    for cmd in cmds:
+        try:
+            p = subprocess.run(cmd, capture_output=True, text=True)
+            if p.returncode != 0:
+                continue
+            out = p.stdout or ""
+            # Filter lines containing the port
+            matches = [ln for ln in out.splitlines() if f":{int(port)}" in ln]
+            if matches:
+                return "\n".join(matches[-20:])
+        except Exception:
+            continue
+    return ""
 
 def start_one(gpu_id: int, rpc: int, tm: int) -> Optional[int]:
     log_path = LOG_DIR / f"carla_{NODE_NAME}_gpu{gpu_id}.log"
@@ -180,7 +260,7 @@ def start_pool(gpus: List[int], base: int, spacing: int, tm_off: int) -> Dict[st
             continue
         pid = start_one(gid, rpc, tm)
         t0 = time.time()
-        ok = wait_for_port("127.0.0.1", rpc, time.time() + 120)
+        ok = wait_for_port("127.0.0.1", rpc, time.time() + DEFAULT_START_TIMEOUT)
         ready_s = float(time.time() - t0)
         started[str(gid)] = {"rpc_port": rpc, "tm_port": tm, "pid": pid, "listening": ok, "ready_seconds": ready_s}
 
@@ -234,13 +314,47 @@ def ensure(gpu_id: int, base: int, spacing: int, tm_off: int) -> int:
     rpc, tm = _derive_ports(gpu_id, base, spacing, tm_off)
     if is_port_open("127.0.0.1", rpc):
         return 0
+
+    # If we have a recorded PID and it is still alive, don't spawn a duplicate.
+    try:
+        st = _read_state()
+        rec = (st.get("servers") or {}).get(str(gpu_id)) or {}
+        existing_pid = rec.get("pid")
+        if _pid_is_alive(existing_pid):
+            ok = wait_for_port("127.0.0.1", rpc, time.time() + DEFAULT_START_TIMEOUT)
+            if ok:
+                return 0
+            print(f"[server_manager] gpu{gpu_id}: pid {existing_pid} alive but still no listener on {rpc}", file=sys.stderr)
+        # else fall through to relaunch
+    except Exception:
+        pass
+
     print(f"[server_manager] gpu{gpu_id}: no listener on {rpc}, launching …")
     pid = start_one(gpu_id, rpc, tm)
-    ok = wait_for_port("127.0.0.1", rpc, time.time() + 120)
-    if not ok:
-        print(f"[server_manager] gpu{gpu_id}: still no listener on {rpc}", file=sys.stderr)
-        return 2
-    return 0
+    ok = wait_for_port("127.0.0.1", rpc, time.time() + DEFAULT_START_TIMEOUT)
+    if ok:
+        return 0
+
+    # Diagnostics for debugging via shared logs.
+    print(f"[server_manager] gpu{gpu_id}: still no listener on {rpc}", file=sys.stderr)
+    if pid:
+        print(f"[server_manager] gpu{gpu_id}: spawned pid={pid} alive={_pid_is_alive(pid)}", file=sys.stderr)
+    sock = _socket_diag(rpc)
+    if sock:
+        print(f"[server_manager] gpu{gpu_id}: socket diag for :{rpc}\n{sock}", file=sys.stderr)
+
+    try:
+        st = _read_state()
+        rec = (st.get("servers") or {}).get(str(gpu_id)) or {}
+        log_path = rec.get("log")
+        if log_path:
+            tail = _tail_file(Path(log_path))
+            if tail:
+                print(f"[server_manager] gpu{gpu_id}: tail of {log_path}\n{tail}", file=sys.stderr)
+    except Exception:
+        pass
+
+    return 2
 
 def parse_args():
     p = argparse.ArgumentParser("carla_server_manager")
