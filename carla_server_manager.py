@@ -30,6 +30,26 @@ NODE_NAME  = os.environ.get("SLURMD_NODENAME", os.uname().nodename)
 
 STATE_FILE = STATE_DIR / f"carla_servers_{NODE_NAME}.json"
 
+
+def _get_run_id() -> str:
+    return os.environ.get("HPC_CARLA_RUN_ID") or os.environ.get("SLURM_JOB_ID") or "local"
+
+
+def _append_run_event(event: Dict) -> None:
+    """Append a JSONL event under collection_state/runs/<run_id>/events.jsonl (best-effort)."""
+    try:
+        run_id = _get_run_id()
+        run_dir = STATE_DIR / "runs" / run_id
+        run_dir.mkdir(parents=True, exist_ok=True)
+        p = run_dir / "events.jsonl"
+        event = dict(event)
+        event.setdefault("ts", time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()))
+        event.setdefault("run_id", run_id)
+        with open(p, "a", encoding="utf-8") as f:
+            f.write(json.dumps(event, ensure_ascii=False) + "\n")
+    except Exception:
+        return
+
 def _read_state() -> Dict:
     try:
         with open(STATE_FILE, "r") as f:
@@ -108,6 +128,7 @@ def _build_run_args(rpc: int, tm: int) -> List[str]:
 
 def start_one(gpu_id: int, rpc: int, tm: int) -> Optional[int]:
     log_path = LOG_DIR / f"carla_{NODE_NAME}_gpu{gpu_id}.log"
+    start_ts = time.time()
     try:
         with open(log_path, "ab", buffering=0) as logf:
             proc = subprocess.Popen(
@@ -115,12 +136,25 @@ def start_one(gpu_id: int, rpc: int, tm: int) -> Optional[int]:
                 stdout=logf, stderr=logf,
                 env=_container_env_for_gpu(gpu_id),
             )
+        _append_run_event(
+            {
+                "event": "carla_server_start",
+                "node": NODE_NAME,
+                "gpu_id": int(gpu_id),
+                "rpc_port": int(rpc),
+                "tm_port": int(tm),
+                "pid": int(proc.pid),
+                "start_ts_unix": float(start_ts),
+                "log": str(log_path),
+            }
+        )
         # Persist state
         state = _read_state()
         servers = state.setdefault("servers", {})
         servers[str(gpu_id)] = {
             "gpu": gpu_id, "rpc_port": rpc, "tm_port": tm,
             "pid": proc.pid, "node": NODE_NAME, "log": str(log_path),
+            "start_ts_unix": float(start_ts),
         }
         _write_state(state)
         return proc.pid
@@ -133,11 +167,47 @@ def start_pool(gpus: List[int], base: int, spacing: int, tm_off: int) -> Dict[st
     for gid in gpus:
         rpc, tm = _derive_ports(gid, base, spacing, tm_off)
         if is_port_open("127.0.0.1", rpc):
-            started[str(gid)] = {"rpc_port": rpc, "tm_port": tm, "pid": None, "already_running": True}
+            started[str(gid)] = {"rpc_port": rpc, "tm_port": tm, "pid": None, "already_running": True, "ready_seconds": 0.0}
+            _append_run_event(
+                {
+                    "event": "carla_server_already_running",
+                    "node": NODE_NAME,
+                    "gpu_id": int(gid),
+                    "rpc_port": int(rpc),
+                    "tm_port": int(tm),
+                }
+            )
             continue
         pid = start_one(gid, rpc, tm)
+        t0 = time.time()
         ok = wait_for_port("127.0.0.1", rpc, time.time() + 120)
-        started[str(gid)] = {"rpc_port": rpc, "tm_port": tm, "pid": pid, "listening": ok}
+        ready_s = float(time.time() - t0)
+        started[str(gid)] = {"rpc_port": rpc, "tm_port": tm, "pid": pid, "listening": ok, "ready_seconds": ready_s}
+
+        # Update state with readiness timing
+        try:
+            state = _read_state()
+            rec = (state.get("servers") or {}).get(str(gid)) or {}
+            rec["listening"] = bool(ok)
+            rec["ready_seconds"] = ready_s
+            rec["ready_ts_unix"] = float(time.time())
+            state.setdefault("servers", {})[str(gid)] = rec
+            _write_state(state)
+        except Exception:
+            pass
+
+        _append_run_event(
+            {
+                "event": "carla_server_ready",
+                "node": NODE_NAME,
+                "gpu_id": int(gid),
+                "rpc_port": int(rpc),
+                "tm_port": int(tm),
+                "pid": int(pid) if pid else None,
+                "listening": bool(ok),
+                "ready_seconds": ready_s,
+            }
+        )
     return started
 
 def stop_pool() -> None:

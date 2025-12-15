@@ -16,6 +16,54 @@ from pathlib import Path
 from datetime import datetime, timedelta
 from typing import List, Dict, Any, Optional, Tuple
 
+
+def _utc_now_iso() -> str:
+    return datetime.utcnow().isoformat() + "Z"
+
+
+def _get_run_id() -> str:
+    return (
+        os.environ.get("HPC_CARLA_RUN_ID")
+        or os.environ.get("SLURM_JOB_ID")
+        or "local"
+    )
+
+
+def _append_run_event(state_dir: Path, event: Dict[str, Any]) -> None:
+    """Append a single JSONL event under collection_state/runs/<run_id>/events.jsonl."""
+    try:
+        run_id = _get_run_id()
+        run_dir = state_dir / "runs" / run_id
+        run_dir.mkdir(parents=True, exist_ok=True)
+        p = run_dir / "events.jsonl"
+        event = dict(event)
+        event.setdefault("ts", _utc_now_iso())
+        event.setdefault("run_id", run_id)
+        with open(p, "a", encoding="utf-8") as f:
+            f.write(json.dumps(event, ensure_ascii=False) + "\n")
+    except Exception:
+        # Logging must never break collection.
+        return
+
+
+def _write_health_file(state_dir: Path, node: str, gpu_id: int, payload: Dict[str, Any]) -> None:
+    """Write a per-GPU health JSON file in the format expected by carla_health_manager.py."""
+    try:
+        health_dir = state_dir / "health" / node
+        health_dir.mkdir(parents=True, exist_ok=True)
+        p = health_dir / f"gpu{int(gpu_id)}.json"
+        now_unix = time.time()
+        d = dict(payload)
+        d.setdefault("node", node)
+        d.setdefault("gpu_id", int(gpu_id))
+        d["timestamp"] = datetime.utcnow().isoformat() + "Z"
+        d["timestamp_unix"] = now_unix
+        tmp = p.with_suffix(".tmp")
+        tmp.write_text(json.dumps(d, indent=2), encoding="utf-8")
+        os.replace(tmp, p)
+    except Exception:
+        return
+
 class ContinuousManager:
     def __init__(self, state_dir: str = None):
         if state_dir is None:
@@ -477,6 +525,15 @@ class ContinuousManager:
         
         if not job_data:
             print("No pending jobs found.")
+            _write_health_file(
+                self.state_dir,
+                node_name,
+                gpu_id,
+                {
+                    "status": "idle",
+                    "message": "no jobs pending",
+                },
+            )
             return 2 # Exit code 2 indicates idle
 
         # 2. PREPARE EXECUTION
@@ -491,6 +548,49 @@ class ContinuousManager:
         
         # 3. RUN EVALUATOR
         print(f"[RUN] Job {job_data['id']} ({job_data['agent']}/{job_data['route']}) on GPU {gpu_id}")
+
+        # Deterministic dataset directory (used for coverage/mosaic figures)
+        route_stem = Path(str(routes_file)).stem
+        run_tag = f"job{int(job_data['id'])}_gpu{gpu_id}"
+        dataset_root = (
+            os.environ.get('HPC_CARLA_DATASET_ROOT')
+            or os.environ.get('DATASET_DIR')
+            or (str(self.project_root / 'dataset') if (self.project_root / 'dataset').is_dir() else None)
+        )
+        dataset_dir = None
+        if dataset_root:
+            dataset_dir = str(Path(dataset_root) / str(job_data['agent']) / str(job_data['weather']) / f"{route_stem}_{run_tag}")
+
+        # Emit health + run event (start)
+        _write_health_file(
+            self.state_dir,
+            node_name,
+            gpu_id,
+            {
+                "status": "running_job",
+                "message": f"running job {int(job_data['id'])}",
+                "current_job_id": int(job_data['id']),
+                "rpc_port": int(port),
+                "tm_port": int(tm_port),
+            },
+        )
+        _append_run_event(
+            self.state_dir,
+            {
+                "event": "job_start",
+                "node": node_name,
+                "gpu_id": gpu_id,
+                "job_id": int(job_data['id']),
+                "agent": job_data['agent'],
+                "route": job_data['route'],
+                "town": job_data.get('town'),
+                "weather": int(job_data['weather']),
+                "rpc_port": int(port),
+                "tm_port": int(tm_port),
+                "checkpoint_path": str(self._make_checkpoint_path(job_data)),
+                "dataset_dir": dataset_dir,
+            },
+        )
 
         checkpoint_path = self._make_checkpoint_path(job_data)
         # Ensure directory exists (it should, but be safe).
@@ -540,6 +640,12 @@ class ContinuousManager:
         env.setdefault('ROUTES', str(routes_file))
         env.setdefault('CHECKPOINT_PATH', str(checkpoint_path))
 
+        # Make dataset path deterministic and job-traceable for paper plots.
+        env.setdefault('HPC_CARLA_RUN_ID', _get_run_id())
+        env.setdefault('HPC_CARLA_JOB_ID', str(int(job_data['id'])))
+        env.setdefault('HPC_CARLA_RUN_TAG', run_tag)
+        env.setdefault('HPC_CARLA_AGENT_NAME', str(job_data['agent']))
+
         # Prefer writing all collected outputs under the dedicated dataset dir.
         # docker-compose sets DATASET_DIR=/workspace/dataset.
         if 'DATASET_DIR' in env and env['DATASET_DIR']:
@@ -587,33 +693,101 @@ class ContinuousManager:
             # Never fail the worker due to logging.
             pass
 
+        # Best-effort attach per-run dataset summary.
+        run_summary = None
+        if dataset_dir:
+            try:
+                p = Path(dataset_dir) / 'run_summary.json'
+                if p.exists():
+                    run_summary = json.loads(p.read_text())
+            except Exception:
+                run_summary = None
+
+        # Emit run event (end) + update health.
+        _append_run_event(
+            self.state_dir,
+            {
+                "event": "job_end",
+                "node": node_name,
+                "gpu_id": gpu_id,
+                "job_id": int(job_data['id']),
+                "agent": job_data['agent'],
+                "route": job_data['route'],
+                "town": job_data.get('town'),
+                "weather": int(job_data['weather']),
+                "rpc_port": int(port),
+                "tm_port": int(tm_port),
+                "rc": int(rc),
+                "duration_sec": float(duration),
+                "final_status": final_status,
+                "checkpoint_path": str(checkpoint_path),
+                "dataset_dir": dataset_dir,
+                "run_summary": run_summary,
+            },
+        )
+        _write_health_file(
+            self.state_dir,
+            node_name,
+            gpu_id,
+            {
+                "status": "idle" if rc == 0 else "error",
+                "message": "job completed" if rc == 0 else f"job failed rc={rc}",
+                "current_job_id": None,
+                "rpc_port": int(port),
+                "tm_port": int(tm_port),
+            },
+        )
+
         return rc
 
     # --- Reporting ---
     def get_status(self):
+        d = self.get_status_dict()
+        stats = d.get("jobs", {})
+        print("\nCOLLECTION STATUS (SQLite)")
+        print("="*40)
+        print(f"Total:      {stats.get('total', 0)}")
+        print(f"Completed:  {stats.get('completed', 0)}")
+        print(f"Pending:    {stats.get('pending', 0)}")
+        print(f"Running:    {stats.get('running', 0)}")
+        print(f"Failed:     {stats.get('failed', 0)}")
+        print("-" * 40)
+
+        print("Active GPUs:")
+        for gpu in d.get("gpus", []):
+            job_str = f"Job #{gpu.get('current_job_id')}" if gpu.get('current_job_id') else ""
+            print(
+                f"  GPU {gpu.get('gpu_id')}: {str(gpu.get('status','')).upper():<6} | "
+                f"{gpu.get('jobs_completed', 0)} done | {job_str}"
+            )
+
+    def get_status_dict(self) -> Dict[str, Any]:
         with self._get_conn() as conn:
-            # Aggregate Job Stats
-            job_stats = conn.execute("""
-                SELECT status, COUNT(*) as count FROM jobs GROUP BY status
-            """).fetchall()
-            stats = {row['status']: row['count'] for row in job_stats}
-            
-            total = sum(stats.values())
-            print("\nCOLLECTION STATUS (SQLite)")
-            print("="*40)
-            print(f"Total:      {total}")
-            print(f"Completed:  {stats.get('completed', 0)}")
-            print(f"Pending:    {stats.get('pending', 0)}")
-            print(f"Running:    {stats.get('running', 0)}")
-            print(f"Failed:     {stats.get('failed', 0)}")
-            print("-" * 40)
-            
-            # GPU Status
-            gpus = conn.execute("SELECT * FROM gpu_status ORDER BY gpu_id").fetchall()
-            print("Active GPUs:")
-            for gpu in gpus:
-                job_str = f"Job #{gpu['current_job_id']}" if gpu['current_job_id'] else ""
-                print(f"  GPU {gpu['gpu_id']}: {gpu['status'].upper():<6} | {gpu['jobs_completed']} done | {job_str}")
+            job_stats = conn.execute(
+                "SELECT status, COUNT(*) as count FROM jobs GROUP BY status"
+            ).fetchall()
+            stats = {row['status']: int(row['count']) for row in job_stats}
+            total = int(sum(stats.values()))
+            stats_out = {
+                "total": total,
+                "completed": int(stats.get('completed', 0)),
+                "pending": int(stats.get('pending', 0)),
+                "running": int(stats.get('running', 0)),
+                "failed": int(stats.get('failed', 0)),
+                "cancelled": int(stats.get('cancelled', 0)),
+            }
+            gpus = conn.execute(
+                "SELECT node, gpu_id, status, current_job_id, jobs_completed, total_runtime, last_heartbeat FROM gpu_status ORDER BY node, gpu_id"
+            ).fetchall()
+            gpus_out = []
+            for r in gpus:
+                gpus_out.append({k: r[k] for k in r.keys()})
+            return {
+                "ts": _utc_now_iso(),
+                "run_id": _get_run_id(),
+                "jobs": stats_out,
+                "gpus": gpus_out,
+            }
 
     def export_results(self, output_file: str):
         with self._get_conn() as conn:
@@ -788,6 +962,11 @@ def main():
     reset.add_argument('--routes', nargs='+')
     
     subparsers.add_parser('status')
+    # Optional JSON output for scripting (coordinator, plotting)
+    # Keep as a flag on the status command to preserve backwards compatibility.
+    status_parser = subparsers.choices.get('status')
+    if status_parser is not None:
+        status_parser.add_argument('--json', action='store_true', help='Print machine-readable JSON')
     
     add = subparsers.add_parser('add')
     add.add_argument('agent')
@@ -819,7 +998,10 @@ def main():
     elif args.command == 'reset':
         manager.reset_queue(args.agents, args.weather, args.routes)
     elif args.command == 'status':
-        manager.get_status()
+        if getattr(args, 'json', False):
+            print(json.dumps(manager.get_status_dict(), ensure_ascii=False))
+        else:
+            manager.get_status()
     elif args.command == 'add':
         manager.add_jobs(args.agent, args.weather, args.routes)
     elif args.command == 'retry':

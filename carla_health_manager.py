@@ -14,6 +14,7 @@ import argparse
 from pathlib import Path
 from datetime import datetime
 from typing import Dict, List, Optional, Tuple
+import sqlite3
 
 class CarlaHealthManager:
     """
@@ -124,6 +125,25 @@ class CarlaHealthManager:
         return ordered
 
     def get_collection_status(self) -> Dict:
+        # Prefer SQLite state (persistent mode) but fall back to legacy JSON.
+        db_path = self.state_dir / 'collection.db'
+        if db_path.exists():
+            try:
+                conn = sqlite3.connect(str(db_path), timeout=2.0)
+                cur = conn.execute("SELECT status, COUNT(*) FROM jobs GROUP BY status")
+                stats = {row[0]: int(row[1]) for row in cur.fetchall() if row and row[0]}
+                conn.close()
+                total = int(sum(stats.values()))
+                return {
+                    'total': total,
+                    'completed': int(stats.get('completed', 0)),
+                    'pending': int(stats.get('pending', 0)),
+                    'running': int(stats.get('running', 0)),
+                    'failed': int(stats.get('failed', 0)),
+                }
+            except Exception:
+                pass
+
         queue_file = self.state_dir / 'job_queue.json'
         try:
             with open(queue_file, 'r') as f:
@@ -286,9 +306,15 @@ def main():
     elif args.command == 'log':
         gid = args.gpu_id
         lines = args.lines
-        log = manager.log_dir / f'persistent_worker_gpu{gid}.log'
-        if log.exists():
-            print(log.read_text()[-(lines*200):])
+        # Worker logs are per-node: logs/worker_<node>_gpu<gid>.log
+        candidates = sorted(manager.log_dir.glob(f"worker_*_gpu{gid}.log"))
+        if candidates:
+            log = candidates[-1]
+            try:
+                tail = log.read_text(errors='ignore')
+                print(tail[-(lines*400):])
+            except Exception:
+                print(log)
         else:
             print(f"No worker log found for GPU {gid}")
     elif args.command == 'restart':

@@ -193,6 +193,10 @@ class ConsolidatedAgent(AutonomousAgent):
         self.sensor_data_paths: Dict[str, str] = {}
         self._global_step: int = -1
 
+        # Per-run collection counters (used for coverage plots)
+        self._frames_saved_by_sensor: Dict[str, int] = {}
+        self._data_collection_started_at: Optional[str] = None
+
         # Cached sensor list built in Stage 1
         self._sensor_list: Optional[List[Dict[str, Any]]] = None
 
@@ -473,8 +477,28 @@ class ConsolidatedAgent(AutonomousAgent):
                 pass
 
     def destroy(self) -> None:
-        """Forward destroy() to the inner agent if implemented."""
+        """Write a small run summary (best-effort) and forward destroy()."""
         try:
+            # Best-effort run summary for plotting / joining dataset to job logs.
+            if self.collect_data and self.save_path is not None:
+                try:
+                    summary = {
+                        "run_id": os.environ.get("HPC_CARLA_RUN_ID") or os.environ.get("SLURM_JOB_ID"),
+                        "job_id": os.environ.get("HPC_CARLA_JOB_ID"),
+                        "run_tag": os.environ.get("HPC_CARLA_RUN_TAG"),
+                        "node": os.environ.get("SLURMD_NODENAME") or os.uname().nodename,
+                        "gpu_id": os.environ.get("GPU_ID"),
+                        "global_steps": int(self._global_step),
+                        "frames_saved_by_sensor": dict(self._frames_saved_by_sensor),
+                        "data_collection_started_at": self._data_collection_started_at,
+                        "data_collection_ended_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+                    }
+                    out_path = os.path.join(self.save_path, "run_summary.json")
+                    with open(out_path, "w") as f:
+                        json.dump(summary, f, indent=2)
+                except Exception:
+                    pass
+
             self._call_extension_hook("on_destroy")
             if self._inner_agent is not None and hasattr(self._inner_agent, "destroy"):
                 self._inner_agent.destroy()
@@ -587,6 +611,12 @@ class ConsolidatedAgent(AutonomousAgent):
         if not self.collect_data:
             return
 
+        if self._data_collection_started_at is None:
+            try:
+                self._data_collection_started_at = datetime.datetime.now(datetime.timezone.utc).isoformat()
+            except Exception:
+                self._data_collection_started_at = datetime.datetime.now().isoformat()
+
         project_root = os.environ.get("PROJECT_ROOT") or os.getcwd()
 
         # Prefer the repo's dedicated dataset directory by default.
@@ -610,7 +640,8 @@ class ConsolidatedAgent(AutonomousAgent):
         agent_cfg = self._config.get("agent", {}) or {}
         legacy_agent_cfg = self._config.get("agent_config", {}) or {}
         agent_name = (
-            agent_cfg.get("name")
+            os.environ.get("HPC_CARLA_AGENT_NAME")
+            or agent_cfg.get("name")
             or agent_cfg.get("id")
             or self._config.get("model_type")
             or legacy_agent_cfg.get("agent_class")
@@ -629,7 +660,7 @@ class ConsolidatedAgent(AutonomousAgent):
         )
 
         # Compose final path
-        run_tag = _now_string()
+        run_tag = os.environ.get("HPC_CARLA_RUN_TAG") or _now_string()
         self.save_path = os.path.join(self.save_root, agent_name, weather, f"{route_stem}_{run_tag}")
         os.makedirs(self.save_path, exist_ok=True)
 
@@ -641,6 +672,11 @@ class ConsolidatedAgent(AutonomousAgent):
             "route": routes_path,
             "weather": weather,
             "created_at": datetime.datetime.now().isoformat(),
+            "run_id": os.environ.get("HPC_CARLA_RUN_ID") or os.environ.get("SLURM_JOB_ID"),
+            "job_id": os.environ.get("HPC_CARLA_JOB_ID"),
+            "run_tag": run_tag,
+            "node": os.environ.get("SLURMD_NODENAME") or os.uname().nodename,
+            "gpu_id": os.environ.get("GPU_ID"),
         }
         meta_path = os.path.join(self.save_path, "metadata.json")
         with open(meta_path, "w") as f:
@@ -673,6 +709,12 @@ class ConsolidatedAgent(AutonomousAgent):
 
             sensor_dir = self.sensor_data_paths[sensor_id]
             self._save_single_sensor(sensor_id, sensor_dir, frame, raw, timestamp)
+
+            # Track per-sensor frame counts for lightweight summaries.
+            try:
+                self._frames_saved_by_sensor[sensor_id] = int(self._frames_saved_by_sensor.get(sensor_id, 0)) + 1
+            except Exception:
+                pass
 
             # Optional: extensions can save additional representations.
             self._call_extension_hook("on_save_sensor", sensor_id, sensor_dir, frame, raw, timestamp)

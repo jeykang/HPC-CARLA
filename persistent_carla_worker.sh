@@ -15,22 +15,32 @@ PORT_SPACING=${PORT_SPACING:-100}
 BASE_RPC_PORT=${BASE_RPC_PORT:-2000}
 TM_OFFSET=${TM_OFFSET:-5000}
 
-mkdir -p "$STATE_DIR/health" "$STATE_DIR/restart" "$LOG_DIR"
+mkdir -p "$STATE_DIR/health" "$STATE_DIR/restart" "$LOG_DIR" "$STATE_DIR/health/$NODE_NAME"
 log="$LOG_DIR/worker_${NODE_NAME}_gpu${GPU_ID}.log"
 
 # Derive per-GPU RPC/TM ports
 RPC_PORT=$(( BASE_RPC_PORT + PORT_SPACING * GPU_ID ))
 TM_PORT=$(( TM_OFFSET + PORT_SPACING * GPU_ID ))
 
-# Emit initial heartbeat
-python3 - <<'PY' "$STATE_DIR/health" "$NODE_NAME" "$GPU_ID" "$RPC_PORT" "$TM_PORT"
-import os, sys, json, datetime, pathlib
-health_dir, node, gpu, rpc, tm = sys.argv[1:]
-p=pathlib.Path(health_dir)/f"{node}_gpu{gpu}.json"
+# Emit initial heartbeat (format expected by carla_health_manager.py)
+python3 - <<'PY' "$STATE_DIR" "$NODE_NAME" "$GPU_ID" "$RPC_PORT" "$TM_PORT"
+import sys, json, time, datetime, pathlib, os
+state_dir, node, gpu, rpc, tm = sys.argv[1:]
+p=pathlib.Path(state_dir)/"health"/node/f"gpu{int(gpu)}.json"
 p.parent.mkdir(parents=True, exist_ok=True)
-d={"node":node,"gpu_id":int(gpu),"status":"idle","rpc_port":int(rpc),"tm_port":int(tm),
-   "message":"worker started","last_heartbeat":datetime.datetime.utcnow().isoformat()+"Z"}
-p.write_text(json.dumps(d, indent=2))
+d={
+  "node":node,
+  "gpu_id":int(gpu),
+  "status":"idle",
+  "message":"worker started",
+  "rpc_port":int(rpc),
+  "tm_port":int(tm),
+  "timestamp":datetime.datetime.utcnow().isoformat()+"Z",
+  "timestamp_unix":time.time(),
+}
+tmp=p.with_suffix('.tmp')
+tmp.write_text(json.dumps(d, indent=2))
+os.replace(tmp, p)
 PY
 
 echo "[worker] node=$NODE_NAME gpu=$GPU_ID rpc=$RPC_PORT tm=$TM_PORT" | tee -a "$log"
@@ -70,14 +80,20 @@ while true; do
     0)  echo "[worker] job completed ok" | tee -a "$log" ;;
     2)  echo "[worker] no pending jobs; sleeping and updating heartbeat" | tee -a "$log"
         python3 - <<'PY' "$STATE_DIR/health" "$NODE_NAME" "$GPU_ID"
-import json, sys, datetime, pathlib
+import json, sys, datetime, pathlib, os, time
 health_dir, node, gpu = sys.argv[1:]
-p=pathlib.Path(health_dir)/f"{node}_gpu{gpu}.json"
-try: d=json.loads(p.read_text())
-except Exception: d={}
-d['status']='idle'; d['message']='no jobs pending'
-d['last_heartbeat']=datetime.datetime.utcnow().isoformat()+'Z'
-p.write_text(json.dumps(d, indent=2))
+p=pathlib.Path(health_dir)/node/f"gpu{int(gpu)}.json"
+try:
+  d=json.loads(p.read_text())
+except Exception:
+  d={"node":node,"gpu_id":int(gpu)}
+d['status']='idle'
+d['message']='no jobs pending'
+d['timestamp']=datetime.datetime.utcnow().isoformat()+'Z'
+d['timestamp_unix']=time.time()
+tmp=p.with_suffix('.tmp')
+tmp.write_text(json.dumps(d, indent=2))
+os.replace(tmp, p)
 PY
         sleep 15
         ;;
