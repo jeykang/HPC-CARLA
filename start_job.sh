@@ -63,12 +63,16 @@ EVAL_CMD_TEMPLATE="$(cat <<'EOF'
 singularity exec --nv --pwd /workspace "${{CARLA_SIF}}" bash -lc '
   set -euo pipefail
   export PYTHONPATH="/workspace:/workspace/leaderboard:/workspace/scenario_runner:${{PYTHONPATH:-}}"
+  # Force a container-visible dataset root (the repo is bound at /workspace).
+  export HPC_CARLA_DATASET_ROOT="/workspace/dataset"
+  export DATASET_DIR="/workspace/dataset"
   python3 -m leaderboard.leaderboard_evaluator \
     --routes "{ROUTES_FILE}" \
     --scenarios "{SCENARIOS_FILE}" \
     --agent "{AGENT_CODE}" \
     --agent-config "{AGENT_CFG}" \
-    --host "{HOST}" --port "{PORT}" --trafficManagerPort "{TM_PORT}"
+    --host "{HOST}" --port "{PORT}" --trafficManagerPort "{TM_PORT}" \
+    --checkpoint "{CHECKPOINT}"
 '
 EOF
 )"

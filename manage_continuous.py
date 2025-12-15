@@ -651,6 +651,29 @@ class ContinuousManager:
         if 'DATASET_DIR' in env and env['DATASET_DIR']:
             env.setdefault('HPC_CARLA_DATASET_ROOT', env['DATASET_DIR'])
 
+        # Ensure critical run/job metadata makes it into Singularity/Apptainer containers.
+        # Singularity reliably forwards variables prefixed with SINGULARITYENV_.
+        # Apptainer uses APPTAINERENV_.
+        passthrough_keys = [
+            'HPC_CARLA_RUN_ID',
+            'HPC_CARLA_JOB_ID',
+            'HPC_CARLA_RUN_TAG',
+            'HPC_CARLA_AGENT_NAME',
+        ]
+        for k in passthrough_keys:
+            v = env.get(k)
+            if v is None:
+                continue
+            env.setdefault(f'SINGULARITYENV_{k}', str(v))
+            env.setdefault(f'APPTAINERENV_{k}', str(v))
+
+        # Make dataset root inside container deterministic and container-visible.
+        # The repo is always bound at /workspace in start_job.sh.
+        env.setdefault('SINGULARITYENV_HPC_CARLA_DATASET_ROOT', '/workspace/dataset')
+        env.setdefault('APPTAINERENV_HPC_CARLA_DATASET_ROOT', '/workspace/dataset')
+        env.setdefault('SINGULARITYENV_DATASET_DIR', '/workspace/dataset')
+        env.setdefault('APPTAINERENV_DATASET_DIR', '/workspace/dataset')
+
         start_ts = time.time()
         try:
             rc = subprocess.call(cmd, env=env)
