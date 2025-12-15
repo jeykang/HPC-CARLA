@@ -1,122 +1,74 @@
 #!/usr/bin/env bash
-# Persistent-mode coordinator for a single SLURM node.
-# - Starts a CARLA server per GPU via carla_server_manager.py
-# - Spawns a client-only worker per GPU that runs evaluation jobs
-#   against the already-running server.
+# Coordinator for persistent mode on a single node.
+# Spawns one persistent_carla_worker.sh per local GPU and exits when the queue drains.
 set -euo pipefail
 
-: "${PROJECT_ROOT:=$(pwd)}"
-: "${BASE_RPC_PORT:=${BASE_RPC_PORT:-$((2000 + ${SLURM_NODEID:-0} * 1000))}}"
-: "${PORT_SPACING:=${PORT_SPACING:-100}}"
-: "${TM_OFFSET:=${TM_OFFSET:-5000}}"
-: "${CARLA_SIF:=carla_official.sif}"
+: "${PROJECT_ROOT:?set PROJECT_ROOT}"
+STATE_DIR=${STATE_DIR:-$PROJECT_ROOT/collection_state}
+LOG_DIR=${LOG_DIR:-$PROJECT_ROOT/logs}
+mkdir -p "$STATE_DIR/health" "$STATE_DIR/restart" "$LOG_DIR"
 
-# Optional virtualization:
-# - Set VIRTUAL_GPUS (or NUM_GPUS) to spawn that many independent CARLA servers/clients.
-# - Set PHYSICAL_CUDA_DEVICE to pin all servers to one physical CUDA device.
-: "${VIRTUAL_GPUS:=${VIRTUAL_GPUS:-${NUM_GPUS:-}}}"
-: "${PHYSICAL_CUDA_DEVICE:=${PHYSICAL_CUDA_DEVICE:-}}"
+PORT_SPACING=${PORT_SPACING:-100}
+TM_OFFSET=${TM_OFFSET:-5000}
+GPUS_PER_NODE=${GPUS_PER_NODE:-${LOCAL_GPUS:-8}}
+NODE_NAME=${SLURMD_NODENAME:-$(hostname)}
+NODE_ID=${SLURM_NODEID:-0}
 
-cd "${PROJECT_ROOT}"
+# Derive per-node port base so nodes never collide.
+BASE_RPC_PORT=${BASE_RPC_PORT:-$((2000 + NODE_ID * 1000))}
 
-# Discover GPUs on this node (honors CUDA_VISIBLE_DEVICES if set)
-discover_gpus() {
-  # Virtual mode: slots are 0..VIRTUAL_GPUS-1
-  if [[ -n "${VIRTUAL_GPUS:-}" ]]; then
-    seq 0 $((VIRTUAL_GPUS-1))
-    return 0
+echo "[coordinator] node=$NODE_NAME id=$NODE_ID gpus=$GPUS_PER_NODE base_rpc=$BASE_RPC_PORT"
+[[ -n "${SLURM_JOB_ID:-}" ]] && echo "$SLURM_JOB_ID" > "$STATE_DIR/current_slurm_job.txt" || true
+
+# (Best-effort) start/ensure a pool of CARLA servers for all local GPUs so ports are ready.
+python3 "$PROJECT_ROOT/carla_server_manager.py" start \
+  --gpus auto \
+  --base-rpc-port "$BASE_RPC_PORT" \
+  --port-spacing "$PORT_SPACING" \
+  --tm-offset "$TM_OFFSET" | tee -a "$LOG_DIR/carla_pool_${NODE_NAME}.log" || true
+
+# 1) make sure scripts are executable
+chmod +x "${PROJECT_ROOT}/launch_metrics_daemon.sh" || true
+
+# 2) start metrics daemon per node
+bash "${PROJECT_ROOT}/launch_metrics_daemon.sh"
+
+# Spawn workers.
+pids=()
+for gpu in $(seq 0 $((GPUS_PER_NODE - 1))); do
+  (
+    export GPU_ID=$gpu
+    export BASE_RPC_PORT
+    export PORT_SPACING
+    export TM_OFFSET
+    exec bash "$PROJECT_ROOT/persistent_carla_worker.sh"
+  ) &
+  pids+=($!)
+done
+
+# Supervisor: exit once the global queue is empty AND nothing is running.
+while true; do
+  status=$(python3 - <<'PY'
+import json, os
+p=os.path.join(os.environ.get('STATE_DIR','collection_state'),'job_queue.json')
+try:
+  q=json.load(open(p))
+  pending=sum(1 for j in q['jobs'] if j['status']=='pending')
+  running=sum(1 for j in q['jobs'] if j['status'] in ('running','assigned'))
+  print(f"{pending},{running}")
+except Exception:
+  print("NA,NA")
+PY
+)
+  IFS=, read -r pending running <<<"$status"
+  echo "[coordinator] pending=${pending} running=${running}" | tee -a "$LOG_DIR/coordinator_${NODE_NAME}.log"
+  if [[ "$pending" == "0" && "$running" == "0" ]]; then
+    echo "[coordinator] queue drained; stopping workers." | tee -a "$LOG_DIR/coordinator_${NODE_NAME}.log"
+    break
   fi
-  if [[ -n "${CUDA_VISIBLE_DEVICES:-}" ]]; then
-    IFS=',' read -r -a map <<< "${CUDA_VISIBLE_DEVICES}"
-    echo "${!map[@]}"
-  elif [[ -n "${SLURM_GPUS_ON_NODE:-}" ]]; then
-    seq 0 $((SLURM_GPUS_ON_NODE-1))
-  else
-    nvidia-smi --list-gpus | nl -v0 -w1 -s: | awk -F: '{print $1}'
-  fi
-}
+  sleep 30
+done
 
-start_persistent_servers() {
-  echo "[node $(hostname)] Starting persistent CARLA servers..."
-  local -a GPUS=($(discover_gpus))
-  local GPUS_ARG
-  GPUS_ARG=$(IFS=, ; echo "${GPUS[*]}")
-
-  # If PHYSICAL_CUDA_DEVICE is set, the manager will pin all slots to that device.
-  if [[ -n "${PHYSICAL_CUDA_DEVICE:-}" ]]; then
-    export PHYSICAL_CUDA_DEVICE
-  fi
-
-  python3 -u carla_server_manager.py start \
-    --gpus "${GPUS_ARG}" \
-    --base-rpc-port "${BASE_RPC_PORT}" \
-    --port-spacing "${PORT_SPACING}" \
-    --tm-offset "${TM_OFFSET}"
-  echo "[node $(hostname)] Servers are up."
-}
-
-wait_for_port() {
-  local port="$1"
-  local deadline=$((SECONDS+120))
-  until timeout 0.5 bash -lc "echo > /dev/tcp/127.0.0.1/${port}" 2>/dev/null; do
-    if (( SECONDS > deadline )); then
-      echo "[wait] Timed out waiting for port ${port}"
-      return 1
-    fi
-    sleep 0.5
-  done
-  return 0
-}
-
-run_worker() {
-  local GPU_ID="$1"
-  local RPC_PORT=$((BASE_RPC_PORT + GPU_ID * PORT_SPACING))
-  local TM_PORT=$((RPC_PORT + TM_OFFSET))
-
-  echo "[GPU ${GPU_ID}] client-only worker starting (rpc=${RPC_PORT}, tm=${TM_PORT})"
-
-  # Ensure server is listening
-  wait_for_port "${RPC_PORT}"
-
-  # Export to make generate_single_job.sh client-only and to unify ports.
-  export CLIENT_ONLY=1
-  export PERSISTENT=1
-  export GPU_ID
-  export CARLA_HOST=127.0.0.1
-  export CARLA_PORT="${RPC_PORT}"
-  export TM_PORT="${TM_PORT}"
-  export BASE_RPC_PORT PORT_SPACING TM_OFFSET
-
-  # Loop until the queue is empty.
-  while true; do
-    python3 -u manage_continuous.py run --host "${CARLA_HOST}" --port "${CARLA_PORT}" --trafficManagerPort "${TM_PORT}" || rc=$?
-    rc=${rc:-0}
-    if [[ "${rc}" -eq 2 ]]; then
-      echo "[GPU ${GPU_ID}] No pending jobs; worker exiting."
-      break
-    fi
-    # Any other exit code indicates the job failed (already recorded in DB); continue.
-    unset rc
-  done
-}
-
-main() {
-  trap 'python3 -u carla_server_manager.py stop || true' EXIT
-
-  start_persistent_servers
-
-  local -a GPUS=($(discover_gpus))
-  echo "Detected GPUs: ${GPUS[*]}"
-
-  # One worker per GPU
-  for gid in "${GPUS[@]}"; do
-    ( run_worker "${gid}" ) &
-    # Small stagger reduces I/O bursts
-    sleep 1
-  done
-
-  wait
-  echo "[node $(hostname)] All workers finished."
-}
-
-main "$@"
+# Graceful shutdown.
+for pid in "${pids[@]}"; do kill "$pid" 2>/dev/null || true; done
+wait || true

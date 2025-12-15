@@ -93,5 +93,5 @@ python3 "${PROJECT_ROOT}/continuous_cli.py" reset || true
 
 # Adjust these SLURM flags to your cluster defaults if needed
 python3 "${PROJECT_ROOT}/continuous_cli.py" --persistent start --slurm \
-  --slurm-nodelist="hpc-pr-a-pod10,hpc-pr-a-pod11" \
-  --slurm-gpus=8 --slurm-nodes=2 --slurm-time=168:00:00
+  --slurm-nodelist="hpc-pr-a-pod09" \
+  --slurm-gpus=8 --slurm-nodes=1 --slurm-time=168:00:00

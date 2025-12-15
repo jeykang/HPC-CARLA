@@ -1,0 +1,19 @@
+
+[manager] GPU 0 failed to become ready on :2000.
+--- last log lines ---
+[manager] launching slot=0 cuda=0 rpc=2000 tm=7000 backend=singularity sif=/scratch/autodr_test/HPC-CARLA-persistent/carla_official.sif ue4=${CARLA_ROOT}/CarlaUE4.sh
+WARNING: While bind mounting '/scratch/autodr_test/HPC-CARLA-persistent:/workspace': destination is already in the mount point list
+chmod: changing permissions of '/home/carla/CarlaUE4/Binaries/Linux/CarlaUE4-Linux-Shipping': Read-only file system
+sh: 1: xdg-user-dir: not found
+4.24.3-0+++UE4+Release-4.24 518 0
+Disabling core dumps.
+
+-----------------------
+Traceback (most recent call last):
+  File "carla_server_manager.py", line 292, in <module>
+    sys.exit(main())
+  File "carla_server_manager.py", line 279, in main
+    info = start_pool(gpus, args.base_rpc_port, args.port_spacing, args.tm_offset)
+  File "carla_server_manager.py", line 189, in start_pool
+    raise RuntimeError(f"CARLA on GPU {gpu} failed to become ready (rpc={rpc}).")
+RuntimeError: CARLA on GPU 0 failed to become ready (rpc=2000).

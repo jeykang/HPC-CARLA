@@ -1,0 +1,18 @@
+SLURM allocated: 1 nodes × 8 GPUs/node = 8 total GPUs
+==========================================
+SLURM JOB INFORMATION
+==========================================
+Job ID: 133623
+Node list: hpc-pr-a-pod09
+Node name: hpc-pr-a-pod09
+Node ID: 0
+Number of nodes: 1
+Partition: jobs
+GPUs per node: 8
+Total GPUs: 8
+==========================================
+
+This node will use RPC ports 2000-2080
+Master node: Will coordinate multi-node setup
+[node hpc-pr-a-pod09] Starting persistent CARLA servers...
+STOPPED
