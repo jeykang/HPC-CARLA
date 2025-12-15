@@ -45,12 +45,18 @@ import yaml
 import carla
 from leaderboard.autoagents.autonomous_agent import AutonomousAgent, Track
 
-# Import in a way that works whether the module is loaded as team_code.* or
-# leaderboard.team_code.* depending on PYTHONPATH.
+# Pipeline support (used only when config contains `pipeline:`).
+# Keep this import resilient across environments and Python versions.
+PipelineEngine = None  # type: ignore
 try:
-    from team_code.pipeline_engine import PipelineEngine  # type: ignore
+    # Preferred when imported as team_code.consolidated_agent
+    from .pipeline_engine import PipelineEngine  # type: ignore
 except Exception:  # pragma: no cover
-    from leaderboard.team_code.pipeline_engine import PipelineEngine  # type: ignore
+    try:
+        # Fallback when team_code is directly on PYTHONPATH
+        from team_code.pipeline_engine import PipelineEngine  # type: ignore
+    except Exception:
+        PipelineEngine = None  # type: ignore
 
 
 # -------------------------------------------------------------------------
@@ -175,7 +181,7 @@ class ConsolidatedAgent(AutonomousAgent):
         self._inner_agent: Optional[Any] = None
 
         # Optional config-defined pipeline for *new* agents
-        self._pipeline: Optional[PipelineEngine] = None
+        self._pipeline: Optional[Any] = None
 
         # Last output control (for pipeline warmup / frame skipping)
         self._pipeline_last_control: Optional[carla.VehicleControl] = None
@@ -979,6 +985,11 @@ class ConsolidatedAgent(AutonomousAgent):
         # If 'pipeline' is present, we treat this config as a composed/new agent.
         # Otherwise we preserve existing behavior and load the legacy agent.
         if pipeline_specs is not None:
+            if PipelineEngine is None:
+                raise RuntimeError(
+                    "Pipeline mode requested but PipelineEngine is unavailable. "
+                    "This usually indicates a Python version/import-path mismatch."
+                )
             self._pipeline = PipelineEngine(pipeline_specs)
             self._pipeline.setup(self, self._config)
             return

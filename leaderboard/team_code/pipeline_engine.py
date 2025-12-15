@@ -17,11 +17,8 @@ The pipeline is executed per-tick. By convention, modules can write:
 
 The engine does not import heavy deps (torch/carla) to keep import-time light.
 """
-
-from __future__ import annotations
-
 import importlib
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
 
 PIPELINE_STOP_KEY = "__pipeline_stop__"

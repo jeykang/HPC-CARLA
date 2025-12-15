@@ -18,10 +18,6 @@ Convention:
     - (or directly VehicleControl; ConsolidatedAgent will coerce)
 
 """
-
-from __future__ import annotations
-
-from dataclasses import dataclass
 from typing import Any, Dict, Mapping, Optional, Tuple
 
 import numpy as np
@@ -851,22 +847,41 @@ class ControlFromAccSteer:
         return context
 
 
-@dataclass
-class _PIDCfg:
-    turn_KP: float = 1.0
-    turn_KI: float = 0.0
-    turn_KD: float = 0.0
-    turn_n: int = 20
+class _PIDCfg(object):
+    def __init__(
+        self,
+        turn_KP=1.0,
+        turn_KI=0.0,
+        turn_KD=0.0,
+        turn_n=20,
+        speed_KP=1.0,
+        speed_KI=0.0,
+        speed_KD=0.0,
+        speed_n=20,
+        brake_speed=0.4,
+        brake_ratio=1.1,
+        clip_delta=0.25,
+        max_throttle=0.75,
+        **kwargs
+    ):
+        # Keep config strict (unknown keys usually indicate typos).
+        if kwargs:
+            raise TypeError("Unknown PID config keys: {}".format(", ".join(sorted(kwargs.keys()))))
 
-    speed_KP: float = 1.0
-    speed_KI: float = 0.0
-    speed_KD: float = 0.0
-    speed_n: int = 20
+        self.turn_KP = float(turn_KP)
+        self.turn_KI = float(turn_KI)
+        self.turn_KD = float(turn_KD)
+        self.turn_n = int(turn_n)
 
-    brake_speed: float = 0.4
-    brake_ratio: float = 1.1
-    clip_delta: float = 0.25
-    max_throttle: float = 0.75
+        self.speed_KP = float(speed_KP)
+        self.speed_KI = float(speed_KI)
+        self.speed_KD = float(speed_KD)
+        self.speed_n = int(speed_n)
+
+        self.brake_speed = float(brake_speed)
+        self.brake_ratio = float(brake_ratio)
+        self.clip_delta = float(clip_delta)
+        self.max_throttle = float(max_throttle)
 
 
 class PIDFromWaypoints:

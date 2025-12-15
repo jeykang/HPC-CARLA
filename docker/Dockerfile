@@ -56,7 +56,18 @@ RUN python3 -m pip install --no-cache-dir --use-deprecated=legacy-resolver -r /t
         torch==1.10.1+cu113 torchvision==0.11.2+cu113 \
           -f https://download.pytorch.org/whl/cu113/torch_stable.html \
         easydict==1.13 timm==0.6.12 pytorch-lightning==1.2.5 torchmetrics==0.8.2 \
+        torch-scatter==2.0.9 -f https://data.pyg.org/whl/torch-1.10.1+cu113.html \
     ; fi
+
+#LAV
+RUN pip install einops==0.3.2
+#RUN if [ "$INSTALL_HEAVY_DEPS" = "1" ]; then \
+#    git clone https://github.com/rusty1s/pytorch_scatter.git \
+#    && cd pytorch_scatter \
+#    && python3 setup.py install \
+#    && cd .. \
+#    && rm -rf pytorch_scatter; \
+#  fi
 
 # Runtime wiring
 ENV PYTHONPATH="${CARLA_ROOT}/PythonAPI/carla:${PYTHONPATH}"

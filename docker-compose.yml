@@ -3,6 +3,7 @@ services:
     build:
       context: .
       dockerfile: docker/Dockerfile
+      no_cache: true
       args:
         INSTALL_HEAVY_DEPS: ${INSTALL_HEAVY_DEPS:-0}
     working_dir: /workspace
