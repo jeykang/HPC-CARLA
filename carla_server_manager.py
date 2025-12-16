@@ -23,6 +23,9 @@ LOG_DIR.mkdir(parents=True, exist_ok=True)
 DEFAULT_BASE      = int(os.environ.get("BASE_RPC_PORT", 2000))
 DEFAULT_SPACING   = int(os.environ.get("PORT_SPACING", 100))
 DEFAULT_TM_OFFSET = int(os.environ.get("TM_OFFSET", 5000))
+
+# Offset from the RPC port used for sensor streaming; must remain within SPACING.
+DEFAULT_STREAMING_OFFSET = int(os.environ.get("CARLA_STREAMING_OFFSET", 10))
 DEFAULT_START_TIMEOUT = float(os.environ.get("CARLA_START_TIMEOUT", "300"))
 
 # Use container’s default CARLA_ROOT (/home/carla per your .def) via %environment/%runscript.
@@ -90,10 +93,11 @@ def discover_gpus() -> List[int]:
     n = int(os.environ.get("SLURM_GPUS_ON_NODE", os.environ.get("GPUS_PER_NODE", "8")))
     return list(range(n))
 
-def _derive_ports(gpu_id: int, base: int, spacing: int, tm_off: int) -> Tuple[int,int]:
+def _derive_ports(gpu_id: int, base: int, spacing: int, tm_off: int) -> Tuple[int,int,int]:
     rpc = base + gpu_id*spacing
     tm  = rpc + tm_off
-    return rpc, tm
+    streaming = rpc + min(DEFAULT_STREAMING_OFFSET, max(1, spacing - 1))
+    return rpc, tm, streaming
 
 def _container_env_for_gpu(gpu_id: int) -> Dict[str, str]:
     """
@@ -104,6 +108,7 @@ def _container_env_for_gpu(gpu_id: int) -> Dict[str, str]:
     env.update({
         "SINGULARITYENV_CUDA_VISIBLE_DEVICES": str(gpu_id),
         "SINGULARITYENV_NVIDIA_VISIBLE_DEVICES": str(gpu_id),
+        "SINGULARITYENV_CARLA_SERVER": "1",
         "SINGULARITYENV_SDL_VIDEODRIVER": "offscreen",
         "SINGULARITYENV_SDL_AUDIODRIVER": "dummy",
         "SINGULARITYENV_DISABLE_PYTHON": "1",   # CARLA binary only
@@ -112,7 +117,7 @@ def _container_env_for_gpu(gpu_id: int) -> Dict[str, str]:
     env["SINGULARITYENV_ULIMIT_CORE"] = "0"
     return env
 
-def _build_run_args(rpc: int, tm: int) -> List[str]:
+def _build_run_args(rpc: int, tm: int, streaming: int) -> List[str]:
     """
     Launch CARLA directly via 'singularity exec'.
 
@@ -135,23 +140,24 @@ def _build_run_args(rpc: int, tm: int) -> List[str]:
         # Mount project at /workspace for Python sidecars and logs.
         args.extend(["-B", bind_spec])
 
-    # Launch the UE4 shipping binary directly.
-    # The CarlaUE4.sh wrapper in many images tries to chmod binaries at runtime,
-    # which fails on HPC setups where the container user is not root.
-    carla_dir = "/home/carla/CarlaUE4"
-    carla_bin = "/home/carla/CarlaUE4/Binaries/Linux/CarlaUE4-Linux-Shipping"
-
-    # TrafficManager port is negotiated from the client side; passing it here is harmless.
-    inner = (
-        f"cd {carla_dir} && "
-        f"{carla_bin} -opengl -RenderOffscreen -quality-level=Epic "
-        f"-carla-rpc-port={int(rpc)} -trafficManagerPort={int(tm)} -carla-server"
+    launch_cmd = (
+        "ulimit -c 0; "
+        "cd /home/carla && "
+        "DISABLE_PYTHON=1 "
+        "SDL_VIDEODRIVER=offscreen SDL_AUDIODRIVER=dummy "
+        "CARLA_SERVER=1 "
+        "./CarlaUE4.sh "
+        "-opengl -RenderOffScreen -nosound -quality-level=Epic "
+        f"-carla-rpc-port={int(rpc)} -world-port={int(rpc)} "
+        f"-carla-streaming-port={int(streaming)} "
+        f"-trafficManagerPort={int(tm)} -server"
     )
+
     args.extend([
         SIF_PATH,
         "bash",
         "-lc",
-        inner,
+        launch_cmd,
     ])
     return args
 
@@ -206,13 +212,13 @@ def _socket_diag(port: int) -> str:
             continue
     return ""
 
-def start_one(gpu_id: int, rpc: int, tm: int) -> Optional[int]:
+def start_one(gpu_id: int, rpc: int, tm: int, streaming: int) -> Optional[int]:
     log_path = LOG_DIR / f"carla_{NODE_NAME}_gpu{gpu_id}.log"
     start_ts = time.time()
     try:
         with open(log_path, "ab", buffering=0) as logf:
             proc = subprocess.Popen(
-                _build_run_args(rpc, tm),
+                _build_run_args(rpc, tm, streaming),
                 stdout=logf, stderr=logf,
                 env=_container_env_for_gpu(gpu_id),
             )
@@ -223,6 +229,7 @@ def start_one(gpu_id: int, rpc: int, tm: int) -> Optional[int]:
                 "gpu_id": int(gpu_id),
                 "rpc_port": int(rpc),
                 "tm_port": int(tm),
+                "streaming_port": int(streaming),
                 "pid": int(proc.pid),
                 "start_ts_unix": float(start_ts),
                 "log": str(log_path),
@@ -232,7 +239,7 @@ def start_one(gpu_id: int, rpc: int, tm: int) -> Optional[int]:
         state = _read_state()
         servers = state.setdefault("servers", {})
         servers[str(gpu_id)] = {
-            "gpu": gpu_id, "rpc_port": rpc, "tm_port": tm,
+            "gpu": gpu_id, "rpc_port": rpc, "tm_port": tm, "streaming_port": streaming,
             "pid": proc.pid, "node": NODE_NAME, "log": str(log_path),
             "start_ts_unix": float(start_ts),
         }
@@ -245,9 +252,9 @@ def start_one(gpu_id: int, rpc: int, tm: int) -> Optional[int]:
 def start_pool(gpus: List[int], base: int, spacing: int, tm_off: int) -> Dict[str, Dict]:
     started = {}
     for gid in gpus:
-        rpc, tm = _derive_ports(gid, base, spacing, tm_off)
+        rpc, tm, streaming = _derive_ports(gid, base, spacing, tm_off)
         if is_port_open("127.0.0.1", rpc):
-            started[str(gid)] = {"rpc_port": rpc, "tm_port": tm, "pid": None, "already_running": True, "ready_seconds": 0.0}
+            started[str(gid)] = {"rpc_port": rpc, "tm_port": tm, "streaming_port": streaming, "pid": None, "already_running": True, "ready_seconds": 0.0}
             _append_run_event(
                 {
                     "event": "carla_server_already_running",
@@ -255,14 +262,15 @@ def start_pool(gpus: List[int], base: int, spacing: int, tm_off: int) -> Dict[st
                     "gpu_id": int(gid),
                     "rpc_port": int(rpc),
                     "tm_port": int(tm),
+                    "streaming_port": int(streaming),
                 }
             )
             continue
-        pid = start_one(gid, rpc, tm)
+        pid = start_one(gid, rpc, tm, streaming)
         t0 = time.time()
         ok = wait_for_port("127.0.0.1", rpc, time.time() + DEFAULT_START_TIMEOUT)
         ready_s = float(time.time() - t0)
-        started[str(gid)] = {"rpc_port": rpc, "tm_port": tm, "pid": pid, "listening": ok, "ready_seconds": ready_s}
+        started[str(gid)] = {"rpc_port": rpc, "tm_port": tm, "streaming_port": streaming, "pid": pid, "listening": ok, "ready_seconds": ready_s}
 
         # Update state with readiness timing
         try:
@@ -283,6 +291,7 @@ def start_pool(gpus: List[int], base: int, spacing: int, tm_off: int) -> Dict[st
                 "gpu_id": int(gid),
                 "rpc_port": int(rpc),
                 "tm_port": int(tm),
+                "streaming_port": int(streaming),
                 "pid": int(pid) if pid else None,
                 "listening": bool(ok),
                 "ready_seconds": ready_s,
@@ -311,7 +320,7 @@ def health() -> int:
     return 0
 
 def ensure(gpu_id: int, base: int, spacing: int, tm_off: int) -> int:
-    rpc, tm = _derive_ports(gpu_id, base, spacing, tm_off)
+    rpc, tm, streaming = _derive_ports(gpu_id, base, spacing, tm_off)
     if is_port_open("127.0.0.1", rpc):
         return 0
 
@@ -330,7 +339,7 @@ def ensure(gpu_id: int, base: int, spacing: int, tm_off: int) -> int:
         pass
 
     print(f"[server_manager] gpu{gpu_id}: no listener on {rpc}, launching …")
-    pid = start_one(gpu_id, rpc, tm)
+    pid = start_one(gpu_id, rpc, tm, streaming)
     ok = wait_for_port("127.0.0.1", rpc, time.time() + DEFAULT_START_TIMEOUT)
     if ok:
         return 0
