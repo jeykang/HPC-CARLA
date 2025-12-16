@@ -119,11 +119,8 @@ def _container_env_for_gpu(gpu_id: int) -> Dict[str, str]:
 
 def _build_run_args(rpc: int, tm: int, streaming: int) -> List[str]:
     """
-    Launch CARLA directly via 'singularity exec'.
-
-    We intentionally avoid 'singularity run' here because some images/runscripts
-    perform setup steps (e.g., chmod) that can fail on read-only SIF filesystems,
-    causing the server to exit immediately.
+    Use 'singularity run' so the container's %runscript invokes ${CARLA_ROOT}/CarlaUE4.sh.
+    All UE4/CARLA flags are passed as args to the runscript.
     """
     bind_spec = f"{str(PROJECT_ROOT)}:/workspace"
     # Avoid duplicate binds if the submission script already set SINGULARITY_BINDPATH/APPTAINER_BINDPATH.
@@ -131,33 +128,21 @@ def _build_run_args(rpc: int, tm: int, streaming: int) -> List[str]:
     add_bind = f",{bind_spec}," not in f",{bindpath},"
 
     args = [
-        "singularity", "exec", "--nv",
-        # Allow writes even when the image is a read-only SIF.
-        # CARLA's startup scripts/binaries commonly try to chmod or write runtime files.
-        "--writable-tmpfs",
+        "singularity", "run", "--nv",
     ]
     if add_bind:
         # Mount project at /workspace for Python sidecars and logs.
         args.extend(["-B", bind_spec])
 
-    launch_cmd = (
-        "ulimit -c 0; "
-        "cd /home/carla && "
-        "DISABLE_PYTHON=1 "
-        "SDL_VIDEODRIVER=offscreen SDL_AUDIODRIVER=dummy "
-        "CARLA_SERVER=1 "
-        "./CarlaUE4.sh "
-        "-opengl -RenderOffScreen -nosound -quality-level=Epic "
-        f"-carla-rpc-port={int(rpc)} -world-port={int(rpc)} "
-        f"-carla-streaming-port={int(streaming)} "
-        f"-trafficManagerPort={int(tm)} -server"
-    )
-
     args.extend([
         SIF_PATH,
-        "bash",
-        "-lc",
-        launch_cmd,
+        "-opengl",
+        "-RenderOffscreen",
+        "-quality-level=Epic",
+        f"-carla-rpc-port={rpc}",
+        f"-carla-streaming-port={streaming}",
+        f"-trafficManagerPort={tm}",
+        "-carla-server",
     ])
     return args
 
