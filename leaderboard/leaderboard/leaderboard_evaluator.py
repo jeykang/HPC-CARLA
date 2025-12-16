@@ -71,6 +71,11 @@ class LeaderboardEvaluator(object):
         Setup CARLA client and world
         Setup ScenarioManager
         """
+        # Defaults to keep cleanup/destructor safe if initialization fails early
+        self.manager = None
+        self.world = None
+        self._agent_watchdog = None
+
         self.statistics_manager = statistics_manager
         self.sensors = None
         self.sensor_icons = []
@@ -475,6 +480,7 @@ def main():
 
     statistics_manager = StatisticsManager()
 
+    leaderboard_evaluator = None
     try:
         leaderboard_evaluator = LeaderboardEvaluator(arguments, statistics_manager)
         leaderboard_evaluator.run(arguments)
@@ -482,7 +488,8 @@ def main():
     except Exception as e:
         traceback.print_exc()
     finally:
-        del leaderboard_evaluator
+        if leaderboard_evaluator:
+            del leaderboard_evaluator
 
 
 if __name__ == '__main__':

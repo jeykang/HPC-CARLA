@@ -46,6 +46,13 @@ PY
 
 echo "[worker] node=$NODE_NAME gpu=$GPU_ID rpc=$RPC_PORT tm=$TM_PORT" | tee -a "$log"
 
+# Ensure the corresponding CARLA server is running before processing jobs.
+python3 "$PROJECT_ROOT/carla_server_manager.py" ensure \
+  --gpu "$GPU_ID" \
+  --base-rpc-port "$BASE_RPC_PORT" \
+  --port-spacing "$PORT_SPACING" \
+  --tm-offset "$TM_OFFSET" | tee -a "$log"
+
 # ----- Common CARLA/Leaderboard env (per-worker, not per-job) -----
 export LOCAL_GPUS=${LOCAL_GPUS:-${GPUS_PER_NODE:-8}}
 export GPU_ID
