@@ -39,9 +39,21 @@ def _read_state() -> Dict:
 
 def _write_state(state: Dict) -> None:
     tmp = STATE_FILE.with_suffix(".tmp")
-    with open(tmp, "w") as f:
-        json.dump(state, f, indent=2)
-    os.replace(tmp, STATE_FILE)
+    tmp.parent.mkdir(parents=True, exist_ok=True)
+
+    def _dump(to_path: Path) -> None:
+        with open(to_path, "w") as f:
+            json.dump(state, f, indent=2)
+
+    _dump(tmp)
+    try:
+        os.replace(tmp, STATE_FILE)
+    except FileNotFoundError:
+        # If the tmp file vanishes on slower filesystems, fall back to a direct write.
+        _dump(STATE_FILE)
+    except Exception as e:
+        # Log but do not fail server startup because of bookkeeping issues.
+        print(f"[server_manager] warning: failed to persist state: {e}", file=sys.stderr)
 
 def is_port_open(host: str, port: int, timeout: float = 0.5) -> bool:
     try:
