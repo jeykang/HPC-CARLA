@@ -71,27 +71,19 @@ done
 
 # Supervisor: exit once the global queue is empty AND nothing is running.
 while true; do
-  status=$(python3 "$PROJECT_ROOT/manage_continuous.py" status --json 2>/dev/null || true)
-  pending=$(python3 - <<'PY' "$status"
-import json, sys
-raw=sys.argv[1]
+  status=$(python3 - <<'PY'
+import json, os
+p=os.path.join(os.environ.get('STATE_DIR','collection_state'),'job_queue.json')
 try:
-  d=json.loads(raw)
-  print(int(d.get('jobs',{}).get('pending',0)))
+  q=json.load(open(p))
+  pending=sum(1 for j in q['jobs'] if j['status']=='pending')
+  running=sum(1 for j in q['jobs'] if j['status'] in ('running','assigned'))
+  print(f"{pending},{running}")
 except Exception:
-  print('NA')
+  print("NA,NA")
 PY
 )
-  running=$(python3 - <<'PY' "$status"
-import json, sys
-raw=sys.argv[1]
-try:
-  d=json.loads(raw)
-  print(int(d.get('jobs',{}).get('running',0)))
-except Exception:
-  print('NA')
-PY
-)
+  IFS=, read -r pending running <<<"$status"
   echo "[coordinator] pending=${pending} running=${running}" | tee -a "$LOG_DIR/coordinator_${NODE_NAME}.log"
   if [[ "$pending" == "0" && "$running" == "0" ]]; then
     echo "[coordinator] queue drained; stopping workers." | tee -a "$LOG_DIR/coordinator_${NODE_NAME}.log"
