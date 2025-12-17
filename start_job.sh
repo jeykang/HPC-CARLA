@@ -16,6 +16,21 @@ export CARLA_SIF="${CARLA_SIF:-${PROJECT_ROOT}/carla_official.sif}"
 echo "[start_job] PROJECT_ROOT=${PROJECT_ROOT}"
 echo "[start_job] CARLA_SIF=${CARLA_SIF}"
 
+# --- CARLA server launch defaults (propagated into SLURM job env) ------------
+# These are consumed by `carla_server_manager.py` on the compute node.
+: "${CARLA_STREAMING_PORT_MODE:=zero}"     # prefer `-carla-streaming-port=0`
+: "${CARLA_START_TIMEOUT:=300}"            # seconds
+: "${CARLA_RHI_FLAG:=-opengl}"
+: "${CARLA_RENDER_FLAG:=-RenderOffScreen}"
+: "${CARLA_QUALITY_LEVEL:=Epic}"
+export CARLA_STREAMING_PORT_MODE CARLA_START_TIMEOUT CARLA_RHI_FLAG CARLA_RENDER_FLAG CARLA_QUALITY_LEVEL
+
+echo "[start_job] CARLA_STREAMING_PORT_MODE=${CARLA_STREAMING_PORT_MODE}"
+echo "[start_job] CARLA_START_TIMEOUT=${CARLA_START_TIMEOUT}"
+echo "[start_job] CARLA_RHI_FLAG=${CARLA_RHI_FLAG}"
+echo "[start_job] CARLA_RENDER_FLAG=${CARLA_RENDER_FLAG}"
+echo "[start_job] CARLA_QUALITY_LEVEL=${CARLA_QUALITY_LEVEL}"
+
 if [[ ! -f "${CARLA_SIF}" ]]; then
   echo "[start_job][FATAL] Missing image: ${CARLA_SIF}"
   echo "           If you only have carla_official.def, build the SIF first on a machine that allows it."

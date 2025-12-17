@@ -31,6 +31,14 @@ DEFAULT_TM_OFFSET = int(os.environ.get("TM_OFFSET", 5000))
 DEFAULT_STREAMING_OFFSET = int(os.environ.get("CARLA_STREAMING_OFFSET", 10))
 DEFAULT_STREAMING_PORT_MODE = os.environ.get("CARLA_STREAMING_PORT_MODE", "zero").strip().lower()
 
+# UE4/CARLA launch tuning (overridable without code changes for HPC debugging).
+DEFAULT_QUALITY_LEVEL = os.environ.get("CARLA_QUALITY_LEVEL", "Epic")
+DEFAULT_RHI_FLAG = os.environ.get("CARLA_RHI_FLAG", "-opengl")
+# Accept either spelling; CARLA/UE4 flags are case-sensitive across builds.
+DEFAULT_RENDER_FLAG = os.environ.get("CARLA_RENDER_FLAG", "-RenderOffScreen")
+DEFAULT_SERVER_FLAG = os.environ.get("CARLA_SERVER_FLAG", "-carla-server")
+DEFAULT_EXTRA_UE4_ARGS = shlex.split(os.environ.get("CARLA_EXTRA_UE4_ARGS", ""))
+
 # Startup can be slow on cold caches; allow override via env.
 DEFAULT_START_TIMEOUT = float(os.environ.get("CARLA_START_TIMEOUT", "300"))
 
@@ -141,15 +149,15 @@ def _build_run_args(rpc: int, tm: int, streaming: int) -> List[str]:
     args.extend(
         [
             SIF_PATH,
-            "-opengl",
-            # Historical runs used this spelling; keep it for compatibility.
-            "-RenderOffscreen",
-            "-quality-level=Epic",
+            DEFAULT_RHI_FLAG,
+            DEFAULT_RENDER_FLAG,
+            f"-quality-level={DEFAULT_QUALITY_LEVEL}",
             f"-carla-rpc-port={rpc}",
             # Ensure the server uses the expected port; some CARLA builds rely on world-port.
             f"-world-port={rpc}",
             f"-carla-streaming-port={streaming}",
-            "-carla-server",
+            *DEFAULT_EXTRA_UE4_ARGS,
+            DEFAULT_SERVER_FLAG,
         ]
     )
     return args
@@ -189,6 +197,20 @@ def _socket_diag(port: int) -> str:
         except Exception:
             continue
     return ""
+
+def _ps_diag(pid: Optional[int]) -> str:
+    """Best-effort process diagnostic for a PID."""
+    try:
+        if not pid:
+            return ""
+        p = subprocess.run(
+            ["ps", "-o", "pid=,ppid=,stat=,etime=,cmd=", "-p", str(int(pid))],
+            capture_output=True,
+            text=True,
+        )
+        return (p.stdout or "").strip()
+    except Exception:
+        return ""
 
 def start_one(gpu_id: int, rpc: int, tm: int, streaming: int) -> Optional[int]:
     log_path = LOG_DIR / f"carla_{NODE_NAME}_gpu{gpu_id}.log"
@@ -304,6 +326,9 @@ def ensure(gpu_id: int, base: int, spacing: int, tm_off: int) -> int:
             file=sys.stderr,
             flush=True,
         )
+        ps_line = _ps_diag(pid)
+        if ps_line:
+            print(f"[server_manager] gpu{gpu_id}: ps: {ps_line}", file=sys.stderr, flush=True)
 
     sock = _socket_diag(rpc)
     if sock:
