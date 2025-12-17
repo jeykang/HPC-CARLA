@@ -47,13 +47,16 @@ PY
 echo "[worker] node=$NODE_NAME gpu=$GPU_ID rpc=$RPC_PORT tm=$TM_PORT" | tee -a "$log"
 
 # Ensure the corresponding CARLA server is running before processing jobs.
-if ! python3 "$PROJECT_ROOT/carla_server_manager.py" ensure \
+set +e
+python3 "$PROJECT_ROOT/carla_server_manager.py" ensure \
   --gpu "$GPU_ID" \
   --base-rpc-port "$BASE_RPC_PORT" \
   --port-spacing "$PORT_SPACING" \
-  --tm-offset "$TM_OFFSET" 2>&1 | tee -a "$log"; then
-  rc=$?
-  echo "[worker] warning: failed to ensure CARLA server (rc=$rc); continuing and will retry via job loop" | tee -a "$log"
+  --tm-offset "$TM_OFFSET" 2>&1 | tee -a "$log"
+ensure_rc=${PIPESTATUS[0]}
+set -e
+if [[ "$ensure_rc" -ne 0 ]]; then
+  echo "[worker] warning: failed to ensure CARLA server (rc=$ensure_rc); continuing and will retry via job loop" | tee -a "$log"
 fi
 
 # ----- Common CARLA/Leaderboard env (per-worker, not per-job) -----
@@ -72,11 +75,43 @@ while true; do
   if [[ -f "$STATE_DIR/restart/${NODE_NAME}_gpu${GPU_ID}.restart" ]]; then
     echo "[worker] restart flag detected; re-ensuring CARLA..." | tee -a "$log"
     rm -f "$STATE_DIR/restart/${NODE_NAME}_gpu${GPU_ID}.restart" || true
+    set +e
     python3 "$PROJECT_ROOT/carla_server_manager.py" ensure \
       --gpu "$GPU_ID" \
       --base-rpc-port "$BASE_RPC_PORT" \
       --port-spacing "$PORT_SPACING" \
-      --tm-offset "$TM_OFFSET" 2>&1 | tee -a "$log" || true
+      --tm-offset "$TM_OFFSET" 2>&1 | tee -a "$log"
+    ensure_rc=${PIPESTATUS[0]}
+    set -e
+    if [[ "$ensure_rc" -ne 0 ]]; then
+      echo "[worker] warning: ensure after restart flag failed (rc=$ensure_rc)" | tee -a "$log"
+    fi
+  fi
+
+  # Don't claim a job until the server port is actually reachable; otherwise jobs get marked
+  # running and then time out for ~10 minutes waiting for a simulator that isn't up.
+  if ! python3 - <<PY
+import socket, sys
+host="127.0.0.1"
+port=int("${RPC_PORT}")
+try:
+  with socket.create_connection((host, port), timeout=0.5):
+    pass
+  sys.exit(0)
+except Exception:
+  sys.exit(1)
+PY
+  then
+    echo "[worker] CARLA not listening on ${RPC_PORT}; ensuring and retrying..." | tee -a "$log"
+    set +e
+    python3 "$PROJECT_ROOT/carla_server_manager.py" ensure \
+      --gpu "$GPU_ID" \
+      --base-rpc-port "$BASE_RPC_PORT" \
+      --port-spacing "$PORT_SPACING" \
+      --tm-offset "$TM_OFFSET" >>"$log" 2>&1
+    set -e
+    sleep 5
+    continue
   fi
 
   set +e

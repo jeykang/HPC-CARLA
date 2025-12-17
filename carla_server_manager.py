@@ -10,7 +10,7 @@ Commands:
   ensure  -- idempotently ensure a server exists for ONE gpu (used by workers)
 """
 
-import os, sys, json, time, socket, signal, subprocess, argparse
+import os, sys, json, time, socket, signal, subprocess, argparse, shlex
 from pathlib import Path
 from typing import List, Dict, Tuple, Optional
 
@@ -24,8 +24,13 @@ DEFAULT_BASE      = int(os.environ.get("BASE_RPC_PORT", 2000))
 DEFAULT_SPACING   = int(os.environ.get("PORT_SPACING", 100))
 DEFAULT_TM_OFFSET = int(os.environ.get("TM_OFFSET", 5000))
 
-# Offset from the RPC port used for sensor streaming; must remain within SPACING.
+# CARLA streaming port handling:
+# - Default 0 matches the historical single-job launcher in this repo and avoids collisions with
+#   unknown services on fixed ports.
+# - Set CARLA_STREAMING_PORT_MODE=offset to use rpc+CARLA_STREAMING_OFFSET instead.
 DEFAULT_STREAMING_OFFSET = int(os.environ.get("CARLA_STREAMING_OFFSET", 10))
+DEFAULT_STREAMING_PORT_MODE = os.environ.get("CARLA_STREAMING_PORT_MODE", "zero").strip().lower()
+
 # Startup can be slow on cold caches; allow override via env.
 DEFAULT_START_TIMEOUT = float(os.environ.get("CARLA_START_TIMEOUT", "300"))
 
@@ -95,8 +100,11 @@ def discover_gpus() -> List[int]:
 def _derive_ports(gpu_id: int, base: int, spacing: int, tm_off: int) -> Tuple[int, int, int]:
     rpc = base + gpu_id*spacing
     tm  = rpc + tm_off
-    # Keep streaming within the per-GPU spacing window.
-    streaming = rpc + min(DEFAULT_STREAMING_OFFSET, max(1, spacing - 1))
+    if DEFAULT_STREAMING_PORT_MODE == "offset":
+        streaming = rpc + min(DEFAULT_STREAMING_OFFSET, max(1, spacing - 1))
+    else:
+        # Default to "zero": let CARLA choose, and avoid fixed-port conflicts.
+        streaming = 0
     return rpc, tm, streaming
 
 def _container_env_for_gpu(gpu_id: int) -> Dict[str, str]:
@@ -108,7 +116,6 @@ def _container_env_for_gpu(gpu_id: int) -> Dict[str, str]:
     env.update({
         "SINGULARITYENV_CUDA_VISIBLE_DEVICES": str(gpu_id),
         "SINGULARITYENV_NVIDIA_VISIBLE_DEVICES": str(gpu_id),
-        "SINGULARITYENV_CARLA_SERVER": "1",
         "SINGULARITYENV_SDL_VIDEODRIVER": "offscreen",
         "SINGULARITYENV_SDL_AUDIODRIVER": "dummy",
         "SINGULARITYENV_DISABLE_PYTHON": "1",   # CARLA binary only
@@ -135,11 +142,13 @@ def _build_run_args(rpc: int, tm: int, streaming: int) -> List[str]:
         [
             SIF_PATH,
             "-opengl",
-            "-RenderOffScreen",
+            # Historical runs used this spelling; keep it for compatibility.
+            "-RenderOffscreen",
             "-quality-level=Epic",
             f"-carla-rpc-port={rpc}",
+            # Ensure the server uses the expected port; some CARLA builds rely on world-port.
+            f"-world-port={rpc}",
             f"-carla-streaming-port={streaming}",
-            f"-trafficManagerPort={tm}",
             "-carla-server",
         ]
     )
@@ -185,9 +194,17 @@ def start_one(gpu_id: int, rpc: int, tm: int, streaming: int) -> Optional[int]:
     log_path = LOG_DIR / f"carla_{NODE_NAME}_gpu{gpu_id}.log"
     start_ts = float(time.time())
     try:
+        # Prefix the log with the exact command line for post-mortem debugging.
+        cmd = _build_run_args(rpc, tm, streaming)
+        with open(log_path, "ab", buffering=0) as logf:
+            header = (
+                f"[server_manager] launch gpu={gpu_id} rpc={rpc} tm={tm} streaming={streaming}\n"
+                f"[server_manager] cmd: {shlex.join(cmd)}\n"
+            )
+            logf.write(header.encode("utf-8", errors="ignore"))
         with open(log_path, "ab", buffering=0) as logf:
             proc = subprocess.Popen(
-                _build_run_args(rpc, tm, streaming),
+                cmd,
                 stdout=logf, stderr=logf,
                 env=_container_env_for_gpu(gpu_id),
             )
@@ -273,16 +290,20 @@ def ensure(gpu_id: int, base: int, spacing: int, tm_off: int) -> int:
     except Exception:
         pass
 
-    print(f"[server_manager] gpu{gpu_id}: no listener on {rpc}, launching …")
+    print(f"[server_manager] gpu{gpu_id}: no listener on {rpc}, launching …", file=sys.stderr, flush=True)
     pid = start_one(gpu_id, rpc, tm, streaming)
     ok = wait_for_port("127.0.0.1", rpc, time.time() + DEFAULT_START_TIMEOUT, pid=pid)
     if ok:
         return 0
 
     # Diagnostics for debugging via shared logs.
-    print(f"[server_manager] gpu{gpu_id}: still no listener on {rpc}", file=sys.stderr)
+    print(f"[server_manager] gpu{gpu_id}: still no listener on {rpc}", file=sys.stderr, flush=True)
     if pid:
-        print(f"[server_manager] gpu{gpu_id}: spawned pid={pid} alive={_pid_is_alive(pid)}", file=sys.stderr)
+        print(
+            f"[server_manager] gpu{gpu_id}: spawned pid={pid} alive={_pid_is_alive(pid)}",
+            file=sys.stderr,
+            flush=True,
+        )
 
     sock = _socket_diag(rpc)
     if sock:

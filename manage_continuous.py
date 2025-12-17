@@ -215,18 +215,18 @@ class ContinuousManager:
                 out[k] = v
         return out
 
-    def _parse_and_store_checkpoint(self, job_row: sqlite3.Row, checkpoint_path: Path) -> None:
+    def _parse_and_store_checkpoint(self, job_row: sqlite3.Row, checkpoint_path: Path) -> Optional[str]:
         if not checkpoint_path.exists():
-            return
+            return None
 
         try:
             payload = json.loads(checkpoint_path.read_text())
         except Exception:
-            return
+            return None
 
         ckpt = payload.get("_checkpoint") if isinstance(payload, dict) else None
         if not isinstance(ckpt, dict):
-            return
+            return None
 
         progress = ckpt.get("progress") or [None, None]
         progress_current = None
@@ -329,6 +329,8 @@ class ContinuousManager:
                     """,
                     to_insert,
                 )
+
+        return str(status) if status is not None else None
     
     # --- Discovery Logic (Unchanged) ---
     def _discover_routes_and_scenarios(self) -> Dict[str, List[str]]:
@@ -676,12 +678,36 @@ class ContinuousManager:
 
         start_ts = time.time()
         try:
-            rc = subprocess.call(cmd, env=env)
+            evaluator_rc = subprocess.call(cmd, env=env)
         except KeyboardInterrupt:
-            rc = 130
+            evaluator_rc = 130
         duration = time.time() - start_ts
 
-        final_status = 'completed' if rc == 0 else 'failed'
+        parsed_checkpoint_status: Optional[str] = None
+        try:
+            parsed_checkpoint_status = self._parse_and_store_checkpoint(job_data, checkpoint_path)
+        except Exception:
+            parsed_checkpoint_status = None
+
+        def _checkpoint_success(status: Optional[str]) -> bool:
+            if status is None:
+                return False
+            s = str(status).strip().lower()
+            return s in {"completed", "success", "succeeded", "finished", "passed"}
+
+        if evaluator_rc != 0:
+            final_status = "failed"
+        else:
+            # Some evaluator paths print exceptions but still exit 0; treat missing/failed checkpoints as failure.
+            if not checkpoint_path.exists():
+                final_status = "failed"
+            elif not _checkpoint_success(parsed_checkpoint_status):
+                final_status = "failed"
+            else:
+                final_status = "completed"
+
+        # Return code for the worker loop: 0 only for success, 1 for failure, 2 for idle.
+        manager_rc = 0 if final_status == "completed" else (130 if evaluator_rc == 130 else 1)
 
         # 4. UPDATE RESULT
         with self._get_conn() as conn:
@@ -700,7 +726,7 @@ class ContinuousManager:
             """, (duration, node_name, gpu_id))
             
             # Update Runtime Estimate (Weighted Average)
-            if rc == 0:
+            if manager_rc == 0:
                 key = f"{job_data['agent']}_{job_data['route']}"
                 row = conn.execute("SELECT estimate FROM runtime_estimates WHERE key=?", (key,)).fetchone()
                 if row and row[0] is not None:
@@ -708,13 +734,6 @@ class ContinuousManager:
                     conn.execute("UPDATE runtime_estimates SET estimate=? WHERE key=?", (new_est, key))
                 else:
                     conn.execute("INSERT INTO runtime_estimates (key, estimate) VALUES (?, ?)", (key, duration))
-
-        # 5. Parse and store detailed Leaderboard checkpoint results (best-effort)
-        try:
-            self._parse_and_store_checkpoint(job_data, checkpoint_path)
-        except Exception:
-            # Never fail the worker due to logging.
-            pass
 
         # Best-effort attach per-run dataset summary.
         run_summary = None
@@ -740,10 +759,12 @@ class ContinuousManager:
                 "weather": int(job_data['weather']),
                 "rpc_port": int(port),
                 "tm_port": int(tm_port),
-                "rc": int(rc),
+                "rc": int(manager_rc),
+                "evaluator_rc": int(evaluator_rc),
                 "duration_sec": float(duration),
                 "final_status": final_status,
                 "checkpoint_path": str(checkpoint_path),
+                "checkpoint_status": parsed_checkpoint_status,
                 "dataset_dir": dataset_dir,
                 "run_summary": run_summary,
             },
@@ -753,15 +774,15 @@ class ContinuousManager:
             node_name,
             gpu_id,
             {
-                "status": "idle" if rc == 0 else "error",
-                "message": "job completed" if rc == 0 else f"job failed rc={rc}",
+                "status": "idle" if manager_rc == 0 else "error",
+                "message": "job completed" if manager_rc == 0 else f"job failed rc={manager_rc}",
                 "current_job_id": None,
                 "rpc_port": int(port),
                 "tm_port": int(tm_port),
             },
         )
 
-        return rc
+        return manager_rc
 
     # --- Reporting ---
     def get_status(self):
