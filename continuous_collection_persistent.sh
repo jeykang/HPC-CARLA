@@ -48,7 +48,7 @@ python3 "$PROJECT_ROOT/carla_server_manager.py" start \
   --gpus auto \
   --base-rpc-port "$BASE_RPC_PORT" \
   --port-spacing "$PORT_SPACING" \
-  --tm-offset "$TM_OFFSET" | tee -a "$LOG_DIR/carla_pool_${NODE_NAME}.log" || true
+  --tm-offset "$TM_OFFSET" 2>&1 | tee -a "$LOG_DIR/carla_pool_${NODE_NAME}.log" || true
 
 # 1) make sure scripts are executable
 chmod +x "${PROJECT_ROOT}/launch_metrics_daemon.sh" || true

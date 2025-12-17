@@ -47,11 +47,14 @@ PY
 echo "[worker] node=$NODE_NAME gpu=$GPU_ID rpc=$RPC_PORT tm=$TM_PORT" | tee -a "$log"
 
 # Ensure the corresponding CARLA server is running before processing jobs.
-python3 "$PROJECT_ROOT/carla_server_manager.py" ensure \
+if ! python3 "$PROJECT_ROOT/carla_server_manager.py" ensure \
   --gpu "$GPU_ID" \
   --base-rpc-port "$BASE_RPC_PORT" \
   --port-spacing "$PORT_SPACING" \
-  --tm-offset "$TM_OFFSET" | tee -a "$log"
+  --tm-offset "$TM_OFFSET" 2>&1 | tee -a "$log"; then
+  rc=$?
+  echo "[worker] warning: failed to ensure CARLA server (rc=$rc); continuing and will retry via job loop" | tee -a "$log"
+fi
 
 # ----- Common CARLA/Leaderboard env (per-worker, not per-job) -----
 export LOCAL_GPUS=${LOCAL_GPUS:-${GPUS_PER_NODE:-8}}
@@ -73,7 +76,7 @@ while true; do
       --gpu "$GPU_ID" \
       --base-rpc-port "$BASE_RPC_PORT" \
       --port-spacing "$PORT_SPACING" \
-      --tm-offset "$TM_OFFSET" | tee -a "$log" || true
+      --tm-offset "$TM_OFFSET" 2>&1 | tee -a "$log" || true
   fi
 
   set +e

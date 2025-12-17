@@ -24,6 +24,11 @@ DEFAULT_BASE      = int(os.environ.get("BASE_RPC_PORT", 2000))
 DEFAULT_SPACING   = int(os.environ.get("PORT_SPACING", 100))
 DEFAULT_TM_OFFSET = int(os.environ.get("TM_OFFSET", 5000))
 
+# Offset from the RPC port used for sensor streaming; must remain within SPACING.
+DEFAULT_STREAMING_OFFSET = int(os.environ.get("CARLA_STREAMING_OFFSET", 10))
+# Startup can be slow on cold caches; allow override via env.
+DEFAULT_START_TIMEOUT = float(os.environ.get("CARLA_START_TIMEOUT", "300"))
+
 # Use container’s default CARLA_ROOT (/home/carla per your .def) via %environment/%runscript.
 SIF_PATH   = str(os.environ.get("CARLA_SIF", PROJECT_ROOT / "carla_official.sif"))
 NODE_NAME  = os.environ.get("SLURMD_NODENAME", os.uname().nodename)
@@ -38,21 +43,20 @@ def _read_state() -> Dict:
         return {"node": NODE_NAME, "servers": {}}
 
 def _write_state(state: Dict) -> None:
-    tmp = STATE_FILE.with_suffix(".tmp")
-    tmp.parent.mkdir(parents=True, exist_ok=True)
+    """
+    Best-effort atomic write.
 
-    def _dump(to_path: Path) -> None:
-        with open(to_path, "w") as f:
-            json.dump(state, f, indent=2)
-
-    _dump(tmp)
+    IMPORTANT: This file can be written concurrently (coordinator + many workers).
+    Use a PID-scoped temp path to avoid clobbering a shared ".tmp".
+    """
     try:
+        tmp = STATE_FILE.with_suffix(f".{os.getpid()}.tmp")
+        tmp.parent.mkdir(parents=True, exist_ok=True)
+        with open(tmp, "w") as f:
+            json.dump(state, f, indent=2)
         os.replace(tmp, STATE_FILE)
-    except FileNotFoundError:
-        # If the tmp file vanishes on slower filesystems, fall back to a direct write.
-        _dump(STATE_FILE)
     except Exception as e:
-        # Log but do not fail server startup because of bookkeeping issues.
+        # Never fail server startup because bookkeeping couldn't persist.
         print(f"[server_manager] warning: failed to persist state: {e}", file=sys.stderr)
 
 def is_port_open(host: str, port: int, timeout: float = 0.5) -> bool:
@@ -62,8 +66,19 @@ def is_port_open(host: str, port: int, timeout: float = 0.5) -> bool:
     except Exception:
         return False
 
-def wait_for_port(host: str, port: int, deadline: float) -> bool:
+def _pid_is_alive(pid: Optional[int]) -> bool:
+    try:
+        if not pid:
+            return False
+        os.kill(int(pid), 0)
+        return True
+    except Exception:
+        return False
+
+def wait_for_port(host: str, port: int, deadline: float, pid: Optional[int] = None) -> bool:
     while time.time() < deadline:
+        if pid is not None and not _pid_is_alive(pid):
+            return False
         if is_port_open(host, port):
             return True
         time.sleep(0.2)
@@ -77,10 +92,12 @@ def discover_gpus() -> List[int]:
     n = int(os.environ.get("SLURM_GPUS_ON_NODE", os.environ.get("GPUS_PER_NODE", "8")))
     return list(range(n))
 
-def _derive_ports(gpu_id: int, base: int, spacing: int, tm_off: int) -> Tuple[int,int]:
+def _derive_ports(gpu_id: int, base: int, spacing: int, tm_off: int) -> Tuple[int, int, int]:
     rpc = base + gpu_id*spacing
     tm  = rpc + tm_off
-    return rpc, tm
+    # Keep streaming within the per-GPU spacing window.
+    streaming = rpc + min(DEFAULT_STREAMING_OFFSET, max(1, spacing - 1))
+    return rpc, tm, streaming
 
 def _container_env_for_gpu(gpu_id: int) -> Dict[str, str]:
     """
@@ -91,6 +108,7 @@ def _container_env_for_gpu(gpu_id: int) -> Dict[str, str]:
     env.update({
         "SINGULARITYENV_CUDA_VISIBLE_DEVICES": str(gpu_id),
         "SINGULARITYENV_NVIDIA_VISIBLE_DEVICES": str(gpu_id),
+        "SINGULARITYENV_CARLA_SERVER": "1",
         "SINGULARITYENV_SDL_VIDEODRIVER": "offscreen",
         "SINGULARITYENV_SDL_AUDIODRIVER": "dummy",
         "SINGULARITYENV_DISABLE_PYTHON": "1",   # CARLA binary only
@@ -99,31 +117,77 @@ def _container_env_for_gpu(gpu_id: int) -> Dict[str, str]:
     env["SINGULARITYENV_ULIMIT_CORE"] = "0"
     return env
 
-def _build_run_args(rpc: int, tm: int) -> List[str]:
+def _build_run_args(rpc: int, tm: int, streaming: int) -> List[str]:
     """
     Use 'singularity run' so the container's %runscript invokes ${CARLA_ROOT}/CarlaUE4.sh.
     All UE4/CARLA flags are passed as args to the runscript.
     """
-    args = [
-        "singularity", "run", "--nv",
-        "-B", f"{str(PROJECT_ROOT)}:/workspace",  # mount project at /workspace for Python sidecars
-        SIF_PATH,
-        "-opengl",
-        "-RenderOffscreen",
-        "-quality-level=Epic",
-        f"-carla-rpc-port={rpc}",
-        f"-trafficManagerPort={tm}",
-        "-carla-server",
-    ]
-    # If your image expects '-nosound' (your %runscript already adds it), no need to pass it again.
+    bind_spec = f"{str(PROJECT_ROOT)}:/workspace"
+    # Avoid duplicate binds if the submission script already set SINGULARITY_BINDPATH/APPTAINER_BINDPATH.
+    bindpath = os.environ.get("SINGULARITY_BINDPATH") or os.environ.get("APPTAINER_BINDPATH") or ""
+    add_bind = f",{bind_spec}," not in f",{bindpath},"
+
+    args: List[str] = ["singularity", "run", "--nv"]
+    if add_bind:
+        args.extend(["-B", bind_spec])  # mount project at /workspace for Python sidecars
+
+    args.extend(
+        [
+            SIF_PATH,
+            "-opengl",
+            "-RenderOffScreen",
+            "-quality-level=Epic",
+            f"-carla-rpc-port={rpc}",
+            f"-carla-streaming-port={streaming}",
+            f"-trafficManagerPort={tm}",
+            "-carla-server",
+        ]
+    )
     return args
 
-def start_one(gpu_id: int, rpc: int, tm: int) -> Optional[int]:
+def _tail_file(path: Path, max_lines: int = 80, max_bytes: int = 64 * 1024) -> str:
+    """Return a best-effort tail of a potentially large log file."""
+    try:
+        if not path.exists():
+            return ""
+        with open(path, "rb") as f:
+            try:
+                f.seek(0, os.SEEK_END)
+                size = f.tell()
+                f.seek(max(0, size - max_bytes), os.SEEK_SET)
+            except Exception:
+                pass
+            data = f.read().decode("utf-8", errors="ignore")
+        return "\n".join(data.splitlines()[-max_lines:])
+    except Exception:
+        return ""
+
+def _socket_diag(port: int) -> str:
+    """Best-effort socket diagnostic via ss/netstat."""
+    cmds = [
+        ["ss", "-ltnp"],
+        ["netstat", "-ltnp"],
+    ]
+    for cmd in cmds:
+        try:
+            p = subprocess.run(cmd, capture_output=True, text=True)
+            if p.returncode != 0:
+                continue
+            out = p.stdout or ""
+            matches = [ln for ln in out.splitlines() if f":{int(port)}" in ln]
+            if matches:
+                return "\n".join(matches[-20:])
+        except Exception:
+            continue
+    return ""
+
+def start_one(gpu_id: int, rpc: int, tm: int, streaming: int) -> Optional[int]:
     log_path = LOG_DIR / f"carla_{NODE_NAME}_gpu{gpu_id}.log"
+    start_ts = float(time.time())
     try:
         with open(log_path, "ab", buffering=0) as logf:
             proc = subprocess.Popen(
-                _build_run_args(rpc, tm),
+                _build_run_args(rpc, tm, streaming),
                 stdout=logf, stderr=logf,
                 env=_container_env_for_gpu(gpu_id),
             )
@@ -131,8 +195,9 @@ def start_one(gpu_id: int, rpc: int, tm: int) -> Optional[int]:
         state = _read_state()
         servers = state.setdefault("servers", {})
         servers[str(gpu_id)] = {
-            "gpu": gpu_id, "rpc_port": rpc, "tm_port": tm,
+            "gpu": gpu_id, "rpc_port": rpc, "tm_port": tm, "streaming_port": streaming,
             "pid": proc.pid, "node": NODE_NAME, "log": str(log_path),
+            "start_ts_unix": start_ts,
         }
         _write_state(state)
         return proc.pid
@@ -143,13 +208,28 @@ def start_one(gpu_id: int, rpc: int, tm: int) -> Optional[int]:
 def start_pool(gpus: List[int], base: int, spacing: int, tm_off: int) -> Dict[str, Dict]:
     started = {}
     for gid in gpus:
-        rpc, tm = _derive_ports(gid, base, spacing, tm_off)
+        rpc, tm, streaming = _derive_ports(gid, base, spacing, tm_off)
         if is_port_open("127.0.0.1", rpc):
-            started[str(gid)] = {"rpc_port": rpc, "tm_port": tm, "pid": None, "already_running": True}
+            started[str(gid)] = {
+                "rpc_port": rpc,
+                "tm_port": tm,
+                "streaming_port": streaming,
+                "pid": None,
+                "already_running": True,
+                "ready_seconds": 0.0,
+            }
             continue
-        pid = start_one(gid, rpc, tm)
-        ok = wait_for_port("127.0.0.1", rpc, time.time() + 120)
-        started[str(gid)] = {"rpc_port": rpc, "tm_port": tm, "pid": pid, "listening": ok}
+        pid = start_one(gid, rpc, tm, streaming)
+        t0 = time.time()
+        ok = wait_for_port("127.0.0.1", rpc, time.time() + DEFAULT_START_TIMEOUT, pid=pid)
+        started[str(gid)] = {
+            "rpc_port": rpc,
+            "tm_port": tm,
+            "streaming_port": streaming,
+            "pid": pid,
+            "listening": ok,
+            "ready_seconds": float(time.time() - t0),
+        }
     return started
 
 def stop_pool() -> None:
@@ -173,16 +253,54 @@ def health() -> int:
     return 0
 
 def ensure(gpu_id: int, base: int, spacing: int, tm_off: int) -> int:
-    rpc, tm = _derive_ports(gpu_id, base, spacing, tm_off)
+    rpc, tm, streaming = _derive_ports(gpu_id, base, spacing, tm_off)
     if is_port_open("127.0.0.1", rpc):
         return 0
+
+    # If we have a recorded PID and it is still alive, don't spawn a duplicate.
+    try:
+        st = _read_state()
+        rec = (st.get("servers") or {}).get(str(gpu_id)) or {}
+        existing_pid = rec.get("pid")
+        if _pid_is_alive(existing_pid):
+            ok = wait_for_port("127.0.0.1", rpc, time.time() + DEFAULT_START_TIMEOUT, pid=existing_pid)
+            if ok:
+                return 0
+            print(
+                f"[server_manager] gpu{gpu_id}: pid {existing_pid} alive but still no listener on {rpc}",
+                file=sys.stderr,
+            )
+    except Exception:
+        pass
+
     print(f"[server_manager] gpu{gpu_id}: no listener on {rpc}, launching …")
-    pid = start_one(gpu_id, rpc, tm)
-    ok = wait_for_port("127.0.0.1", rpc, time.time() + 120)
-    if not ok:
-        print(f"[server_manager] gpu{gpu_id}: still no listener on {rpc}", file=sys.stderr)
-        return 2
-    return 0
+    pid = start_one(gpu_id, rpc, tm, streaming)
+    ok = wait_for_port("127.0.0.1", rpc, time.time() + DEFAULT_START_TIMEOUT, pid=pid)
+    if ok:
+        return 0
+
+    # Diagnostics for debugging via shared logs.
+    print(f"[server_manager] gpu{gpu_id}: still no listener on {rpc}", file=sys.stderr)
+    if pid:
+        print(f"[server_manager] gpu{gpu_id}: spawned pid={pid} alive={_pid_is_alive(pid)}", file=sys.stderr)
+
+    sock = _socket_diag(rpc)
+    if sock:
+        print(f"[server_manager] gpu{gpu_id}: socket diag for :{rpc}\n{sock}", file=sys.stderr)
+
+    try:
+        st = _read_state()
+        rec = (st.get("servers") or {}).get(str(gpu_id)) or {}
+        log_path = rec.get("log")
+        if not log_path:
+            log_path = str(LOG_DIR / f"carla_{NODE_NAME}_gpu{gpu_id}.log")
+        tail = _tail_file(Path(log_path))
+        if tail:
+            print(f"[server_manager] gpu{gpu_id}: tail of {log_path}\n{tail}", file=sys.stderr)
+    except Exception:
+        pass
+
+    return 2
 
 def parse_args():
     p = argparse.ArgumentParser("carla_server_manager")
