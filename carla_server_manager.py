@@ -35,7 +35,8 @@ DEFAULT_STREAMING_PORT_MODE = os.environ.get("CARLA_STREAMING_PORT_MODE", "zero"
 DEFAULT_QUALITY_LEVEL = os.environ.get("CARLA_QUALITY_LEVEL", "Epic")
 DEFAULT_RHI_FLAG = os.environ.get("CARLA_RHI_FLAG", "-opengl")
 # Accept either spelling; CARLA/UE4 flags are case-sensitive across builds.
-DEFAULT_RENDER_FLAG = os.environ.get("CARLA_RENDER_FLAG", "-RenderOffScreen")
+# Historically this repo used "-RenderOffscreen" (lowercase 's') in the persistent server manager.
+DEFAULT_RENDER_FLAG = os.environ.get("CARLA_RENDER_FLAG", "-RenderOffscreen")
 DEFAULT_SERVER_FLAG = os.environ.get("CARLA_SERVER_FLAG", "-carla-server")
 DEFAULT_EXTRA_UE4_ARGS = shlex.split(os.environ.get("CARLA_EXTRA_UE4_ARGS", ""))
 

@@ -21,7 +21,7 @@ echo "[start_job] CARLA_SIF=${CARLA_SIF}"
 : "${CARLA_STREAMING_PORT_MODE:=zero}"     # prefer `-carla-streaming-port=0`
 : "${CARLA_START_TIMEOUT:=300}"            # seconds
 : "${CARLA_RHI_FLAG:=-opengl}"
-: "${CARLA_RENDER_FLAG:=-RenderOffScreen}"
+: "${CARLA_RENDER_FLAG:=-RenderOffscreen}"
 : "${CARLA_QUALITY_LEVEL:=Epic}"
 export CARLA_STREAMING_PORT_MODE CARLA_START_TIMEOUT CARLA_RHI_FLAG CARLA_RENDER_FLAG CARLA_QUALITY_LEVEL
 
