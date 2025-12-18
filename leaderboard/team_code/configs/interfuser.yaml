@@ -1,7 +1,17 @@
 # InterFuser Agent Configuration
+
+agent_config:
+  # Path to the original InterFuser agent implementation
+  agent_file: /workspace/leaderboard/team_code/interfuser_agent.py
+  # Class name returned by get_entry_point() in interfuser_agent.py
+  agent_class: InterfuserAgent
+  # Path to the original InterFuser config.py (used by the agent itself)
+  config_path: /workspace/leaderboard/team_code/interfuser/config.py
+
+
 model_type: interfuser
 model_path: /workspace/leaderboard/team_code/interfuser/interfuser.pth.tar
-external_config: /workspace/leaderboard/team_code/interfuser/interfuser_config.py
+external_config: /workspace/leaderboard/team_code/interfuser/config.py
 
 model_config:
   architecture: interfuser_baseline
