@@ -20,6 +20,30 @@ BASE_RPC_PORT=${BASE_RPC_PORT:-$((2000 + NODE_ID * 1000))}
 echo "[coordinator] node=$NODE_NAME id=$NODE_ID gpus=$GPUS_PER_NODE base_rpc=$BASE_RPC_PORT"
 [[ -n "${SLURM_JOB_ID:-}" ]] && echo "$SLURM_JOB_ID" > "$STATE_DIR/current_slurm_job.txt" || true
 
+# Persist a minimal run metadata snapshot for later plotting (walltime, config matrix, etc).
+RUN_META="$STATE_DIR/run_meta.json"
+python3 - <<'PY' "$RUN_META" "$NODE_NAME" "$NODE_ID" "$GPUS_PER_NODE" "$BASE_RPC_PORT" "$PORT_SPACING" "$TM_OFFSET" "$STATE_DIR" "$LOG_DIR" "$DATASET_DIR"
+import json, os, sys, time, datetime
+path, node, node_id, gpus, base_rpc, spacing, tm_offset, state_dir, log_dir, dataset_dir = sys.argv[1:]
+payload = {
+  "ts": datetime.datetime.utcnow().isoformat() + "Z",
+  "ts_unix": time.time(),
+  "slurm_job_id": os.environ.get("SLURM_JOB_ID"),
+  "node": node,
+  "node_id": int(node_id),
+  "gpus_per_node": int(gpus),
+  "base_rpc_port": int(base_rpc),
+  "port_spacing": int(spacing),
+  "tm_offset": int(tm_offset),
+  "state_dir": state_dir,
+  "log_dir": log_dir,
+  "dataset_dir": dataset_dir,
+}
+tmp = path + ".tmp"
+open(tmp, "w").write(json.dumps(payload, indent=2))
+os.replace(tmp, path)
+PY
+
 # (Best-effort) start/ensure a pool of CARLA servers for all local GPUs so ports are ready.
 python3 "$PROJECT_ROOT/carla_server_manager.py" start \
   --gpus auto \
@@ -68,6 +92,34 @@ PY
   fi
   sleep 30
 done
+
+# Record end-of-run snapshot (best-effort).
+python3 - <<'PY' "$RUN_META" "$STATE_DIR"
+import json, os, sys, time, datetime
+meta_path, state_dir = sys.argv[1:]
+try:
+  meta = json.load(open(meta_path))
+except Exception:
+  meta = {}
+meta["end_ts"] = datetime.datetime.utcnow().isoformat() + "Z"
+meta["end_ts_unix"] = time.time()
+try:
+  if "ts_unix" in meta:
+    meta["walltime_s"] = float(meta["end_ts_unix"]) - float(meta["ts_unix"])
+except Exception:
+  pass
+try:
+  q = json.load(open(os.path.join(state_dir, "job_queue.json")))
+  jobs = q.get("jobs", [])
+  meta["jobs_total"] = int(q.get("total", len(jobs)))
+  meta["jobs_completed_ok"] = sum(1 for j in jobs if j.get("status") == "completed")
+  meta["jobs_failed"] = sum(1 for j in jobs if j.get("status") == "failed")
+except Exception:
+  pass
+tmp = meta_path + ".tmp"
+open(tmp, "w").write(json.dumps(meta, indent=2))
+os.replace(tmp, meta_path)
+PY
 
 # Graceful shutdown.
 for pid in "${pids[@]}"; do kill "$pid" 2>/dev/null || true; done

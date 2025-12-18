@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # hpc_metrics.py
-import os, sys, json, time, subprocess, socket
+import os, sys, json, time, subprocess, socket, re, platform
 from pathlib import Path
 from datetime import datetime, timezone
 
@@ -170,3 +170,87 @@ class MetricsWriter:
         rec["node"] = node_name()
         with open(self.metrics_dir/"system.jsonl","a") as f:
             f.write(json.dumps(rec, ensure_ascii=False)+"\n")
+
+    def write_static_info(self) -> None:
+        """
+        Write a one-time static hardware/software snapshot for Table 2 and reproducibility.
+        """
+        outp = self.metrics_dir / "static.json"
+        if outp.exists():
+            return
+
+        info = {
+            "ts": iso_now(),
+            "node": node_name(),
+            "hostname": socket.gethostname(),
+            "slurm_job_id": os.environ.get("SLURM_JOB_ID"),
+            "slurm_job_partition": os.environ.get("SLURM_JOB_PARTITION"),
+            "slurm_nnodes": os.environ.get("SLURM_NNODES"),
+            "slurm_gpus_per_node": os.environ.get("SLURM_GPUS_PER_NODE"),
+            "platform": platform.platform(),
+            "python": sys.version.split()[0],
+            "git_commit": os.environ.get("GIT_COMMIT") or os.environ.get("HPC_CARLA_GIT_COMMIT"),
+        }
+
+        # CPU/RAM best-effort
+        try:
+            model = None
+            with open("/proc/cpuinfo") as f:
+                for ln in f:
+                    if ln.lower().startswith("model name"):
+                        model = ln.split(":", 1)[1].strip()
+                        break
+            if model:
+                info["cpu_model"] = model
+        except Exception:
+            pass
+
+        try:
+            mem_total_kb = None
+            with open("/proc/meminfo") as f:
+                for ln in f:
+                    if ln.startswith("MemTotal:"):
+                        mem_total_kb = int(ln.split()[1])
+                        break
+            if mem_total_kb is not None:
+                info["ram_total_MiB"] = int(mem_total_kb / 1024)
+        except Exception:
+            pass
+
+        # NVIDIA driver/CUDA + GPU inventory
+        try:
+            n = run(["nvidia-smi"])
+            if n.returncode == 0:
+                m_drv = re.search(r"Driver Version:\\s*([0-9.]+)", n.stdout)
+                m_cuda = re.search(r"CUDA Version:\\s*([0-9.]+)", n.stdout)
+                if m_drv:
+                    info["nvidia_driver"] = m_drv.group(1)
+                if m_cuda:
+                    info["cuda_version"] = m_cuda.group(1)
+        except Exception:
+            pass
+
+        try:
+            g = run(["nvidia-smi", "--query-gpu=index,name,memory.total", "--format=csv,noheader,nounits"])
+            if g.returncode == 0:
+                gpus = []
+                for line in g.stdout.strip().splitlines():
+                    parts = [p.strip() for p in line.split(",")]
+                    if len(parts) >= 3:
+                        gpus.append({"index": safe_int(parts[0]), "name": parts[1], "mem_total_MiB": safe_int(parts[2])})
+                if gpus:
+                    info["gpus"] = gpus
+                    info["gpu_count"] = len(gpus)
+                    # Common paper fields
+                    info["gpu_name"] = gpus[0].get("name")
+                    info["gpu_mem_MiB"] = gpus[0].get("mem_total_MiB")
+        except Exception:
+            pass
+
+        try:
+            tmp = outp.with_suffix(".tmp")
+            tmp.write_text(json.dumps(info, indent=2))
+            tmp.replace(outp)
+        except Exception:
+            # Best-effort: metrics collection must never crash jobs
+            pass
