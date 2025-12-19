@@ -13,7 +13,6 @@ Commands:
 import os, sys, json, time, socket, signal, subprocess, argparse
 from pathlib import Path
 from typing import List, Dict, Tuple, Optional
-from datetime import datetime, timezone
 
 PROJECT_ROOT = Path(os.environ.get("PROJECT_ROOT", os.getcwd()))
 STATE_DIR    = Path(os.environ.get("STATE_DIR", PROJECT_ROOT / "collection_state"))
@@ -30,32 +29,6 @@ SIF_PATH   = str(os.environ.get("CARLA_SIF", PROJECT_ROOT / "carla_official.sif"
 NODE_NAME  = os.environ.get("SLURMD_NODENAME", os.uname().nodename)
 
 STATE_FILE = STATE_DIR / f"carla_servers_{NODE_NAME}.json"
-
-def _iso_now() -> str:
-    return datetime.now(timezone.utc).isoformat()
-
-def _metrics_dir() -> Path:
-    d = STATE_DIR / "metrics" / "servers" / NODE_NAME
-    d.mkdir(parents=True, exist_ok=True)
-    return d
-
-def _append_jsonl(path: Path, rec: Dict) -> None:
-    try:
-        path.parent.mkdir(parents=True, exist_ok=True)
-        with open(path, "a") as f:
-            f.write(json.dumps(rec, ensure_ascii=False) + "\n")
-    except Exception:
-        pass
-
-def _write_last_json(path: Path, rec: Dict) -> None:
-    try:
-        path.parent.mkdir(parents=True, exist_ok=True)
-        tmp = path.with_suffix(".tmp")
-        with open(tmp, "w") as f:
-            json.dump(rec, f, indent=2)
-        os.replace(tmp, path)
-    except Exception:
-        pass
 
 def _read_state() -> Dict:
     try:
@@ -157,47 +130,14 @@ def start_one(gpu_id: int, rpc: int, tm: int) -> Optional[int]:
 
 def start_pool(gpus: List[int], base: int, spacing: int, tm_off: int) -> Dict[str, Dict]:
     started = {}
-    events_path = _metrics_dir() / "carla_pool.jsonl"
     for gid in gpus:
         rpc, tm = _derive_ports(gid, base, spacing, tm_off)
         if is_port_open("127.0.0.1", rpc):
-            started[str(gid)] = {
-                "rpc_port": rpc,
-                "tm_port": tm,
-                "pid": None,
-                "already_running": True,
-                "listening": True,
-                "ready_seconds": 0.0,
-            }
+            started[str(gid)] = {"rpc_port": rpc, "tm_port": tm, "pid": None, "already_running": True}
             continue
-        t0 = time.time()
         pid = start_one(gid, rpc, tm)
         ok = wait_for_port("127.0.0.1", rpc, time.time() + 120)
-        ready_s = float(max(0.0, time.time() - t0))
-        started[str(gid)] = {"rpc_port": rpc, "tm_port": tm, "pid": pid, "listening": ok, "ready_seconds": ready_s}
-
-        _append_jsonl(events_path, {
-            "ts": _iso_now(),
-            "event": "carla_pool_start_one",
-            "node": NODE_NAME,
-            "gpu_id": int(gid),
-            "rpc_port": int(rpc),
-            "tm_port": int(tm),
-            "pid": int(pid) if pid else None,
-            "listening": bool(ok),
-            "ready_seconds": ready_s,
-            "slurm_job_id": os.environ.get("SLURM_JOB_ID"),
-        })
-
-    _write_last_json(_metrics_dir() / "carla_pool_last.json", {
-        "ts": _iso_now(),
-        "node": NODE_NAME,
-        "slurm_job_id": os.environ.get("SLURM_JOB_ID"),
-        "base_rpc_port": int(base),
-        "port_spacing": int(spacing),
-        "tm_offset": int(tm_off),
-        "started": started,
-    })
+        started[str(gid)] = {"rpc_port": rpc, "tm_port": tm, "pid": pid, "listening": ok}
     return started
 
 def stop_pool() -> None:
