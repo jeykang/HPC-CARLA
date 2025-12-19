@@ -23,7 +23,8 @@ echo "[coordinator] node=$NODE_NAME id=$NODE_ID gpus=$GPUS_PER_NODE base_rpc=$BA
 
 # Persist a minimal run metadata snapshot for later plotting (walltime, config matrix, etc).
 RUN_META="$STATE_DIR/run_meta.json"
-python3 - <<'PY' "$RUN_META" "$NODE_NAME" "$NODE_ID" "$GPUS_PER_NODE" "$BASE_RPC_PORT" "$PORT_SPACING" "$TM_OFFSET" "$STATE_DIR" "$LOG_DIR" "$DATASET_DIR"
+if [[ "${HPC_CARLA_WRITE_RUN_META:-0}" == "1" ]]; then
+  python3 - <<'PY' "$RUN_META" "$NODE_NAME" "$NODE_ID" "$GPUS_PER_NODE" "$BASE_RPC_PORT" "$PORT_SPACING" "$TM_OFFSET" "$STATE_DIR" "$LOG_DIR" "$DATASET_DIR"
 import json, os, sys, time, datetime
 path, node, node_id, gpus, base_rpc, spacing, tm_offset, state_dir, log_dir, dataset_dir = sys.argv[1:]
 payload = {
@@ -44,6 +45,7 @@ tmp = path + ".tmp"
 open(tmp, "w").write(json.dumps(payload, indent=2))
 os.replace(tmp, path)
 PY
+fi
 
 # (Best-effort) start/ensure a pool of CARLA servers for all local GPUs so ports are ready.
 python3 "$PROJECT_ROOT/carla_server_manager.py" start \
@@ -56,7 +58,11 @@ python3 "$PROJECT_ROOT/carla_server_manager.py" start \
 chmod +x "${PROJECT_ROOT}/launch_metrics_daemon.sh" || true
 
 # 2) start metrics daemon per node
-bash "${PROJECT_ROOT}/launch_metrics_daemon.sh"
+if [[ "${HPC_CARLA_DISABLE_METRICS_DAEMON:-0}" != "1" ]]; then
+  bash "${PROJECT_ROOT}/launch_metrics_daemon.sh"
+else
+  echo "[metrics] disabled via HPC_CARLA_DISABLE_METRICS_DAEMON=1"
+fi
 
 # Spawn workers.
 pids=()
@@ -95,7 +101,8 @@ PY
 done
 
 # Record end-of-run snapshot (best-effort).
-python3 - <<'PY' "$RUN_META" "$STATE_DIR"
+if [[ "${HPC_CARLA_WRITE_RUN_META:-0}" == "1" ]]; then
+  python3 - <<'PY' "$RUN_META" "$STATE_DIR"
 import json, os, sys, time, datetime
 meta_path, state_dir = sys.argv[1:]
 try:
@@ -121,6 +128,7 @@ tmp = meta_path + ".tmp"
 open(tmp, "w").write(json.dumps(meta, indent=2))
 os.replace(tmp, meta_path)
 PY
+fi
 
 # Graceful shutdown.
 for pid in "${pids[@]}"; do kill "$pid" 2>/dev/null || true; done

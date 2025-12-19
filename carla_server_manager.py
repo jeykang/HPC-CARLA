@@ -31,15 +31,22 @@ NODE_NAME  = os.environ.get("SLURMD_NODENAME", os.uname().nodename)
 
 STATE_FILE = STATE_DIR / f"carla_servers_{NODE_NAME}.json"
 
+ENABLE_SERVER_METRICS = os.environ.get("HPC_CARLA_SERVER_METRICS", "0").strip().lower() in {"1", "true", "yes", "on"}
+
 def _iso_now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 def _metrics_dir() -> Path:
+    if not ENABLE_SERVER_METRICS:
+        # Shouldn't be called, but keep it safe.
+        return STATE_DIR
     d = STATE_DIR / "metrics" / "servers" / NODE_NAME
     d.mkdir(parents=True, exist_ok=True)
     return d
 
 def _append_jsonl(path: Path, rec: Dict) -> None:
+    if not ENABLE_SERVER_METRICS:
+        return
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
         with open(path, "a") as f:
@@ -48,6 +55,8 @@ def _append_jsonl(path: Path, rec: Dict) -> None:
         pass
 
 def _write_last_json(path: Path, rec: Dict) -> None:
+    if not ENABLE_SERVER_METRICS:
+        return
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
         tmp = path.with_suffix(".tmp")
@@ -157,7 +166,7 @@ def start_one(gpu_id: int, rpc: int, tm: int) -> Optional[int]:
 
 def start_pool(gpus: List[int], base: int, spacing: int, tm_off: int) -> Dict[str, Dict]:
     started = {}
-    events_path = _metrics_dir() / "carla_pool.jsonl"
+    events_path = (_metrics_dir() / "carla_pool.jsonl") if ENABLE_SERVER_METRICS else None
     for gid in gpus:
         rpc, tm = _derive_ports(gid, base, spacing, tm_off)
         if is_port_open("127.0.0.1", rpc):
@@ -176,28 +185,30 @@ def start_pool(gpus: List[int], base: int, spacing: int, tm_off: int) -> Dict[st
         ready_s = float(max(0.0, time.time() - t0))
         started[str(gid)] = {"rpc_port": rpc, "tm_port": tm, "pid": pid, "listening": ok, "ready_seconds": ready_s}
 
-        _append_jsonl(events_path, {
-            "ts": _iso_now(),
-            "event": "carla_pool_start_one",
-            "node": NODE_NAME,
-            "gpu_id": int(gid),
-            "rpc_port": int(rpc),
-            "tm_port": int(tm),
-            "pid": int(pid) if pid else None,
-            "listening": bool(ok),
-            "ready_seconds": ready_s,
-            "slurm_job_id": os.environ.get("SLURM_JOB_ID"),
-        })
+        if events_path is not None:
+            _append_jsonl(events_path, {
+                "ts": _iso_now(),
+                "event": "carla_pool_start_one",
+                "node": NODE_NAME,
+                "gpu_id": int(gid),
+                "rpc_port": int(rpc),
+                "tm_port": int(tm),
+                "pid": int(pid) if pid else None,
+                "listening": bool(ok),
+                "ready_seconds": ready_s,
+                "slurm_job_id": os.environ.get("SLURM_JOB_ID"),
+            })
 
-    _write_last_json(_metrics_dir() / "carla_pool_last.json", {
-        "ts": _iso_now(),
-        "node": NODE_NAME,
-        "slurm_job_id": os.environ.get("SLURM_JOB_ID"),
-        "base_rpc_port": int(base),
-        "port_spacing": int(spacing),
-        "tm_offset": int(tm_off),
-        "started": started,
-    })
+    if ENABLE_SERVER_METRICS:
+        _write_last_json(_metrics_dir() / "carla_pool_last.json", {
+            "ts": _iso_now(),
+            "node": NODE_NAME,
+            "slurm_job_id": os.environ.get("SLURM_JOB_ID"),
+            "base_rpc_port": int(base),
+            "port_spacing": int(spacing),
+            "tm_offset": int(tm_off),
+            "started": started,
+        })
     return started
 
 def stop_pool() -> None:
