@@ -13,12 +13,6 @@ def main():
 
     Path(args.state_dir).mkdir(parents=True, exist_ok=True)
     writer = MetricsWriter(Path(args.state_dir))
-    # One-time static snapshot for reproducibility / Table 2 (opt-in).
-    if os.environ.get("HPC_CARLA_WRITE_STATIC_INFO", "0").strip().lower() in {"1", "true", "yes", "on"}:
-        try:
-            writer.write_static_info()
-        except Exception:
-            pass
     sys_s = SystemSampler()
     try:
         gpu_s = GPUSampler()
