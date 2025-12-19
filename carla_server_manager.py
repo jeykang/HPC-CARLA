@@ -94,7 +94,9 @@ def discover_gpus() -> List[int]:
 
 def _derive_ports(gpu_id: int, base: int, spacing: int, tm_off: int) -> Tuple[int,int]:
     rpc = base + gpu_id*spacing
-    tm  = rpc + tm_off
+    #tm  = rpc + tm_off
+    # TM_PORT_DEFAULT=$(( TM_OFFSET + PORT_SPACING * GPU_ID ))
+    tm  = tm_off + gpu_id*spacing
     return rpc, tm
 
 def _container_env_for_gpu(gpu_id: int) -> Dict[str, str]:
