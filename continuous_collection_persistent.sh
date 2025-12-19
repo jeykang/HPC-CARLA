@@ -6,6 +6,7 @@ set -euo pipefail
 : "${PROJECT_ROOT:?set PROJECT_ROOT}"
 STATE_DIR=${STATE_DIR:-$PROJECT_ROOT/collection_state}
 LOG_DIR=${LOG_DIR:-$PROJECT_ROOT/logs}
+DATASET_DIR=${DATASET_DIR:-$PROJECT_ROOT/dataset}
 mkdir -p "$STATE_DIR/health" "$STATE_DIR/restart" "$LOG_DIR"
 
 PORT_SPACING=${PORT_SPACING:-100}

@@ -14,8 +14,7 @@ set -euo pipefail
 
 # Derive ports (persistent scheme by default)
 RPC_PORT_DEFAULT=$((BASE_RPC_PORT + GPU_ID * PORT_SPACING))
-TM_PORT_DEFAULT=$(( TM_OFFSET + PORT_SPACING * GPU_ID ))
-#TM_PORT_DEFAULT=$((RPC_PORT_DEFAULT + TM_OFFSET))
+TM_PORT_DEFAULT=$((RPC_PORT_DEFAULT + TM_OFFSET))
 
 # Allow explicit override from env
 : "${CARLA_HOST:=127.0.0.1}"
