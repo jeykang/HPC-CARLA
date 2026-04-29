@@ -17,78 +17,6 @@ from pathlib import Path
 from datetime import datetime, timedelta
 from typing import List, Dict, Any, Tuple
 
-def _append_event(state_dir: Path, event: Dict[str, Any]) -> None:
-    """
-    Append a lightweight JSONL event under <state_dir>/metrics/events.jsonl (best-effort).
-    Used to reconstruct sequence/lifecycle timing and to derive throughput/persistence figures.
-    """
-    try:
-        state_dir = Path(state_dir)
-        p = state_dir / "metrics" / "events.jsonl"
-        p.parent.mkdir(parents=True, exist_ok=True)
-        event = dict(event)
-        event.setdefault("ts", datetime.utcnow().isoformat() + "Z")
-        event.setdefault("node", os.environ.get("SLURMD_NODENAME") or os.uname().nodename)
-        event.setdefault("slurm_job_id", os.environ.get("SLURM_JOB_ID"))
-        with open(p, "a") as f:
-            f.write(json.dumps(event, ensure_ascii=False) + "\n")
-    except Exception:
-        pass
-
-def _extract_checkpoint_metrics(checkpoint_path: Path) -> Dict[str, Any]:
-    """
-    Best-effort extraction of leaderboard metrics from a checkpoint/results JSON.
-    Keeps the schema intentionally loose to tolerate CARLA/leaderboard version drift.
-    """
-    try:
-        if not checkpoint_path or not checkpoint_path.exists():
-            return {}
-        data = json.loads(checkpoint_path.read_text())
-        if not isinstance(data, dict):
-            return {}
-
-        ckpt = data.get("_checkpoint") if isinstance(data.get("_checkpoint"), dict) else data
-        if not isinstance(ckpt, dict):
-            return {}
-
-        out: Dict[str, Any] = {}
-
-        # Prefer global record scores when available.
-        global_record = ckpt.get("global_record") if isinstance(ckpt.get("global_record"), dict) else {}
-        scores = global_record.get("scores") if isinstance(global_record.get("scores"), dict) else {}
-        if scores:
-            for k in ("score_composed", "score_route", "score_penalty", "score", "driving_score"):
-                if k in scores:
-                    out[k] = scores.get(k)
-            # Normalize for downstream plotting helpers (e.g., genfig.py expects score or driving_score).
-            if "score" not in out:
-                out["score"] = scores.get("score_composed", scores.get("driving_score", scores.get("score")))
-
-        # Status/metadata
-        for k in ("entry_status", "eligible", "labels"):
-            if k in data:
-                out[k] = data.get(k)
-        if "progress" in ckpt:
-            out["progress"] = ckpt.get("progress")
-
-        # If there is exactly one record, capture its per-route scores/infractions too.
-        records = ckpt.get("records")
-        if isinstance(records, list) and len(records) == 1 and isinstance(records[0], dict):
-            rec0 = records[0]
-            out["route_status"] = rec0.get("status")
-            rs = rec0.get("scores") if isinstance(rec0.get("scores"), dict) else {}
-            if rs:
-                for k in ("score_composed", "score_route", "score_penalty", "driving_score"):
-                    out.setdefault(k, rs.get(k))
-                out.setdefault("score", rs.get("score_composed", rs.get("driving_score")))
-            infr = rec0.get("infractions") if isinstance(rec0.get("infractions"), dict) else {}
-            if infr:
-                out["infractions"] = infr
-
-        return out
-    except Exception:
-        return {}
-
 class ContinuousManager:
     def __init__(self, state_dir: str = None):
         if state_dir is None:
@@ -509,7 +437,7 @@ class ContinuousManager:
             results = {
                 'summary': {
                     'total_completed': len(completed_data['jobs']),
-                    'export_time': datetime.now().isoformat()
+                    'export_time': datetime.utcnow().isoformat() + 'Z'
                 },
                 'jobs': completed_data['jobs'],
                 'statistics': {}
@@ -829,24 +757,6 @@ class ContinuousManager:
         if 'WEATHER_PRESET' in os.environ and os.environ['WEATHER_PRESET'].strip():
             env['WEATHER_PRESET'] = os.environ['WEATHER_PRESET'].strip()
 
-        # Labels for tidy per-job paths (also used by your agent)
-        def _label_weather(wi):
-            try:  return f"weather_{int(wi)}"
-            except: return f"weather_{str(wi)}"
-
-        def _label_map(tn):
-            try:  return f"map_{int(tn):02d}"
-            except: return f"map_{tn or 'unknown'}"
-
-        route_stem   = Path(routes_file).stem
-        weather_lbl  = _label_weather(env['WEATHER_INDEX'])
-        map_lbl      = _label_map(env.get('TOWN_NUM',''))
-        dataset_root = env.get('DATASET_DIR', str(self.project_root / 'dataset'))
-        save_path    = os.path.join(dataset_root, env['AGENT_NAME'], weather_lbl, map_lbl, route_stem)
-
-        env['SAVE_PATH']           = save_path
-        env['CHECKPOINT_ENDPOINT'] = os.path.join(save_path, 'results.json')
-
         # Hard forward into container env
         def _mirror(keys):
             for k in keys:
@@ -885,6 +795,14 @@ class ContinuousManager:
             ]
 
 
+        # Emit header in the same shape continuous_collection.sh writes, so
+        # `manage_continuous.py logs --job N --gpu G` greps work in persistent mode too.
+        print("=" * 42)
+        print(f"[GPU {job.get('gpu', '?')}] Starting Job #{job['id']}")
+        print(f"Agent: {agent_name}")
+        print(f"Route: {route_name}")
+        print(f"Weather: {weather_idx}")
+        print("=" * 42)
         print(f"[RUN] Job {job['id']} agent={agent_name} route={route_name} weather={weather_idx}")
         gpu_id_for_display = job['gpu'] if job.get('gpu') is not None else self._derive_gpu_id(port)
         self._write_health(
@@ -897,19 +815,6 @@ class ContinuousManager:
         )
 
         start_ts = time.time()
-        _append_event(self.state_dir, {
-            "event": "job_start",
-            "job_id": job.get("id"),
-            "gpu_id": job.get("gpu"),
-            "agent": agent_name,
-            "route": route_name,
-            "town": town,
-            "weather": weather_idx,
-            "rpc_port": int(port),
-            "tm_port": int(tm_port),
-            "checkpoint": env.get("CHECKPOINT_ENDPOINT"),
-            "dataset_dir": env.get("SAVE_PATH"),
-        })
         try:
             rc = subprocess.call(cmd, env=env)
         except KeyboardInterrupt:
@@ -917,10 +822,7 @@ class ContinuousManager:
         end_ts = time.time()
 
         def _finish():
-            duration_s = float(max(0.0, end_ts - start_ts))
-            duration = int(duration_s)
-            checkpoint_path = Path(env.get('CHECKPOINT_ENDPOINT', ''))
-            ckpt_metrics = _extract_checkpoint_metrics(checkpoint_path)
+            duration = int(end_ts - start_ts)
             with open(self.queue_file, 'r') as f:
                 q = json.load(f)
             for j in q['jobs']:
@@ -928,20 +830,7 @@ class ContinuousManager:
                     j['status'] = 'completed' if rc == 0 else 'failed'
                     j['end_time'] = datetime.utcnow().isoformat() + 'Z'
                     j['duration'] = duration
-                    j['duration_s'] = duration_s
-                    j['start_ts_unix'] = float(start_ts)
-                    j['end_ts_unix'] = float(end_ts)
-                    j['rc'] = int(rc)
-                    if checkpoint_path:
-                        j['checkpoint'] = str(checkpoint_path)
-                    if ckpt_metrics:
-                        j.update(ckpt_metrics)
                     break
-            # Keep the top-level counter in sync (some analysis scripts rely on it).
-            try:
-                q['completed'] = sum(1 for jj in q.get('jobs', []) if jj.get('status') == 'completed')
-            except Exception:
-                pass
             with open(self.queue_file, 'w') as f:
                 json.dump(q, f, indent=2)
 
@@ -953,35 +842,10 @@ class ContinuousManager:
             entry = dict(job)
             entry['status'] = 'completed' if rc == 0 else 'failed'
             entry['end_time'] = datetime.utcnow().isoformat() + 'Z'
-            entry['duration'] = duration
-            entry['duration_s'] = duration_s
-            entry['start_ts_unix'] = float(start_ts)
-            entry['end_ts_unix'] = float(end_ts)
-            entry['rc'] = int(rc)
-            entry['checkpoint'] = str(checkpoint_path) if checkpoint_path else None
-            if ckpt_metrics:
-                entry.update(ckpt_metrics)
+            entry['duration'] = int(end_ts - start_ts)
             comp['jobs'].append(entry)
             with open(self.completed_file, 'w') as f:
                 json.dump(comp, f, indent=2)
-
-            _append_event(self.state_dir, {
-                "event": "job_end",
-                "job_id": job.get("id"),
-                "gpu_id": job.get("gpu"),
-                "agent": agent_name,
-                "route": route_name,
-                "town": town,
-                "weather": weather_idx,
-                "rpc_port": int(port),
-                "tm_port": int(tm_port),
-                "rc": int(rc),
-                "duration_s": duration_s,
-                "final_status": "completed" if rc == 0 else "failed",
-                "score": ckpt_metrics.get("score") if isinstance(ckpt_metrics, dict) else None,
-                "checkpoint": str(checkpoint_path) if checkpoint_path else None,
-                "dataset_dir": env.get("SAVE_PATH"),
-            })
 
             gpu_id_for_display = job.get('gpu')
             if gpu_id_for_display is None:

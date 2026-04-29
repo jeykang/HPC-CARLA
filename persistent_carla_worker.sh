@@ -20,7 +20,7 @@ log="$LOG_DIR/worker_${NODE_NAME}_gpu${GPU_ID}.log"
 
 # Derive per-GPU RPC/TM ports
 RPC_PORT=$(( BASE_RPC_PORT + PORT_SPACING * GPU_ID ))
-TM_PORT=$(( TM_OFFSET + PORT_SPACING * GPU_ID ))
+TM_PORT=$(( RPC_PORT + TM_OFFSET ))
 
 # Emit initial heartbeat
 python3 - <<'PY' "$STATE_DIR/health" "$NODE_NAME" "$GPU_ID" "$RPC_PORT" "$TM_PORT"

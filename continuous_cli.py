@@ -151,7 +151,8 @@ class ContinuousCLI:
             self.worker_script = self.project_root / 'persistent_carla_worker.sh'
         else:
             self.coordinator_script = self.project_root / 'continuous_collection.sh'
-            self.monitor_script = self.project_root / 'monitor_continuous.py'
+            # Original mode has no dedicated monitor script; monitor() loops `status` instead.
+            self.monitor_script = None
             self.worker_script = None
         
         self.manager_script = self.project_root / 'manage_continuous.py'
@@ -588,14 +589,21 @@ class ContinuousCLI:
                 cmd.append('status')
             else:
                 cmd.extend(['monitor', '--interval', '30'])
-        else:
-            # Use original monitor for standard mode
-            cmd = ['python3', str(self.monitor_script)]
-            if once:
-                cmd.append('--once')
-        
+            try:
+                subprocess.run(cmd)
+            except KeyboardInterrupt:
+                pass
+            return
+
+        # Original mode: loop manage_continuous.py status (no dedicated monitor binary).
         try:
-            subprocess.run(cmd)
+            if once:
+                subprocess.run(['python3', str(self.manager_script), 'status'])
+            else:
+                while True:
+                    os.system('clear')
+                    subprocess.run(['python3', str(self.manager_script), 'status'])
+                    time.sleep(30)
         except KeyboardInterrupt:
             pass
     
@@ -707,11 +715,21 @@ class ContinuousCLI:
     def logs(self, tail: bool = False, job_id: Optional[int] = None, 
         gpu_id: Optional[int] = None):
         """View logs"""
+        # Resolve a GPU's log file across naming schemes:
+        #   continuous_collection.sh   -> node_<NODE>_gpu<id>_consolidated.log
+        #   persistent_carla_worker.sh -> worker_<NODE>_gpu<id>.log
+        def _find_gpu_log(gid):
+            for pattern in (f'*gpu{gid}_consolidated.log', f'worker_*_gpu{gid}.log', f'*gpu{gid}*.log'):
+                matches = sorted(self.log_dir.glob(pattern), key=lambda p: p.stat().st_mtime, reverse=True)
+                if matches:
+                    return matches[0]
+            return None
+
         if job_id is not None:
             # For specific job, grep from consolidated log
             if gpu_id is not None:
-                log = self.log_dir / f'gpu{gpu_id}_consolidated.log'
-                if log.exists():
+                log = _find_gpu_log(gpu_id)
+                if log is not None:
                     # Search for specific job in the consolidated log
                     import subprocess
                     result = subprocess.run(
@@ -719,23 +737,18 @@ class ContinuousCLI:
                         capture_output=True, text=True
                     )
                     if result.stdout:
-                        print(f"\n=== Job {job_id} from GPU {gpu_id} log ===")
+                        print(f"\n=== Job {job_id} from GPU {gpu_id} log ({log.name}) ===")
                         print(result.stdout)
                     else:
-                        print(f"Job {job_id} not found in GPU {gpu_id} log")
+                        print(f"Job {job_id} not found in GPU {gpu_id} log ({log.name})")
                 else:
                     print(f"No consolidated log found for GPU {gpu_id}")
             else:
                 print("Please specify GPU ID to search for job")
-        
+
         elif gpu_id is not None:
-            # Show GPU consolidated log
-            log = self.log_dir / f'gpu{gpu_id}_consolidated.log'
-            if not log.exists():
-                # Fallback to persistent mode naming
-                log = self.log_dir / f'persistent_worker_gpu{gpu_id}.log'
-            
-            if log.exists():
+            log = _find_gpu_log(gpu_id)
+            if log is not None:
                 if tail:
                     subprocess.run(['tail', '-f', str(log)])
                 else:
@@ -745,10 +758,8 @@ class ContinuousCLI:
                 print(f"No log found for GPU {gpu_id}")
         
         else:
-            # Show summary of all GPU logs
-            gpu_logs = sorted(self.log_dir.glob('gpu*_consolidated.log'))
-            if not gpu_logs:
-                gpu_logs = sorted(self.log_dir.glob('*gpu*.log'))
+            # Show summary of all GPU logs (covers both naming schemes)
+            gpu_logs = sorted(self.log_dir.glob('*gpu*.log'))
             
             if gpu_logs:
                 print("Available GPU logs:")

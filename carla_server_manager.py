@@ -97,7 +97,7 @@ def _build_run_args(rpc: int, tm: int) -> List[str]:
         "-B", f"{str(PROJECT_ROOT)}:/workspace",  # mount project at /workspace for Python sidecars
         SIF_PATH,
         "-opengl",
-        "-RenderOffscreen",
+        "-RenderOffScreen",
         "-quality-level=Epic",
         f"-carla-rpc-port={rpc}",
         f"-trafficManagerPort={tm}",

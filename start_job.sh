@@ -23,27 +23,42 @@ if [[ ! -f "${CARLA_SIF}" ]]; then
 fi
 
 # --- Container binds ---------------------------------------------------------
-BIND_SPEC="${PROJECT_ROOT}:/workspace"
+# Workspace bind (project tree -> /workspace inside container).
+BIND_SPECS=( "${PROJECT_ROOT}:/workspace" )
 
-# Singularity env
-if [[ -z "${SINGULARITY_BINDPATH:-}" ]]; then
-  export SINGULARITY_BINDPATH="${BIND_SPEC}"
+# Workaround for missing libnvidia-gpucomp.so inside the container.
+# Driver 575.x split GPU compute code into a new userspace lib that this
+# cluster's Singularity --nv (legacy nvliblist.conf) doesn't auto-bind.
+# UE4 4.24's RHI dlopens libGLX_nvidia.so.0 / libnvidia-glcore.so.575.57.08,
+# both of which depend on libnvidia-gpucomp.so.575.57.08 — without it, UE4
+# dies before the RPC server starts. We bind it from the host into
+# /.singularity.d/libs/ where it joins the rest of the --nv-bound NVIDIA libs
+# (that dir is already on LD_LIBRARY_PATH).
+NVIDIA_GPUCOMP_HOST="/usr/lib/x86_64-linux-gnu/libnvidia-gpucomp.so.575.57.08"
+if [[ -e "${NVIDIA_GPUCOMP_HOST}" ]]; then
+  # Bind onto a placeholder pre-created in the SIF at the SAME path. The path
+  # is on the loader's default search and on the container's LD_LIBRARY_PATH,
+  # so no LD_LIBRARY_PATH gymnastics needed. Requires the SIF to have been
+  # built from the latest .def (which contains a `touch` of this path).
+  BIND_SPECS+=( "${NVIDIA_GPUCOMP_HOST}:${NVIDIA_GPUCOMP_HOST}" )
 else
-  case ",${SINGULARITY_BINDPATH}," in
-    *",${BIND_SPEC},"*) : ;;
-    *) export SINGULARITY_BINDPATH="${SINGULARITY_BINDPATH},${BIND_SPEC}";;
-  esac
+  echo "[start_job][WARN] ${NVIDIA_GPUCOMP_HOST} not found on host — UE4 RHI init may still fail."
 fi
 
-# Apptainer env (some clusters alias Singularity → Apptainer)
-if [[ -z "${APPTAINER_BINDPATH:-}" ]]; then
-  export APPTAINER_BINDPATH="${BIND_SPEC}"
-else
-  case ",${APPTAINER_BINDPATH}," in
-    *",${BIND_SPEC},"*) : ;;
-    *) export APPTAINER_BINDPATH="${APPTAINER_BINDPATH},${BIND_SPEC}";;
-  esac
-fi
+_bind_join() {
+  # Append each entry in BIND_SPECS to the named env var (Singularity or Apptainer
+  # bindpath), avoiding duplicates. POSIX-safe: comma-separated.
+  local var="$1"; local cur="${!var:-}"
+  for spec in "${BIND_SPECS[@]}"; do
+    case ",${cur}," in
+      *",${spec},"*) : ;;
+      *) cur="${cur:+${cur},}${spec}" ;;
+    esac
+  done
+  export "${var}=${cur}"
+}
+_bind_join SINGULARITY_BINDPATH
+_bind_join APPTAINER_BINDPATH
 
 # NOTE: Do NOT override PYTHONPATH from the host. The container’s %environment
 # already includes the CARLA egg + /workspace paths. Overriding here would drop the egg.
@@ -93,5 +108,5 @@ python3 "${PROJECT_ROOT}/continuous_cli.py" reset || true
 
 # Adjust these SLURM flags to your cluster defaults if needed
 python3 "${PROJECT_ROOT}/continuous_cli.py" --persistent start --slurm \
-  --slurm-nodelist="hpc-pr-a-pod09" \
-  --slurm-gpus=8 --slurm-nodes=1 --slurm-time=336:00:00
+  --slurm-nodelist="hpc-pr-a-pod09,hpc-pr-a-pod17" \
+  --slurm-gpus=8 --slurm-nodes=2 --slurm-time=336:00:00

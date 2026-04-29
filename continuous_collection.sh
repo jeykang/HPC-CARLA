@@ -5,7 +5,7 @@
 # ================================================================
 
 #SBATCH --job-name=continuous_collection
-#SBATCH --nodelist=hpc-pr-a-pod10,hpc-pr-a-pod11
+#SBATCH --nodelist=hpc-pr-a-pod09,hpc-pr-a-pod17
 #SBATCH --gres=gpu:16
 #SBATCH --nodes=2
 #SBATCH --time=168:00:00
@@ -346,13 +346,13 @@ gpu_worker() {
         fi
         
         # Run the job and append output to consolidated log
-        # Add a subshell to capture both stdout and stderr together
+        # Capture EXIT_CODE inside the group; otherwise $? would reflect the trailing echo (always 0).
+        EXIT_CODE=0
         {
             bash "${PROJECT_ROOT}/generate_single_job.sh" 2>&1
-            echo "Exit code: $?"
+            EXIT_CODE=$?
+            echo "Exit code: $EXIT_CODE"
         } >> "$gpu_log"
-        
-        EXIT_CODE=$?
         END_TIME=$(date +%s)
         DURATION=$((END_TIME - START_TIME))
         

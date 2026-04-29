@@ -1,0 +1,207 @@
+# carla_official_u2004_pysrc.def
+#
+# FALLBACK definition. Use only if carla_official_u2004.def (which is now on
+# Ubuntu 22.04) fails because CARLA 0.9.10's UE4 4.24 binaries don't tolerate
+# 22.04's library set (most likely culprits: libpng16 symbol versioning,
+# libssl1.1 removed in favor of libssl3, libtiff ABI drift, libcrypto rename).
+#
+# Strategy:
+#   * Base = ubuntu:20.04 (glibc 2.31, ABI matches what CARLA 0.9.13 — also
+#     20.04 — was built against; UE4 4.24 binaries from 0.9.10 are forward-
+#     compatible with the 20.04 lib set).
+#   * Python 3.7.17 built from source. The deadsnakes PPA dropped 3.7 from
+#     focal because it's upstream-EOL; building from source avoids that gap
+#     and gives us a self-contained python that can't break with future
+#     distro updates.
+#   * Everything else (pip stack, symlink, runscript) identical to the
+#     22.04 def, so the project still calls `python3` and gets 3.7.
+#
+# Glibc 2.31 is enough to satisfy the host's NVIDIA 575.x driver libs (the
+# IFUNC clock_gettime symbol is supported from glibc 2.30 onward), so this
+# still fixes the original "RPC port never opens" problem.
+#
+# Build:
+#     singularity build --fakeroot carla_official.sif carla_official_u2004_pysrc.def
+# (Python from source adds ~5 min vs the apt-package path. Total build still
+# under 30 min.)
+
+# Stage 1: source-only image; we just want the files at /home/carla
+Bootstrap: docker
+From: carlasim/carla:0.9.10.1
+Stage: carla_src
+
+# Stage 2: real container — Ubuntu 20.04 with Python 3.7 from source
+Bootstrap: docker
+From: ubuntu:20.04
+Stage: final
+
+%files from carla_src
+    /home/carla /home/carla
+
+%environment
+    export DEBIAN_FRONTEND=noninteractive
+    export LANG=en_US.UTF-8
+    export LC_ALL=en_US.UTF-8
+    export PATH="/usr/local/bin:/usr/local/sbin:${PATH:-/usr/sbin:/usr/bin:/sbin:/bin}"
+    export CARLA_ROOT=${CARLA_ROOT:-/home/carla}
+    export PYTHONPATH="$(echo ${CARLA_ROOT}/PythonAPI/carla/dist/carla-*-py*-linux-x86_64.egg):${PYTHONPATH}"
+    export PYTHONPATH="${CARLA_ROOT}/PythonAPI/carla:${PYTHONPATH}"
+    export PYTHONPATH="/workspace:/workspace/leaderboard:/workspace/scenario_runner:${PYTHONPATH}"
+
+%post
+    set -e
+    export DEBIAN_FRONTEND=noninteractive
+
+    echo "[base] apt update on Ubuntu 20.04..."
+    apt-get update
+    apt-get install -y --no-install-recommends \
+        ca-certificates curl gnupg2 software-properties-common locales
+
+    echo "[apt] enable universe repo (libvulkan1 lives there; ubuntu:20.04 default sources are main+restricted only)..."
+    add-apt-repository -y universe
+    apt-get update
+
+    echo "[locale] en_US.UTF-8..."
+    sed -i 's/^# *\(en_US\.UTF-8\)/\1/' /etc/locale.gen
+    locale-gen en_US.UTF-8
+    update-locale LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8
+    export LANG=en_US.UTF-8
+    export LC_ALL=en_US.UTF-8
+
+    echo "[apt] CARLA / UE4 runtime deps (same set as the original 18.04 def, all available in 20.04)..."
+    # libvulkan1: the Vulkan loader. UE4 4.24's renderer dlopens libvulkan.so.1
+    # even when launched with -opengl (it probes for available RHIs at startup).
+    # Without it, UE4 dies with "Vulkan Driver is required to run the engine".
+    # Lives in 'universe' which we enabled above.
+    apt-get install -y --no-install-recommends \
+        libtiff5 libjpeg-turbo8 \
+        libsm6 libxext6 libgl1-mesa-glx libglib2.0-0 libvulkan1 \
+        ffmpeg libatlas-base-dev libopenmpi-dev \
+        gcc g++ build-essential
+
+    echo "[apt-verify] confirm critical packages actually landed (apt-get install -y can silently drop packages it can't find in some edge cases)..."
+    # Fail the build LOUDLY if any critical lib is missing, instead of letting
+    # a bad SIF ship and then silently fail at runtime as has happened before.
+    for pkg in libvulkan1 libtiff5 libjpeg-turbo8 libgl1-mesa-glx libglib2.0-0; do
+        if ! dpkg-query -W -f='${Status}' "$pkg" 2>/dev/null | grep -q "install ok installed"; then
+            echo "[apt-verify][FATAL] $pkg is NOT installed after apt-get install" >&2
+            exit 1
+        fi
+        echo "[apt-verify] $pkg: $(dpkg-query -W -f='${Version}' "$pkg")"
+    done
+
+    echo "[python-build] toolchain + dev libs needed to build Python 3.7 from source..."
+    # These are what configure --with-... expects. Versions don't matter; the
+    # resulting python3.7 will dynamically link against whichever 20.04 libs
+    # are installed at build time, and those will be present at runtime.
+    apt-get install -y --no-install-recommends \
+        wget tar make pkg-config \
+        zlib1g-dev libbz2-dev liblzma-dev \
+        libssl-dev libffi-dev \
+        libsqlite3-dev libreadline-dev libncurses5-dev libncursesw5-dev \
+        libgdbm-dev uuid-dev tk-dev xz-utils
+
+    echo "[python-build] downloading Python 3.7.17 (final 3.7 release, July 2023)..."
+    cd /tmp
+    PY_VER=3.7.17
+    wget -q "https://www.python.org/ftp/python/${PY_VER}/Python-${PY_VER}.tgz"
+    tar -xzf "Python-${PY_VER}.tgz"
+    cd "Python-${PY_VER}"
+
+    echo "[python-build] configure + make (parallel, optimized)..."
+    # --enable-shared lets ctypes find libpython3.7.so.1.0 (some pkgs need it).
+    # --enable-optimizations runs PGO and adds ~3 min; well worth it for runtime perf.
+    ./configure \
+        --prefix=/usr/local \
+        --enable-shared \
+        --with-ensurepip=install \
+        --enable-optimizations \
+        LDFLAGS="-Wl,-rpath,/usr/local/lib"
+    make -j"$(nproc)"
+    # `altinstall` puts python3.7 / pip3.7 in /usr/local/bin without
+    # clobbering /usr/local/bin/python or /usr/local/bin/python3 — we manage
+    # those symlinks ourselves below.
+    make altinstall
+    cd /
+    rm -rf /tmp/Python-${PY_VER} /tmp/Python-${PY_VER}.tgz
+    ldconfig
+    /usr/local/bin/python3.7 --version
+
+    echo "[pip] upgrade toolchain (under python3.7)..."
+    /usr/local/bin/python3.7 -m pip install --no-cache-dir --upgrade 'pip<24' setuptools wheel
+    /usr/local/bin/python3.7 -m pip install --no-cache-dir cython==0.29.33
+
+    echo "[pip] PyTorch under python3.7 (cu113 wheels carry their own CUDA; libcuda comes from host)..."
+    /usr/local/bin/python3.7 -m pip install --no-cache-dir \
+        torch==1.10.1+cu113 torchvision==0.11.2+cu113 \
+        -f https://download.pytorch.org/whl/cu113/torch_stable.html
+
+    echo "[pip] core scientific + ML stack under python3.7 (versions match the original SIF)..."
+    # timm pinned to 0.6.13 + safetensors pinned to 0.4.5 — see comment in
+    # carla_official_u2004.def for the puccinialin/py3.9 build issue these avoid.
+    /usr/local/bin/python3.7 -m pip install --no-cache-dir \
+        numpy scipy pandas scikit-learn scikit-image \
+        pytorch-lightning==1.2.5 stable-baselines3==0.8.0 gym==0.17.2 ray==1.1.0 \
+        albumentations==1.1.0 imgaug==0.4.0 einops==0.4.1 \
+        opencv-python opencv-python-headless pillow imageio imageio-ffmpeg moviepy \
+        shapely xmlschema lmdb pycocotools==2.0.3 pyquaternion nuscenes-devkit==1.1.0 \
+        efficientnet-pytorch fvcore timm==0.6.13 safetensors==0.4.5 yacs hydra-core==1.1.1 omegaconf
+
+    echo "[pip] agent-specific utilities under python3.7..."
+    /usr/local/bin/python3.7 -m pip install --no-cache-dir \
+        py-trees==0.8.3 carla-birdeye-view==1.1.1 ephem dictor easydict filelock \
+        elementpath configparser pydot pyglet pygame open3d==0.9.0.0 \
+        torchmetrics tensorboard tensorboardX wandb==0.15.11
+
+    echo "[python-default] Make 'python3' resolve to our 3.7 at runtime..."
+    # /usr/local/bin already precedes /usr/bin in default PATH; symlinks here
+    # win over /usr/bin/python3 (the system 3.8 on 20.04). System python3
+    # stays intact for apt and any other distro tooling.
+    ln -sf /usr/local/bin/python3.7 /usr/local/bin/python3
+    ln -sf /usr/local/bin/python3.7 /usr/local/bin/python
+    /usr/local/bin/python3 --version
+    /usr/local/bin/python3 -c "import sys; print('python3 ->', sys.executable)"
+
+    echo "[carla] normalize permissions on copied tree..."
+    chmod -R a+rX /home/carla || true
+    chmod a+x /home/carla/CarlaUE4.sh \
+              /home/carla/CarlaUE4/Binaries/Linux/CarlaUE4-Linux-Shipping || true
+
+    echo "[bind-placeholder] Pre-create 0-byte file so start_job.sh can bind-mount the host's libnvidia-gpucomp over it..."
+    # Driver 575.x split GPU compute code into a new userspace lib that this
+    # cluster's Singularity --nv (legacy nvliblist.conf) doesn't auto-bind.
+    # UE4's RHI dlopens libGLX_nvidia which depends on it; without it, UE4 dies
+    # before binding the RPC port. start_job.sh sets SINGULARITY_BINDPATH to
+    # mount the host's real file over THIS placeholder. Singularity's --bind
+    # for files requires the destination to already exist; this guarantees it.
+    # /usr/lib/x86_64-linux-gnu is on the loader's default search path AND on
+    # the container's LD_LIBRARY_PATH, so no extra ld config needed.
+    touch /usr/lib/x86_64-linux-gnu/libnvidia-gpucomp.so.575.57.08
+
+    echo "[ldconfig] refresh /etc/ld.so.cache so newly-apt-installed libs (libvulkan1) are findable..."
+    # apt's postinst usually does this, but doing it explicitly here insulates
+    # us from any apt quirk where the cache wasn't refreshed.
+    ldconfig
+
+    echo "[clean] strip apt caches + build artifacts to keep SIF small..."
+    apt-get clean
+    rm -rf /var/lib/apt/lists/*
+    # See companion def for rationale: don't sweep /tmp/* — bind mounts and
+    # systemd-private dirs there break rm under fakeroot.
+    rm -rf /root/.cache/pip || true
+
+%runscript
+    exec "${CARLA_ROOT}/CarlaUE4.sh" -nosound "$@"
+
+%labels
+    Maintainer  HPC-CARLA project
+    Origin      Fallback for carla_official_u2004.def — Ubuntu 20.04 base, Python 3.7 from source
+    CARLA       0.9.10.1 (binaries copied from carlasim/carla:0.9.10.1)
+    Python      3.7.17 (built from source) selected via /usr/local/bin/python3 -> python3.7
+    Reason      Use this if Ubuntu 22.04 base broke CARLA 0.9.10 binaries
+
+%help
+    Same intent as carla_official_u2004.def, but built on Ubuntu 20.04 to
+    preserve the lib environment CARLA 0.9.10 expects, with Python 3.7
+    compiled from source (deadsnakes dropped 3.7 on focal). Glibc 2.31 is
+    sufficient for the host NVIDIA 575.x driver libs.

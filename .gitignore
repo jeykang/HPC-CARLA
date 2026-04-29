@@ -229,3 +229,5 @@ docker/
 
 #backup logs
 logs_bak/
+
+plots/

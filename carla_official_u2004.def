@@ -1,0 +1,217 @@
+# carla_official_u2004.def  (filename retained for continuity; base is 22.04)
+#
+# Rebased Singularity definition for the CARLA-HPC pipeline.
+# Why this exists: the host's NVIDIA driver (575.x, May 2025) was rebuilt against
+# glibc >= 2.31 and uses IFUNC dispatch for clock_gettime. The original SIF was
+# built on carlasim/carla:0.9.10.1 (Ubuntu 18.04, glibc 2.27), so any dlopen of
+# libEGL_nvidia.so.0 / libGLX_nvidia.so.0 inside that container segfaults during
+# dynamic-link relocation. UE4's GL/Vulkan RHI dies before reaching its RPC
+# bind() call, hence "RPC port never opens, no log file" symptoms. CUDA-only
+# code paths (nvidia-smi, libcuda, libnvidia-ml) avoid the IFUNC and still work,
+# which is why -nullrhi worked but -opengl/-vulkan didn't.
+#
+# This rebase keeps CARLA at 0.9.10.1, leaderboard, scenario_runner, team_code,
+# the Python API, and EVERY project script unchanged. Only the container's base
+# OS moves to Ubuntu 22.04 (glibc 2.35) — required because the deadsnakes PPA
+# dropped python3.7 from focal/20.04 (it's EOL upstream), but jammy/22.04 still
+# ships it. CARLA's UE4 4.24 binaries are forward-compatible with the newer
+# glibc; PyTorch 1.10.1+cu113 wheels are too (manylinux2014 baseline).
+#
+# Multi-stage build: stage `carla_src` is just a thin wrapper over the original
+# Docker image so we can copy /home/carla out of it. Stage `final` is what
+# actually gets shipped.
+#
+# Build (on a node that allows it, with --fakeroot or root):
+#     singularity build --fakeroot carla_official.sif carla_official_u2004.def
+# or:
+#     apptainer build --fakeroot carla_official.sif carla_official_u2004.def
+#
+# To verify the fix worked, after build:
+#     srun -w hpc-pr-a-pod09 --gpus=1 singularity exec --nv carla_official.sif \
+#          python3 -c 'import ctypes; ctypes.CDLL("libEGL_nvidia.so.0"); print("OK")'
+# Expect "OK", not a segfault. Then resubmit start_job.sh as before.
+
+# --------------------------------------------------------------------------
+# Stage 1: source-only image; we just want the files at /home/carla
+# --------------------------------------------------------------------------
+Bootstrap: docker
+From: carlasim/carla:0.9.10.1
+Stage: carla_src
+
+
+# --------------------------------------------------------------------------
+# Stage 2: real container — Ubuntu 20.04 (glibc 2.31) with CARLA copied in
+# --------------------------------------------------------------------------
+Bootstrap: docker
+From: ubuntu:22.04
+Stage: final
+
+%files from carla_src
+    # CARLA install tree (UE4 binaries, PythonAPI eggs, content, plugins).
+    # Copying the whole HOME preserves the layout the runscript and the
+    # PYTHONPATH below expect. Ownership is normalized in %post.
+    /home/carla /home/carla
+
+%environment
+    export DEBIAN_FRONTEND=noninteractive
+    export LANG=en_US.UTF-8
+    export LC_ALL=en_US.UTF-8
+    # Ensure /usr/local/bin (where we put the python3 -> python3.7 symlink)
+    # wins over /usr/bin (where the system python3 = 3.10 lives). Inherited
+    # PATH on cluster nodes can be sparse; prepend explicitly.
+    export PATH="/usr/local/bin:/usr/local/sbin:${PATH:-/usr/sbin:/usr/bin:/sbin:/bin}"
+    export CARLA_ROOT=${CARLA_ROOT:-/home/carla}
+    export PYTHONPATH="$(echo ${CARLA_ROOT}/PythonAPI/carla/dist/carla-*-py*-linux-x86_64.egg):${PYTHONPATH}"
+    export PYTHONPATH="${CARLA_ROOT}/PythonAPI/carla:${PYTHONPATH}"
+    export PYTHONPATH="/workspace:/workspace/leaderboard:/workspace/scenario_runner:${PYTHONPATH}"
+
+%post
+    set -e
+    export DEBIAN_FRONTEND=noninteractive
+
+    echo "[base] apt update on Ubuntu 20.04..."
+    apt-get update
+    apt-get install -y --no-install-recommends \
+        ca-certificates curl gnupg2 software-properties-common locales
+
+    echo "[apt] enable universe repo (libvulkan1 lives there; default ubuntu image only has main+restricted)..."
+    add-apt-repository -y universe
+    apt-get update
+
+    echo "[locale] en_US.UTF-8..."
+    sed -i 's/^# *\(en_US\.UTF-8\)/\1/' /etc/locale.gen
+    locale-gen en_US.UTF-8
+    update-locale LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8
+    export LANG=en_US.UTF-8
+    export LC_ALL=en_US.UTF-8
+
+    echo "[apt] CARLA / UE4 runtime deps..."
+    # Same set as the original 18.04 def, validated to exist on 20.04:
+    #  - libtiff5, libjpeg-turbo8 : UE4 4.24 binaries link against these SONAMEs
+    #  - libsm6, libxext6, libgl1-mesa-glx, libglib2.0-0 : standard X/GL stubs
+    #  - ffmpeg, libatlas-base-dev, libopenmpi-dev : Python ML deps below
+    # libvulkan1: Vulkan loader (UE4 dlopens libvulkan.so.1 at startup even with -opengl).
+    apt-get install -y --no-install-recommends \
+        libtiff5 libjpeg-turbo8 \
+        libsm6 libxext6 libgl1-mesa-glx libglib2.0-0 libvulkan1 \
+        ffmpeg libatlas-base-dev libopenmpi-dev \
+        gcc g++ build-essential
+
+    echo "[apt-verify] fail loudly if any critical pkg silently didn't install..."
+    for pkg in libvulkan1 libtiff5 libjpeg-turbo8 libgl1-mesa-glx libglib2.0-0; do
+        if ! dpkg-query -W -f='${Status}' "$pkg" 2>/dev/null | grep -q "install ok installed"; then
+            echo "[apt-verify][FATAL] $pkg is NOT installed after apt-get install" >&2
+            exit 1
+        fi
+        echo "[apt-verify] $pkg: $(dpkg-query -W -f='${Version}' "$pkg")"
+    done
+
+    echo "[python] system python3 + deadsnakes for 3.7 (CARLA Python API egg targets py3.7)..."
+    # deadsnakes dropped python3.6/3.7 from focal (20.04) because both are EOL,
+    # but jammy (22.04) still ships 3.7. python3.6 is dropped entirely — the
+    # project's CARLA egg is py3.7, and 3.6 was vestigial in the original def.
+    add-apt-repository ppa:deadsnakes/ppa -y
+    apt-get update
+    apt-get install -y --no-install-recommends \
+        python3 python3-pip python3-setuptools python3-dev \
+        python3.7 python3.7-dev python3.7-distutils python3.7-venv
+    # System python3 on 22.04 is 3.10. The CARLA egg is py3.7, so the
+    # %environment PYTHONPATH glob picks up the matching .egg at import time
+    # ONLY when the caller invokes /usr/bin/python3.7. The pip stack below is
+    # installed against python3.7 (not the system 3.10) for that reason.
+
+    echo "[pip] bootstrap pip for python3.7 (apt's python3-pip targets system 3.10, not 3.7)..."
+    # 3.7 isn't the system default on 22.04, so it doesn't come with pip preinstalled.
+    # get-pip.py is the standard bootstrap; pinned to a version that still supports 3.7.
+    curl -sSL https://bootstrap.pypa.io/pip/3.7/get-pip.py -o /tmp/get-pip.py
+    /usr/bin/python3.7 /tmp/get-pip.py
+    rm -f /tmp/get-pip.py
+
+    echo "[pip] upgrade toolchain (under python3.7)..."
+    /usr/bin/python3.7 -m pip install --no-cache-dir --upgrade 'pip<24' setuptools wheel
+    # ^ pip 24+ dropped python 3.7 support; pin <24 to keep installing 3.7 wheels.
+    /usr/bin/python3.7 -m pip install --no-cache-dir cython==0.29.33
+
+    echo "[pip] PyTorch under python3.7 (cu113 wheels carry their own CUDA; libcuda comes from host)..."
+    /usr/bin/python3.7 -m pip install --no-cache-dir \
+        torch==1.10.1+cu113 torchvision==0.11.2+cu113 \
+        -f https://download.pytorch.org/whl/cu113/torch_stable.html
+
+    echo "[pip] core scientific + ML stack under python3.7 (versions match the original SIF)..."
+    # timm: pinned to 0.6.13 — last release before the 0.9 series, has no
+    #   safetensors dep, pure Python, supports py3.7. Newer timm (0.9.x) pulls
+    #   safetensors==0.5.3, whose build-time `puccinialin` requires py>=3.9.
+    # safetensors: pinned defensively in case any other package pulls it in.
+    #   0.4.5 ships cp37 wheels (no source build → no puccinialin gate).
+    /usr/bin/python3.7 -m pip install --no-cache-dir \
+        numpy scipy pandas scikit-learn scikit-image \
+        pytorch-lightning==1.2.5 stable-baselines3==0.8.0 gym==0.17.2 ray==1.1.0 \
+        albumentations==1.1.0 imgaug==0.4.0 einops==0.4.1 \
+        opencv-python opencv-python-headless pillow imageio imageio-ffmpeg moviepy \
+        shapely xmlschema lmdb pycocotools==2.0.3 pyquaternion nuscenes-devkit==1.1.0 \
+        efficientnet-pytorch fvcore timm==0.6.13 safetensors==0.4.5 yacs hydra-core==1.1.1 omegaconf
+
+    echo "[pip] agent-specific utilities under python3.7..."
+    /usr/bin/python3.7 -m pip install --no-cache-dir \
+        py-trees==0.8.3 carla-birdeye-view==1.1.1 ephem dictor easydict filelock \
+        elementpath configparser pydot pyglet pygame open3d==0.9.0.0 \
+        torchmetrics tensorboard tensorboardX wandb==0.15.11
+
+    echo "[python-default] Make 'python3' resolve to 3.7 at runtime via /usr/local/bin (PATH-precedence)..."
+    # /usr/local/bin precedes /usr/bin in the default PATH, so this overrides
+    # the system 3.10 for shell callers (which all the project's orchestration
+    # scripts and EVAL_CMD_TEMPLATE use: `python3 -m leaderboard.leaderboard_evaluator`).
+    # We deliberately do NOT replace /usr/bin/python3 — keeping the system
+    # binary intact means this step can't break apt or other distro tools that
+    # might run during %post or future container customization.
+    ln -sf /usr/bin/python3.7 /usr/local/bin/python3
+    ln -sf /usr/bin/python3.7 /usr/local/bin/python
+    /usr/local/bin/python3 --version
+    /usr/local/bin/python3 -c "import sys; print('python3 ->', sys.executable)"
+
+    echo "[carla] normalize permissions on copied tree..."
+    # /home/carla was copied from a docker image whose `carla` user (uid 1000)
+    # may not exist here; ensure everything is world-readable and binaries are
+    # executable so any caller (autodr_test on the cluster) can run them.
+    chmod -R a+rX /home/carla || true
+    chmod a+x /home/carla/CarlaUE4.sh \
+              /home/carla/CarlaUE4/Binaries/Linux/CarlaUE4-Linux-Shipping || true
+
+    echo "[bind-placeholder] Pre-create 0-byte file so start_job.sh can bind the host's libnvidia-gpucomp over it (Singularity file binds need pre-existing destinations)..."
+    touch /usr/lib/x86_64-linux-gnu/libnvidia-gpucomp.so.575.57.08
+
+    echo "[ldconfig] refresh /etc/ld.so.cache so libvulkan1 is findable..."
+    ldconfig
+
+    echo "[clean] strip apt caches to keep SIF small..."
+    apt-get clean
+    rm -rf /var/lib/apt/lists/*
+    # Do NOT 'rm -rf /tmp/*' — under fakeroot/--fakeroot the build wrapper has
+    # bind-mounted /proc, /dev, /sys, /etc/resolv.conf, /etc/hosts under /tmp,
+    # and root-owned systemd-private-* dirs are also there. rm fails on those
+    # (Device or resource busy / Operation not permitted) and that fails the
+    # whole build. pip --no-cache-dir already keeps /tmp clean of our stuff.
+    rm -rf /root/.cache/pip || true
+
+%runscript
+    # Identical to the original SIF — orchestration scripts pass UE4/CARLA
+    # flags as "$@". -nosound is added unconditionally to suppress audio init.
+    exec "${CARLA_ROOT}/CarlaUE4.sh" -nosound "$@"
+
+%labels
+    Maintainer  HPC-CARLA project
+    Origin      carla_official.def (Ubuntu 18.04 base) — rebased to 22.04
+    CARLA       0.9.10.1 (binaries copied from carlasim/carla:0.9.10.1)
+    Python      3.7 (deadsnakes/jammy) selected via /usr/local/bin/python3 -> /usr/bin/python3.7
+    Reason      Fixes glibc 2.27 vs host NVIDIA 575.x IFUNC clock_gettime crash
+
+%help
+    Drop-in replacement for the original carla_official.sif. Same CARLA
+    version, same Python API, same runscript, same PYTHONPATH layout.
+    Only differences:
+      * Built on Ubuntu 22.04 (glibc 2.35) instead of 18.04 (glibc 2.27).
+        Lets the host's modern NVIDIA driver libs load inside the container
+        without segfaulting on IFUNC clock_gettime.
+      * python3 inside the container resolves to /usr/bin/python3.7 (matches
+        the CARLA Python API egg's ABI tag). System /usr/bin/python3 is
+        still Ubuntu's 3.10 — only /usr/local/bin/python3 is overridden.

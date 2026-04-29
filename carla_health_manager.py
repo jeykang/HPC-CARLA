@@ -187,6 +187,27 @@ def cmd_restart(args):
     flag.write_text(_iso())
     print(f"Requested restart for {node} GPU {gpu_id}: {flag}")
 
+def cmd_log(args):
+    """Tail the worker log for one GPU. Searches both persistent and original-mode names."""
+    log_dir = Path(os.environ.get('LOG_DIR', PROJECT_ROOT / 'logs'))
+    gpu_id = int(args.gpu_id)
+    candidates = []
+    for pattern in (f'worker_*_gpu{gpu_id}.log', f'*gpu{gpu_id}_consolidated.log', f'*gpu{gpu_id}*.log'):
+        candidates.extend(sorted(log_dir.glob(pattern), key=lambda p: p.stat().st_mtime, reverse=True))
+    seen = set(); ordered = []
+    for p in candidates:
+        if p not in seen:
+            seen.add(p); ordered.append(p)
+    if not ordered:
+        print(f"No log found for GPU {gpu_id} under {log_dir}")
+        return
+    log = ordered[0]
+    print(f"=== {log} ===")
+    if args.follow:
+        subprocess.call(['tail', '-n', str(args.lines), '-f', str(log)])
+    else:
+        subprocess.call(['tail', '-n', str(args.lines), str(log)])
+
 def cmd_cleanup(args):
     beats = _scan_beats(stale_after=args.stale_after); removed = 0
     for b in beats:
@@ -211,6 +232,12 @@ def main():
     p_restart = sub.add_parser('restart', help='request restart for a GPU')
     p_restart.add_argument('gpu_id', type=int); p_restart.add_argument('--node', type=str, default=None)
     p_restart.set_defaults(func=cmd_restart)
+
+    p_log = sub.add_parser('log', help='show recent worker log lines for a GPU')
+    p_log.add_argument('gpu_id', type=int)
+    p_log.add_argument('--lines', type=int, default=200)
+    p_log.add_argument('-f', '--follow', action='store_true')
+    p_log.set_defaults(func=cmd_log)
 
     p_cleanup = sub.add_parser('cleanup', help='remove stale heartbeat files')
     p_cleanup.add_argument('--stale-after', type=int, default=300)
