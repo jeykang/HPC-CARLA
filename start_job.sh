@@ -23,27 +23,38 @@ if [[ ! -f "${CARLA_SIF}" ]]; then
 fi
 
 # --- Container binds ---------------------------------------------------------
-BIND_SPEC="${PROJECT_ROOT}:/workspace"
+# Workspace bind (project tree -> /workspace inside container).
+BIND_SPECS=( "${PROJECT_ROOT}:/workspace" )
 
-# Singularity env
-if [[ -z "${SINGULARITY_BINDPATH:-}" ]]; then
-  export SINGULARITY_BINDPATH="${BIND_SPEC}"
-else
-  case ",${SINGULARITY_BINDPATH}," in
-    *",${BIND_SPEC},"*) : ;;
-    *) export SINGULARITY_BINDPATH="${SINGULARITY_BINDPATH},${BIND_SPEC}";;
-  esac
-fi
+# Workaround for missing libnvidia-gpucomp.so inside the container.
+# Driver 575.x split GPU compute code into a new userspace lib that this
+# cluster's Singularity --nv (legacy nvliblist.conf) doesn't auto-bind.
+# UE4 4.24's RHI dlopens libGLX_nvidia.so.0 / libnvidia-glcore.so.575.57.08,
+# both of which depend on libnvidia-gpucomp.so.575.57.08 — without it, UE4
+# dies before the RPC server starts. We bind it from the host into
+# /.singularity.d/libs/ where it joins the rest of the --nv-bound NVIDIA libs
+# (that dir is already on LD_LIBRARY_PATH).
+NVIDIA_GPUCOMP_HOST="/usr/lib/x86_64-linux-gnu/libnvidia-gpucomp.so.575.57.08"
+# Bind unconditionally: the SIF contains a 0-byte placeholder at this path so
+# the bind destination always exists. The host file is absent on the login node
+# but present on compute nodes — the existence check was incorrectly running on
+# the login node and silently skipping the bind every time.
+BIND_SPECS+=( "${NVIDIA_GPUCOMP_HOST}:${NVIDIA_GPUCOMP_HOST}" )
 
-# Apptainer env (some clusters alias Singularity → Apptainer)
-if [[ -z "${APPTAINER_BINDPATH:-}" ]]; then
-  export APPTAINER_BINDPATH="${BIND_SPEC}"
-else
-  case ",${APPTAINER_BINDPATH}," in
-    *",${BIND_SPEC},"*) : ;;
-    *) export APPTAINER_BINDPATH="${APPTAINER_BINDPATH},${BIND_SPEC}";;
-  esac
-fi
+_bind_join() {
+  # Append each entry in BIND_SPECS to the named env var (Singularity or Apptainer
+  # bindpath), avoiding duplicates. POSIX-safe: comma-separated.
+  local var="$1"; local cur="${!var:-}"
+  for spec in "${BIND_SPECS[@]}"; do
+    case ",${cur}," in
+      *",${spec},"*) : ;;
+      *) cur="${cur:+${cur},}${spec}" ;;
+    esac
+  done
+  export "${var}=${cur}"
+}
+_bind_join SINGULARITY_BINDPATH
+_bind_join APPTAINER_BINDPATH
 
 # NOTE: Do NOT override PYTHONPATH from the host. The container’s %environment
 # already includes the CARLA egg + /workspace paths. Overriding here would drop the egg.
@@ -59,10 +70,19 @@ echo "[start_job] APPTAINER_BINDPATH=${APPTAINER_BINDPATH}"
 
 # --- Command template for the evaluator -------------------------------------
 # Escape ${CARLA_SIF} so Python .format() doesn’t treat it as a placeholder.
+# The -B for libnvidia-gpucomp is the same workaround applied in
+# carla_server_manager.py: driver 575.x split GPU compute into a new lib that
+# the cluster's --nv doesn't auto-bind. Without this bind on the leaderboard
+# client too, the client's CARLA Python API would also fail to dlopen the
+# GL/Vulkan stack if it ever needs it.
 EVAL_CMD_TEMPLATE="$(cat <<'EOF'
-singularity exec --nv --pwd /workspace "${{CARLA_SIF}}" bash -lc '
+singularity exec --nv --pwd /workspace \
+  -B /usr/lib/x86_64-linux-gnu/libnvidia-gpucomp.so.575.57.08:/usr/lib/x86_64-linux-gnu/libnvidia-gpucomp.so.575.57.08 \
+  "${{CARLA_SIF}}" bash -lc '
   set -euo pipefail
   export PYTHONPATH="/workspace:/workspace/leaderboard:/workspace/scenario_runner:${{PYTHONPATH:-}}"
+  export ROUTES="{ROUTES_FILE}"
+  export SCENARIOS="{SCENARIOS_FILE}"
   python3 -m leaderboard.leaderboard_evaluator \
     --routes "{ROUTES_FILE}" \
     --scenarios "{SCENARIOS_FILE}" \
@@ -93,5 +113,5 @@ python3 "${PROJECT_ROOT}/continuous_cli.py" reset || true
 
 # Adjust these SLURM flags to your cluster defaults if needed
 python3 "${PROJECT_ROOT}/continuous_cli.py" --persistent start --slurm \
-  --slurm-nodelist="hpc-pr-a-pod09" \
-  --slurm-gpus=8 --slurm-nodes=1 --slurm-time=336:00:00
+  --slurm-nodelist="hpc-pr-a-pod09,hpc-pr-a-pod17" \
+  --slurm-gpus=8 --slurm-nodes=2 --slurm-time=336:00:00

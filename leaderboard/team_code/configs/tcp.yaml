@@ -1,11 +1,22 @@
-# TCP Agent Configuration
-model_type: generic
-model_path: /workspace/leaderboard/team_code/tcp/tcp_model.ckpt
+# TCP — modular pipeline implementation
+#
+# Replaces the legacy agent_config delegation with an explicit step-by-step
+# pipeline. Behaviour matches the original TCPAgent:
+#   - Front RGB camera (900x256, fov=100) — no spatial resize/crop needed
+#   - State vector: [speed/12, target_x, target_y, cmd_one_hot(6)] shape (1,9)
+#   - Dual control: Beta-distribution ("ctrl path") + PID on waypoints ("traj path")
+#   - Blended based on turning status (rolling 20-frame |steer| window)
+#   - straight: 0.3*ctrl + 0.7*traj; turning: 0.7*ctrl + 0.3*traj
+#
+# To revert to legacy mode, delete the `pipeline:` block and restore:
+#   agent_config:
+#     agent_file:  /workspace/leaderboard/team_code/tcp/tcp_agent.py
+#     agent_class: TCPAgent
+#     config_path: /workspace/leaderboard/team_code/tcp/tcp_model.ckpt
 
-# TCP specific sensor configuration
 sensors:
   - type: sensor.camera.rgb
-    x: -1.5  # Note: TCP uses negative x (behind usual position)
+    x: -1.5
     y: 0.0
     z: 2.0
     roll: 0.0
@@ -15,19 +26,7 @@ sensors:
     height: 256
     fov: 100
     id: rgb
-    
-  - type: sensor.camera.rgb
-    x: 0.0
-    y: 0.0
-    z: 50.0
-    roll: 0.0
-    pitch: -90.0
-    yaw: 0.0
-    width: 512
-    height: 512
-    fov: 50  # Note: TCP uses 5*10.0 = 50
-    id: bev
-    
+
   - type: sensor.other.imu
     x: 0.0
     y: 0.0
@@ -37,7 +36,7 @@ sensors:
     yaw: 0.0
     sensor_tick: 0.05
     id: imu
-    
+
   - type: sensor.other.gnss
     x: 0.0
     y: 0.0
@@ -47,15 +46,162 @@ sensors:
     yaw: 0.0
     sensor_tick: 0.01
     id: gps
-    
+
   - type: sensor.speedometer
     reading_frequency: 20
     id: speed
 
-model_config:
-  seq_len: 1
+pipeline:
 
-control:
-  target_speed: 25.0
-  brake_threshold: 0.4
-  steer_damping: 0.3
+  # ── Sensor extraction ──────────────────────────────────────────────────────
+
+  - module: team_code.pipeline_modules
+    class: ExtractCameraRGB
+    args:
+      sensor_id: rgb
+      out_key: rgb_raw
+      bgr_to_rgb: true
+
+  - module: team_code.pipeline_modules
+    class: ExtractSpeed
+    args:
+      sensor_id: speed
+      out_key: speed
+
+  - module: team_code.pipeline_modules
+    class: ExtractGNSS
+    args:
+      sensor_id: gps
+      out_key: gps_raw
+      take: 2
+
+  - module: team_code.pipeline_modules
+    class: ExtractCompass
+    args:
+      sensor_id: imu
+      out_key: compass
+
+  # ── Route planning ─────────────────────────────────────────────────────────
+
+  - module: team_code.pipeline_modules
+    class: RoutePlannerNextCommand
+    args:
+      gps_key: gps_raw
+      out_pos_key: pos
+      out_wp_key: next_waypoint
+      out_cmd_key: next_command
+      min_distance: 4.0
+      max_distance: 50.0
+      gps_in_degrees: true
+
+  - module: team_code.pipeline_modules
+    class: TargetPointFromNextWaypoint
+    args:
+      pos_key: pos
+      compass_key: compass
+      next_waypoint_key: next_waypoint
+      out_key: target_point
+
+  # ── Image transform ────────────────────────────────────────────────────────
+  # TCP uses raw 900x256 front image: ToTensor + Normalize, no resize/crop.
+
+  - module: team_code.pipeline_modules
+    class: ImageHWCToTorchCHW
+    args:
+      in_key: rgb_raw
+      out_key: rgb_t
+      resize_wh: null
+      center_crop: null
+      mean: [0.485, 0.456, 0.406]
+      std:  [0.229, 0.224, 0.225]
+      device: cuda
+      add_batch_dim: true
+
+  # ── State assembly ─────────────────────────────────────────────────────────
+  # [speed/12, target_x, target_y, cmd_one_hot(6)] → float32 tensor (1, 9)
+
+  - module: team_code.pipeline_modules
+    class: NumpyToTorch
+    args:
+      in_key: target_point
+      out_key: target_point_t
+      dtype: float32
+      add_batch_dim: true
+      device: cuda
+
+  - module: team_code.pipeline_modules
+    class: TCPStateAssemble
+    args:
+      speed_key: speed
+      target_point_key: target_point
+      cmd_key: next_command
+      out_key: tcp_state
+      device: cuda
+
+  # ── Turning status (reads previous frame's control) ────────────────────────
+
+  - module: team_code.pipeline_modules
+    class: TurningStatusDetector
+    args:
+      last_control_key: control
+      out_key: turning_status
+      window: 20
+      threshold: 0.1
+      count_thresh: 10
+
+  # ── Model inference ────────────────────────────────────────────────────────
+
+  - module: team_code.pipeline_modules
+    class: TCPModelRunner
+    args:
+      checkpoint_path: /workspace/leaderboard/team_code/tcp/tcp_model.ckpt
+      img_key: rgb_t
+      state_key: tcp_state
+      target_point_key: target_point_t
+      out_key: tcp_pred
+      device: cuda
+
+  # ── Dual control paths ─────────────────────────────────────────────────────
+
+  - module: team_code.pipeline_modules
+    class: TCPBetaControl
+    args:
+      pred_key: tcp_pred
+      out_key: ctrl_ctrl
+      brake_speed: 0.4
+      brake_ratio: 1.1
+      clip_delta: 0.25
+      max_throttle: 0.75
+
+  - module: team_code.pipeline_modules
+    class: TCPPIDControl
+    args:
+      pred_key: tcp_pred
+      speed_key: speed
+      out_key: ctrl_traj
+      aim_dist: 4.0
+      angle_thresh: 0.3
+      dist_thresh: 10.0
+      brake_speed: 0.4
+      brake_ratio: 1.1
+      clip_delta: 0.25
+      max_throttle: 0.75
+      turn_KP: 1.25
+      turn_KI: 0.75
+      turn_KD: 0.3
+      turn_n: 40
+      speed_KP: 5.0
+      speed_KI: 0.5
+      speed_KD: 1.0
+      speed_n: 40
+      desired_speed: 4.0
+
+  # ── Blend ──────────────────────────────────────────────────────────────────
+
+  - module: team_code.pipeline_modules
+    class: TCPBlendControl
+    args:
+      ctrl_key: ctrl_ctrl
+      traj_key: ctrl_traj
+      status_key: turning_status
+      out_key: control

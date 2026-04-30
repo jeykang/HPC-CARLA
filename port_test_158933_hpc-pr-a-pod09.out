@@ -1,0 +1,51 @@
+==========================================
+RPC port binding diagnostic
+Node     : hpc-pr-a-pod09
+SIF      : /scratch/autodr_test/HPC-CARLA-persistent/carla_official.sif
+Ports    : A=50382 B=51657 C=52796
+Date     : 2026-04-28T08:52:54+09:00
+==========================================
+
+--- nvidia-smi inside container ---
+GPU 0: NVIDIA A100-SXM4-40GB (UUID: GPU-736360df-34b5-1315-5b8b-d31a78744b3d)
+GPU 1: NVIDIA A100-SXM4-40GB (UUID: GPU-0c0c0343-0a82-7258-7c81-79c42e29b972)
+GPU 2: NVIDIA A100-SXM4-40GB (UUID: GPU-4eab4554-7828-971e-a067-208069ea4eb7)
+GPU 3: NVIDIA A100-SXM4-40GB (UUID: GPU-c77d862e-a710-b1aa-0d38-b239443b6f04)
+GPU 4: NVIDIA A100-SXM4-40GB (UUID: GPU-279ac141-b406-ab59-9d38-ca36732c4fe9)
+GPU 5: NVIDIA A100-SXM4-40GB (UUID: GPU-b6b17d7a-9e3b-0fc5-46bc-c6fa81e2178b)
+GPU 6: NVIDIA A100-SXM4-40GB (UUID: GPU-928a0be7-5d57-2db4-1bf6-3a3350398e47)
+GPU 7: NVIDIA A100-SXM4-40GB (UUID: GPU-923f515a-704b-a5b5-cdaf-489dd9675b0a)
+
+--- /dev/dri inside container ---
+total 0
+drwxr-xr-x  3 root root       400 Nov 17 14:22 .
+drwxr-xr-x 21 root root      6420 Dec 19 22:51 ..
+drwxr-xr-x  2 root root       380 Nov 17 14:22 by-path
+crw-rw----  1 root video 226,   0 Nov 17 14:22 card0
+
+	libxcb-glx.so.0 (libc6,x86-64) => /usr/lib/x86_64-linux-gnu/libxcb-glx.so.0
+	libxcb-glx.so.0 (libc6) => /usr/lib/i386-linux-gnu/libxcb-glx.so.0
+	libxcb-glx.so (libc6,x86-64) => /usr/lib/x86_64-linux-gnu/libxcb-glx.so
+	libxcb-glx.so (libc6) => /usr/lib/i386-linux-gnu/libxcb-glx.so
+	libwayland-egl.so.1 (libc6,x86-64) => /usr/lib/x86_64-linux-gnu/libwayland-egl.so.1
+
+############### PROBE A : container-internal bind+connect ###############
+PROBE_A: server_bind=True client_recv_ok=True err=None
+(probe A done)
+
+############### PROBE B : host-side bind, container connect ###############
+PROBE_B: container_connect_to_host_ok=True port=51657
+(probe B done)
+
+############### PROBE C : container bind, host connects ###############
+PROBE_C: host_curl_to_container_http=200 time=0.003808
+--- host ss view ---
+LISTEN  0        5              127.0.0.1:52796          0.0.0.0:*              
+(probe C done)
+
+############### SUMMARY ###############
+If A fails  -> container can't even talk to itself (loopback / namespace problem inside container).
+If A passes but B fails -> host->container loopback broken (unlikely; would also break SLURM steps).
+If A passes but C fails -> container's listener invisible to host (bind-mount or netns separation).
+If A,B,C all pass       -> generic TCP is fine; CARLA/UE4 specifically isn't reaching the bind() call.
+Date     : 2026-04-28T08:53:02+09:00

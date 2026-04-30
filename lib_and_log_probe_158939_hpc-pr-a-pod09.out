@@ -1,0 +1,146 @@
+==========================================
+Lib visibility + UE4 log capture probe
+Node : hpc-pr-a-pod09    SIF : /scratch/autodr_test/HPC-CARLA-persistent/carla_official.sif    TMPHOME : /tmp/carla_home.5juEXn
+Date : 2026-04-28T09:06:40+09:00
+==========================================
+
+############### H1: where Singularity ACTUALLY puts NVIDIA libs ###############
+--- LD_LIBRARY_PATH ---
+/usr/lib/x86_64-linux-gnu:/usr/lib/i386-linux-gnu:/usr/local/nvidia/lib:/usr/local/nvidia/lib64:/usr/local/nvidia/lib:/usr/local/nvidia/lib64:/.singularity.d/libs
+
+--- /.singularity.d/libs/ (where --nv binds host NVIDIA libs) ---
+total 807024
+drwxr-xr-x 2 autodr_test autodr_test       780 Apr 28 09:06 .
+drwxr-xr-x 5 root        root              127 Oct 17  2025 ..
+-rw-r--r-- 1 root        root            80512 Mar  8  2022 libEGL.so.1
+-rw-r--r-- 1 root        root          1358016 May 24  2025 libEGL_nvidia.so.0
+-rw-r--r-- 1 root        root           547152 Mar  8  2022 libGL.so.1
+-rw-r--r-- 1 root        root            63896 May 24  2025 libGLESv1_CM_nvidia.so.1
+-rw-r--r-- 1 root        root           113040 May 24  2025 libGLESv2_nvidia.so.2
+-rw-r--r-- 1 root        root           141912 Mar  8  2022 libGLX.so.0
+-rw-r--r-- 1 root        root          1211968 May 24  2025 libGLX_nvidia.so.0
+-rw-r--r-- 1 root        root           715200 Mar  8  2022 libGLdispatch.so.0
+-rw-r--r-- 1 root        root            30856 Jun  9  2022 libOpenCL.so
+-rw-r--r-- 1 root        root            30856 Jan  7  2023 libOpenCL.so.1
+-rw-r--r-- 1 root        root           174408 Mar  8  2022 libOpenGL.so.0
+-rw-r--r-- 1 root        root         92316728 May 24  2025 libcuda.so
+-rw-r--r-- 1 root        root         92316728 May 24  2025 libcuda.so.1
+-rw-r--r-- 1 root        root         19234264 May 24  2025 libnvcuvid.so
+-rw-r--r-- 1 root        root         19234264 May 24  2025 libnvcuvid.so.1
+-rw-r--r-- 1 root        root           407512 May 24  2025 libnvidia-cfg.so.1
+-rw-r--r-- 1 root        root            77336 May 24  2025 libnvidia-egl-wayland.so.1
+-rw-r--r-- 1 root        root         33855376 Oct 26  2022 libnvidia-eglcore.so.515.86.01
+-rw-r--r-- 1 root        root         34488336 May 24  2025 libnvidia-eglcore.so.575.57.08
+-rw-r--r-- 1 root        root           297688 May 24  2025 libnvidia-encode.so
+-rw-r--r-- 1 root        root           297688 May 24  2025 libnvidia-encode.so.1
+-rw-r--r-- 1 root        root           335776 May 24  2025 libnvidia-fbc.so.1
+-rw-r--r-- 1 root        root         36771280 Oct 26  2022 libnvidia-glcore.so.515.86.01
+-rw-r--r-- 1 root        root         36531496 May 24  2025 libnvidia-glcore.so.575.57.08
+-rw-r--r-- 1 root        root           643944 Oct 26  2022 libnvidia-glsi.so.515.86.01
+-rw-r--r-- 1 root        root           599224 May 24  2025 libnvidia-glsi.so.575.57.08
+-rw-r--r-- 1 root        root         16700088 Oct 26  2022 libnvidia-glvkspirv.so.515.86.01
+-rw-r--r-- 1 root        root          9432880 May 24  2025 libnvidia-glvkspirv.so.575.57.08
+-rw-r--r-- 1 root        root          2291800 May 24  2025 libnvidia-ml.so.1
+-rw-r--r-- 1 root        root         86513296 May 24  2025 libnvidia-opencl.so.1
+-rw-r--r-- 1 root        root            67704 May 24  2025 libnvidia-opticalflow.so.1
+-rw-r--r-- 1 root        root         40562320 May 24  2025 libnvidia-ptxjitcompiler.so.1
+-rw-r--r-- 1 root        root         81405472 Oct 26  2022 libnvidia-rtcore.so.515.86.01
+-rw-r--r-- 1 root        root        108615744 May 24  2025 libnvidia-rtcore.so.575.57.08
+-rw-r--r-- 1 root        root            18456 Oct 26  2022 libnvidia-tls.so.515.86.01
+-rw-r--r-- 1 root        root            18632 May 24  2025 libnvidia-tls.so.575.57.08
+-rw-r--r-- 1 root        root        108819664 May 24  2025 libnvoptix.so.1
+
+--- find /usr -name libGLX_nvidia* / libEGL_nvidia* / libnvidia-* (capped) ---
+/usr/local/cuda-10.1/compat/libcuda.so
+/usr/local/cuda-10.1/compat/libcuda.so.1
+/usr/local/cuda-10.1/compat/libcuda.so.418.87.01
+/usr/local/cuda-10.1/compat/libnvidia-fatbinaryloader.so.418.87.01
+/usr/local/cuda-10.1/compat/libnvidia-ptxjitcompiler.so
+/usr/local/cuda-10.1/compat/libnvidia-ptxjitcompiler.so.1
+/usr/local/cuda-10.1/compat/libnvidia-ptxjitcompiler.so.418.87.01
+/usr/local/cuda-10.1/targets/x86_64-linux/lib/libcudart.so.10.1
+/usr/local/cuda-10.1/targets/x86_64-linux/lib/libcudart.so.10.1.243
+/usr/local/lib/python3.6/dist-packages/torchvision.libs/libcudart.053364c0.so.11.0
+/.singularity.d/libs/libnvidia-cfg.so.1
+/.singularity.d/libs/libnvidia-ptxjitcompiler.so.1
+/.singularity.d/libs/libnvidia-eglcore.so.575.57.08
+/.singularity.d/libs/libnvidia-opencl.so.1
+/.singularity.d/libs/libcuda.so.1
+/.singularity.d/libs/libnvidia-glsi.so.575.57.08
+/.singularity.d/libs/libnvidia-fbc.so.1
+/.singularity.d/libs/libnvidia-encode.so
+/.singularity.d/libs/libnvidia-encode.so.1
+/.singularity.d/libs/libcuda.so
+/.singularity.d/libs/libnvidia-eglcore.so.515.86.01
+/.singularity.d/libs/libnvidia-tls.so.575.57.08
+/.singularity.d/libs/libnvidia-rtcore.so.515.86.01
+/.singularity.d/libs/libnvidia-rtcore.so.575.57.08
+/.singularity.d/libs/libnvidia-glcore.so.515.86.01
+/.singularity.d/libs/libEGL_nvidia.so.0
+/.singularity.d/libs/libGLX_nvidia.so.0
+/.singularity.d/libs/libnvidia-tls.so.515.86.01
+/.singularity.d/libs/libnvidia-ml.so.1
+/.singularity.d/libs/libnvidia-glvkspirv.so.575.57.08
+/.singularity.d/libs/libnvidia-glsi.so.515.86.01
+/.singularity.d/libs/libnvidia-egl-wayland.so.1
+/.singularity.d/libs/libnvidia-glcore.so.575.57.08
+/.singularity.d/libs/libnvidia-opticalflow.so.1
+/.singularity.d/libs/libnvidia-glvkspirv.so.515.86.01
+
+--- dlopen test (definitive — does the dynamic loader find them?) ---
+
+--- Vulkan ICD JSON content ---
+{		"file_format_version" : "1.0.0",		"ICD": {			"library_path": "libGLX_nvidia.so.0",			"api_version" : "1.1.70"		}	}
+
+############### CARLA [baseline_opengl] rpc=55134 ###############
+  singularity flags : 
+  carla flags       : -opengl
+  (process died at t=5s)
+RESULT[baseline_opengl]: rpc_port_up=NO
+--- container stdout/stderr (last 30) ---
+chmod: changing permissions of '/home/carla/CarlaUE4/Binaries/Linux/CarlaUE4-Linux-Shipping': Read-only file system
+sh: 1: xdg-user-dir: not found
+4.24.3-0+++UE4+Release-4.24 518 0
+Disabling core dumps.
+--- UE4 Saved/Logs (looking for CarlaUE4.log) ---
+total 8
+drwxrwxr-x 2 autodr_test autodr_test 4096 Apr 28 09:06 .
+drwxrwxr-x 4 autodr_test autodr_test 4096 Apr 28 09:06 ..
+
+############### CARLA [writable_home_opengl] rpc=55228 ###############
+  singularity flags : -B /tmp/carla_home.5juEXn:/home/carla
+  carla flags       : -opengl
+  (process died at t=5s)
+RESULT[writable_home_opengl]: rpc_port_up=NO
+--- container stdout/stderr (last 30) ---
+/.singularity.d/runscript: 4: exec: /home/carla/CarlaUE4.sh: not found
+--- UE4 Saved/Logs (looking for CarlaUE4.log) ---
+total 8
+drwxrwxr-x 2 autodr_test autodr_test 4096 Apr 28 09:06 .
+drwxrwxr-x 4 autodr_test autodr_test 4096 Apr 28 09:06 ..
+
+############### CARLA [writable_home_vulkan] rpc=55138 ###############
+  singularity flags : -B /tmp/carla_home.5juEXn:/home/carla
+  carla flags       : -vulkan
+  (process died at t=5s)
+RESULT[writable_home_vulkan]: rpc_port_up=NO
+--- container stdout/stderr (last 30) ---
+/.singularity.d/runscript: 4: exec: /home/carla/CarlaUE4.sh: not found
+--- UE4 Saved/Logs (looking for CarlaUE4.log) ---
+total 8
+drwxrwxr-x 2 autodr_test autodr_test 4096 Apr 28 09:06 .
+drwxrwxr-x 4 autodr_test autodr_test 4096 Apr 28 09:06 ..
+
+############### CARLA [writable_tmpfs_opengl] rpc=55716 ###############
+  singularity flags : --writable-tmpfs -B /tmp/carla_home.5juEXn:/home/carla
+  carla flags       : -opengl
+  (process died at t=5s)
+RESULT[writable_tmpfs_opengl]: rpc_port_up=NO
+--- container stdout/stderr (last 30) ---
+/.singularity.d/runscript: 4: exec: /home/carla/CarlaUE4.sh: not found
+--- UE4 Saved/Logs (looking for CarlaUE4.log) ---
+total 8
+drwxrwxr-x 2 autodr_test autodr_test 4096 Apr 28 09:06 .
+drwxrwxr-x 4 autodr_test autodr_test 4096 Apr 28 09:06 ..
+
+############### Done 2026-04-28T09:07:09+09:00 ###############

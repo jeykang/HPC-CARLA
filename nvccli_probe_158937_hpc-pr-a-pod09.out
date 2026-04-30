@@ -1,0 +1,164 @@
+==========================================
+Singularity --nvccli vs --nv comparison
+Node : hpc-pr-a-pod09    SIF : /scratch/autodr_test/HPC-CARLA-persistent/carla_official.sif
+Date : 2026-04-28T09:01:15+09:00
+==========================================
+
+############### libs visible with --nv (nv-baseline) ###############
+--- /dev/nvidia* (full) ---
+crw-rw-rw- 1 root root 507,   0 Nov 17 14:22 /dev/nvidia-fs0
+crw-rw-rw- 1 root root 507,   1 Nov 17 14:22 /dev/nvidia-fs1
+crw-rw-rw- 1 root root 507,  10 Nov 17 14:22 /dev/nvidia-fs10
+crw-rw-rw- 1 root root 507,  11 Nov 17 14:22 /dev/nvidia-fs11
+crw-rw-rw- 1 root root 507,  12 Nov 17 14:22 /dev/nvidia-fs12
+crw-rw-rw- 1 root root 507,  13 Nov 17 14:22 /dev/nvidia-fs13
+crw-rw-rw- 1 root root 507,  14 Nov 17 14:22 /dev/nvidia-fs14
+crw-rw-rw- 1 root root 507,  15 Nov 17 14:22 /dev/nvidia-fs15
+crw-rw-rw- 1 root root 507,   2 Nov 17 14:22 /dev/nvidia-fs2
+crw-rw-rw- 1 root root 507,   3 Nov 17 14:22 /dev/nvidia-fs3
+crw-rw-rw- 1 root root 507,   4 Nov 17 14:22 /dev/nvidia-fs4
+crw-rw-rw- 1 root root 507,   5 Nov 17 14:22 /dev/nvidia-fs5
+crw-rw-rw- 1 root root 507,   6 Nov 17 14:22 /dev/nvidia-fs6
+crw-rw-rw- 1 root root 507,   7 Nov 17 14:22 /dev/nvidia-fs7
+crw-rw-rw- 1 root root 507,   8 Nov 17 14:22 /dev/nvidia-fs8
+crw-rw-rw- 1 root root 507,   9 Nov 17 14:22 /dev/nvidia-fs9
+crw-rw-rw- 1 root root 195, 254 Dec  4 14:52 /dev/nvidia-modeset
+crw-rw-rw- 1 root root 236,   0 Nov 17 14:24 /dev/nvidia-nvlink
+crw-rw-rw- 1 root root 235,   0 Nov 17 14:24 /dev/nvidia-nvswitch0
+crw-rw-rw- 1 root root 235,   1 Nov 17 14:24 /dev/nvidia-nvswitch1
+crw-rw-rw- 1 root root 235,   2 Nov 17 14:24 /dev/nvidia-nvswitch2
+crw-rw-rw- 1 root root 235,   3 Nov 17 14:24 /dev/nvidia-nvswitch3
+crw-rw-rw- 1 root root 235,   4 Nov 17 14:24 /dev/nvidia-nvswitch4
+crw-rw-rw- 1 root root 235,   5 Nov 17 14:24 /dev/nvidia-nvswitch5
+crw-rw-rw- 1 root root 235, 255 Nov 17 14:24 /dev/nvidia-nvswitchctl
+crw-rw-rw- 1 root root 505,   0 Nov 17 14:24 /dev/nvidia-uvm
+crw-rw-rw- 1 root root 505,   1 Nov 17 14:24 /dev/nvidia-uvm-tools
+crw-rw-rw- 1 root root 195,   0 Nov 17 14:24 /dev/nvidia0
+crw-rw-rw- 1 root root 195,   1 Nov 17 14:24 /dev/nvidia1
+crw-rw-rw- 1 root root 195,   2 Nov 17 14:24 /dev/nvidia2
+crw-rw-rw- 1 root root 195,   3 Nov 17 14:24 /dev/nvidia3
+crw-rw-rw- 1 root root 195,   4 Nov 17 14:24 /dev/nvidia4
+crw-rw-rw- 1 root root 195,   5 Nov 17 14:24 /dev/nvidia5
+crw-rw-rw- 1 root root 195,   6 Nov 17 14:24 /dev/nvidia6
+crw-rw-rw- 1 root root 195,   7 Nov 17 14:24 /dev/nvidia7
+crw-rw-rw- 1 root root 195, 255 Nov 17 14:24 /dev/nvidiactl
+
+/dev/nvidia-caps:
+total 0
+drwxr-xr-x  2 root root    100 Nov 17 14:24 .
+drwxr-xr-x 21 root root   6420 Dec 19 22:51 ..
+cr--------  1 root root 237, 0 Nov 17 14:24 nvidia-cap0
+cr--------  1 root root 237, 1 Nov 17 14:24 nvidia-cap1
+cr--r--r--  1 root root 237, 2 Nov 17 14:24 nvidia-cap2
+
+--- key NVIDIA driver libs ---
+[libGLX_nvidia]
+[libEGL_nvidia]
+[libvulkan_nvidia]
+[libnvidia-glcore]
+[libnvidia-eglcore]
+[libnvidia-rtcore]
+[libnvidia-ml]
+[libcuda]
+	libcudart.so.10.1 (libc6,x86-64) => /usr/local/cuda-10.1/targets/x86_64-linux/lib/libcudart.so.10.1
+
+--- vulkan ICD search path ---
+total 1
+drwxr-xr-x 2 root root  38 Apr 18  2020 .
+drwxr-xr-x 3 root root  28 Apr 18  2020 ..
+-rw-rw-rw- 1 root root 118 Aug 28  2020 nvidia_icd.json
+ls: cannot access '/usr/share/vulkan/icd.d': No such file or directory
+
+############### libs visible with --nvccli (nvccli) ###############
+--- /dev/nvidia* (full) ---
+crw-rw-rw- 1 root root 507,   0 Nov 17 14:22 /dev/nvidia-fs0
+crw-rw-rw- 1 root root 507,   1 Nov 17 14:22 /dev/nvidia-fs1
+crw-rw-rw- 1 root root 507,  10 Nov 17 14:22 /dev/nvidia-fs10
+crw-rw-rw- 1 root root 507,  11 Nov 17 14:22 /dev/nvidia-fs11
+crw-rw-rw- 1 root root 507,  12 Nov 17 14:22 /dev/nvidia-fs12
+crw-rw-rw- 1 root root 507,  13 Nov 17 14:22 /dev/nvidia-fs13
+crw-rw-rw- 1 root root 507,  14 Nov 17 14:22 /dev/nvidia-fs14
+crw-rw-rw- 1 root root 507,  15 Nov 17 14:22 /dev/nvidia-fs15
+crw-rw-rw- 1 root root 507,   2 Nov 17 14:22 /dev/nvidia-fs2
+crw-rw-rw- 1 root root 507,   3 Nov 17 14:22 /dev/nvidia-fs3
+crw-rw-rw- 1 root root 507,   4 Nov 17 14:22 /dev/nvidia-fs4
+crw-rw-rw- 1 root root 507,   5 Nov 17 14:22 /dev/nvidia-fs5
+crw-rw-rw- 1 root root 507,   6 Nov 17 14:22 /dev/nvidia-fs6
+crw-rw-rw- 1 root root 507,   7 Nov 17 14:22 /dev/nvidia-fs7
+crw-rw-rw- 1 root root 507,   8 Nov 17 14:22 /dev/nvidia-fs8
+crw-rw-rw- 1 root root 507,   9 Nov 17 14:22 /dev/nvidia-fs9
+crw-rw-rw- 1 root root 195, 254 Dec  4 14:52 /dev/nvidia-modeset
+crw-rw-rw- 1 root root 236,   0 Nov 17 14:24 /dev/nvidia-nvlink
+crw-rw-rw- 1 root root 235,   0 Nov 17 14:24 /dev/nvidia-nvswitch0
+crw-rw-rw- 1 root root 235,   1 Nov 17 14:24 /dev/nvidia-nvswitch1
+crw-rw-rw- 1 root root 235,   2 Nov 17 14:24 /dev/nvidia-nvswitch2
+crw-rw-rw- 1 root root 235,   3 Nov 17 14:24 /dev/nvidia-nvswitch3
+crw-rw-rw- 1 root root 235,   4 Nov 17 14:24 /dev/nvidia-nvswitch4
+crw-rw-rw- 1 root root 235,   5 Nov 17 14:24 /dev/nvidia-nvswitch5
+crw-rw-rw- 1 root root 235, 255 Nov 17 14:24 /dev/nvidia-nvswitchctl
+crw-rw-rw- 1 root root 505,   0 Nov 17 14:24 /dev/nvidia-uvm
+crw-rw-rw- 1 root root 505,   1 Nov 17 14:24 /dev/nvidia-uvm-tools
+crw-rw-rw- 1 root root 195,   0 Nov 17 14:24 /dev/nvidia0
+crw-rw-rw- 1 root root 195,   1 Nov 17 14:24 /dev/nvidia1
+crw-rw-rw- 1 root root 195,   2 Nov 17 14:24 /dev/nvidia2
+crw-rw-rw- 1 root root 195,   3 Nov 17 14:24 /dev/nvidia3
+crw-rw-rw- 1 root root 195,   4 Nov 17 14:24 /dev/nvidia4
+crw-rw-rw- 1 root root 195,   5 Nov 17 14:24 /dev/nvidia5
+crw-rw-rw- 1 root root 195,   6 Nov 17 14:24 /dev/nvidia6
+crw-rw-rw- 1 root root 195,   7 Nov 17 14:24 /dev/nvidia7
+crw-rw-rw- 1 root root 195, 255 Nov 17 14:24 /dev/nvidiactl
+
+/dev/nvidia-caps:
+total 0
+drwxr-xr-x  2 root root    100 Nov 17 14:24 .
+drwxr-xr-x 21 root root   6420 Dec 19 22:51 ..
+cr--------  1 root root 237, 0 Nov 17 14:24 nvidia-cap0
+cr--------  1 root root 237, 1 Nov 17 14:24 nvidia-cap1
+cr--r--r--  1 root root 237, 2 Nov 17 14:24 nvidia-cap2
+
+--- key NVIDIA driver libs ---
+[libGLX_nvidia]
+[libEGL_nvidia]
+[libvulkan_nvidia]
+[libnvidia-glcore]
+[libnvidia-eglcore]
+[libnvidia-rtcore]
+[libnvidia-ml]
+[libcuda]
+	libcudart.so.10.1 (libc6,x86-64) => /usr/local/cuda-10.1/targets/x86_64-linux/lib/libcudart.so.10.1
+
+--- vulkan ICD search path ---
+total 1
+drwxr-xr-x 2 root root  38 Apr 18  2020 .
+drwxr-xr-x 3 root root  28 Apr 18  2020 ..
+-rw-rw-rw- 1 root root 118 Aug 28  2020 nvidia_icd.json
+ls: cannot access '/usr/share/vulkan/icd.d': No such file or directory
+
+############### CARLA [nv-baseline/opengl] rpc=54770 ###############
+  (process died at t=5s)
+RESULT[nv-baseline/opengl]: rpc_port_up=NO
+--- last 40 lines ---
+chmod: changing permissions of '/home/carla/CarlaUE4/Binaries/Linux/CarlaUE4-Linux-Shipping': Read-only file system
+sh: 1: xdg-user-dir: not found
+4.24.3-0+++UE4+Release-4.24 518 0
+Disabling core dumps.
+
+############### CARLA [nvccli/opengl] rpc=54505 ###############
+  (process died at t=5s)
+RESULT[nvccli/opengl]: rpc_port_up=NO
+--- last 40 lines ---
+chmod: changing permissions of '/home/carla/CarlaUE4/Binaries/Linux/CarlaUE4-Linux-Shipping': Read-only file system
+sh: 1: xdg-user-dir: not found
+4.24.3-0+++UE4+Release-4.24 518 0
+Disabling core dumps.
+
+############### CARLA [nvccli/vulkan] rpc=54011 ###############
+  (process died at t=5s)
+RESULT[nvccli/vulkan]: rpc_port_up=NO
+--- last 40 lines ---
+chmod: changing permissions of '/home/carla/CarlaUE4/Binaries/Linux/CarlaUE4-Linux-Shipping': Read-only file system
+sh: 1: xdg-user-dir: not found
+4.24.3-0+++UE4+Release-4.24 518 0
+Disabling core dumps.
+
+############### Done 2026-04-28T09:01:38+09:00 ###############

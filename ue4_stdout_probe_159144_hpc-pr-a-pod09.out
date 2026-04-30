@@ -1,0 +1,74 @@
+==========================================
+Host driver vs container-lib version + UE4 stdout capture
+Node : hpc-pr-a-pod09    SIF : /scratch/autodr_test/HPC-CARLA-persistent/carla_official.sif    Saved bind : /tmp/ue4_saved.gwZoU1
+Date : 2026-04-29T09:12:04+09:00
+==========================================
+
+############### Driver version comparison ###############
+--- HOST /proc/driver/nvidia/version ---
+NVRM version: NVIDIA UNIX x86_64 Kernel Module  575.57.08  Sat May 24 07:21:16 UTC 2025
+GCC version:  gcc version 9.4.0 (Ubuntu 9.4.0-1ubuntu1~20.04.1) 
+
+--- HOST nvidia-smi (driver line) ---
+Wed Apr 29 09:12:04 2026       
++-----------------------------------------------------------------------------------------+
+| NVIDIA-SMI 575.57.08              Driver Version: 575.57.08      CUDA Version: 12.9     |
+|-----------------------------------------+------------------------+----------------------+
+| GPU  Name                 Persistence-M | Bus-Id          Disp.A | Volatile Uncorr. ECC |
+(no host nvidia-smi)
+
+--- Container-bound NVIDIA lib versions ---
+
+
+############### dlopen test (fixed) ###############
+  dlopen FAIL: libGLX_nvidia.so.0 -> libnvidia-gpucomp.so.575.57.08: cannot open shared object file: No such file or directory
+  dlopen OK : libEGL_nvidia.so.0
+  dlopen OK : libnvidia-ml.so.1
+  dlopen FAIL: libnvidia-glcore.so.575.57.08 -> libnvidia-gpucomp.so.575.57.08: cannot open shared object file: No such file or directory
+  dlopen OK : libnvidia-glcore.so.515.86.01
+  dlopen OK : libcuda.so.1
+  dlopen FAIL: libvulkan.so.1 -> libvulkan.so.1: cannot open shared object file: No such file or directory
+  dlopen OK : libGL.so.1
+
+############### CARLA [saved_bind/opengl] rpc=56586 ###############
+  (process died at t=5s)
+RESULT[saved_bind/opengl]: rpc_port_up=NO
+--- container stdout/stderr (last 80) ---
+chmod: changing permissions of '/home/carla/CarlaUE4/Binaries/Linux/CarlaUE4-Linux-Shipping': Read-only file system
+sh: 1: xdg-user-dir: not found
+4.24.3-0+++UE4+Release-4.24 518 0
+Disabling core dumps.
+--- Saved/Logs/ (UE4's own log dir) ---
+total 8
+drwxrwxr-x 2 autodr_test autodr_test 4096 Apr 29 09:12 .
+drwx------ 4 autodr_test autodr_test 4096 Apr 29 09:12 ..
+
+############### CARLA [saved_bind/vulkan] rpc=56816 ###############
+  (process died at t=5s)
+RESULT[saved_bind/vulkan]: rpc_port_up=NO
+--- container stdout/stderr (last 80) ---
+chmod: changing permissions of '/home/carla/CarlaUE4/Binaries/Linux/CarlaUE4-Linux-Shipping': Read-only file system
+sh: 1: xdg-user-dir: not found
+4.24.3-0+++UE4+Release-4.24 518 0
+Disabling core dumps.
+[2026.04.29-00.12.14:118][  0]Vulkan Driver is required to run the engine.
+--- Saved/Logs/ (UE4's own log dir) ---
+total 8
+drwxrwxr-x 2 autodr_test autodr_test 4096 Apr 29 09:12 .
+drwx------ 4 autodr_test autodr_test 4096 Apr 29 09:12 ..
+
+############### CARLA [saved_bind/nullrhi] rpc=56985 ###############
+  t=5s : not listening
+  t=10s : not listening
+RESULT[saved_bind/nullrhi]: rpc_port_up=YES at t<=15s
+--- container stdout/stderr (last 80) ---
+chmod: changing permissions of '/home/carla/CarlaUE4/Binaries/Linux/CarlaUE4-Linux-Shipping': Read-only file system
+sh: 1: xdg-user-dir: not found
+4.24.3-0+++UE4+Release-4.24 518 0
+Disabling core dumps.
+--- Saved/Logs/ (UE4's own log dir) ---
+total 8
+drwxrwxr-x 2 autodr_test autodr_test 4096 Apr 29 09:12 .
+drwx------ 4 autodr_test autodr_test 4096 Apr 29 09:12 ..
+
+############### Done 2026-04-29T09:12:36+09:00 ###############

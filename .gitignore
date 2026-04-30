@@ -220,3 +220,14 @@ wandb/
 *.tar
 *.th
 *.ckpt
+
+#old
+old/
+
+#docker
+docker/
+
+#backup logs
+logs_bak/
+
+plots/

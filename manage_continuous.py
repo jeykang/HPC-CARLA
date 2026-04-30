@@ -437,7 +437,7 @@ class ContinuousManager:
             results = {
                 'summary': {
                     'total_completed': len(completed_data['jobs']),
-                    'export_time': datetime.now().isoformat()
+                    'export_time': datetime.utcnow().isoformat() + 'Z'
                 },
                 'jobs': completed_data['jobs'],
                 'statistics': {}
@@ -757,24 +757,6 @@ class ContinuousManager:
         if 'WEATHER_PRESET' in os.environ and os.environ['WEATHER_PRESET'].strip():
             env['WEATHER_PRESET'] = os.environ['WEATHER_PRESET'].strip()
 
-        # Labels for tidy per-job paths (also used by your agent)
-        def _label_weather(wi):
-            try:  return f"weather_{int(wi)}"
-            except: return f"weather_{str(wi)}"
-
-        def _label_map(tn):
-            try:  return f"map_{int(tn):02d}"
-            except: return f"map_{tn or 'unknown'}"
-
-        route_stem   = Path(routes_file).stem
-        weather_lbl  = _label_weather(env['WEATHER_INDEX'])
-        map_lbl      = _label_map(env.get('TOWN_NUM',''))
-        dataset_root = env.get('DATASET_DIR', str(self.project_root / 'dataset'))
-        save_path    = os.path.join(dataset_root, env['AGENT_NAME'], weather_lbl, map_lbl, route_stem)
-
-        env['SAVE_PATH']           = save_path
-        env['CHECKPOINT_ENDPOINT'] = os.path.join(save_path, 'results.json')
-
         # Hard forward into container env
         def _mirror(keys):
             for k in keys:
@@ -813,6 +795,14 @@ class ContinuousManager:
             ]
 
 
+        # Emit header in the same shape continuous_collection.sh writes, so
+        # `manage_continuous.py logs --job N --gpu G` greps work in persistent mode too.
+        print("=" * 42)
+        print(f"[GPU {job.get('gpu', '?')}] Starting Job #{job['id']}")
+        print(f"Agent: {agent_name}")
+        print(f"Route: {route_name}")
+        print(f"Weather: {weather_idx}")
+        print("=" * 42)
         print(f"[RUN] Job {job['id']} agent={agent_name} route={route_name} weather={weather_idx}")
         gpu_id_for_display = job['gpu'] if job.get('gpu') is not None else self._derive_gpu_id(port)
         self._write_health(

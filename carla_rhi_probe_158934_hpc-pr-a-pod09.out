@@ -1,0 +1,120 @@
+==========================================
+CARLA / UE4 RHI init diagnostic
+Node : hpc-pr-a-pod09    SIF : /scratch/autodr_test/HPC-CARLA-persistent/carla_official.sif    base port : 53850
+Date : 2026-04-28T08:55:28+09:00
+==========================================
+
+############### GPU userspace stack ###############
+--- /dev/nvidia* ---
+crw-rw-rw- 1 root root 507,   0 Nov 17 14:22 /dev/nvidia-fs0
+crw-rw-rw- 1 root root 507,   1 Nov 17 14:22 /dev/nvidia-fs1
+crw-rw-rw- 1 root root 507,  10 Nov 17 14:22 /dev/nvidia-fs10
+crw-rw-rw- 1 root root 507,  11 Nov 17 14:22 /dev/nvidia-fs11
+crw-rw-rw- 1 root root 507,  12 Nov 17 14:22 /dev/nvidia-fs12
+crw-rw-rw- 1 root root 507,  13 Nov 17 14:22 /dev/nvidia-fs13
+crw-rw-rw- 1 root root 507,  14 Nov 17 14:22 /dev/nvidia-fs14
+crw-rw-rw- 1 root root 507,  15 Nov 17 14:22 /dev/nvidia-fs15
+crw-rw-rw- 1 root root 507,   2 Nov 17 14:22 /dev/nvidia-fs2
+crw-rw-rw- 1 root root 507,   3 Nov 17 14:22 /dev/nvidia-fs3
+
+--- /dev/dri ---
+total 0
+drwxr-xr-x  3 root root       400 Nov 17 14:22 .
+drwxr-xr-x 21 root root      6420 Dec 19 22:51 ..
+drwxr-xr-x  2 root root       380 Nov 17 14:22 by-path
+crw-rw----  1 root video 226,   0 Nov 17 14:22 card0
+crw-rw----  1 root video 226,   1 Nov 17 14:22 card1
+crw-rw----  1 root video 226,   2 Nov 17 14:22 card2
+crw-rw----  1 root video 226,   3 Nov 17 14:22 card3
+crw-rw----  1 root video 226,   4 Nov 17 14:22 card4
+crw-rw----  1 root video 226,   5 Nov 17 14:22 card5
+crw-rw----  1 root video 226,   6 Nov 17 14:22 card6
+crw-rw----  1 root video 226,   7 Nov 17 14:22 card7
+crw-rw----  1 root video 226,   8 Nov 17 14:22 card8
+crw-rw----  1 root   109 226, 128 Nov 17 14:22 renderD128
+crw-rw----  1 root   109 226, 129 Nov 17 14:22 renderD129
+crw-rw----  1 root   109 226, 130 Nov 17 14:22 renderD130
+crw-rw----  1 root   109 226, 131 Nov 17 14:22 renderD131
+crw-rw----  1 root   109 226, 132 Nov 17 14:22 renderD132
+crw-rw----  1 root   109 226, 133 Nov 17 14:22 renderD133
+crw-rw----  1 root   109 226, 134 Nov 17 14:22 renderD134
+crw-rw----  1 root   109 226, 135 Nov 17 14:22 renderD135
+
+--- nvidia-container-cli would expose these (libs visible inside): ---
+[libGLX_nvidia]
+  (none)
+[libEGL_nvidia]
+  (none)
+[libvulkan]
+	libvulkan.so.1 (libc6,x86-64) => /usr/local/lib/libvulkan.so.1
+	libvulkan.so.1 (libc6,x86-64) => /usr/lib/x86_64-linux-gnu/libvulkan.so.1
+	libvulkan.so (libc6,x86-64) => /usr/local/lib/libvulkan.so
+[libGL.so]
+	libGL.so.1 (libc6,x86-64) => /usr/lib/x86_64-linux-gnu/libGL.so.1
+	libGL.so.1 (libc6) => /usr/lib/i386-linux-gnu/libGL.so.1
+	libGL.so (libc6,x86-64) => /usr/lib/x86_64-linux-gnu/libGL.so
+	libGL.so (libc6) => /usr/lib/i386-linux-gnu/libGL.so
+[libEGL.so]
+	libEGL.so.1 (libc6,x86-64) => /usr/lib/x86_64-linux-gnu/libEGL.so.1
+	libEGL.so.1 (libc6) => /usr/lib/i386-linux-gnu/libEGL.so.1
+	libEGL.so (libc6,x86-64) => /usr/lib/x86_64-linux-gnu/libEGL.so
+	libEGL.so (libc6) => /usr/lib/i386-linux-gnu/libEGL.so
+[libGLX.so]
+	libGLX.so.0 (libc6,x86-64) => /usr/lib/x86_64-linux-gnu/libGLX.so.0
+	libGLX.so.0 (libc6) => /usr/lib/i386-linux-gnu/libGLX.so.0
+	libGLX.so (libc6,x86-64) => /usr/lib/x86_64-linux-gnu/libGLX.so
+	libGLX.so (libc6) => /usr/lib/i386-linux-gnu/libGLX.so
+[libnvidia-glcore]
+  (none)
+[libnvidia-eglcore]
+  (none)
+[libnvidia-rtcore]
+  (none)
+
+--- vulkaninfo ---
+(vulkaninfo not present in container)
+
+--- eglinfo / glxinfo ---
+(eglinfo not present)
+(glxinfo not present)
+
+############### CARLA run [opengl] rpc=53850 flags='-opengl' ###############
+carla pid=3810389 log=/tmp/carla_opengl_IIxB.log
+  (process died at t=5s)
+RESULT[opengl]: rpc_port_up=NO
+--- last 60 lines of CARLA log ---
+chmod: changing permissions of '/home/carla/CarlaUE4/Binaries/Linux/CarlaUE4-Linux-Shipping': Read-only file system
+sh: 1: xdg-user-dir: not found
+4.24.3-0+++UE4+Release-4.24 518 0
+Disabling core dumps.
+--- end CARLA log (full saved at /tmp/carla_opengl_IIxB.log) ---
+
+############### CARLA run [vulkan] rpc=53851 flags='-vulkan' ###############
+carla pid=3810495 log=/tmp/carla_vulkan_QZq6.log
+  (process died at t=5s)
+RESULT[vulkan]: rpc_port_up=NO
+--- last 60 lines of CARLA log ---
+chmod: changing permissions of '/home/carla/CarlaUE4/Binaries/Linux/CarlaUE4-Linux-Shipping': Read-only file system
+sh: 1: xdg-user-dir: not found
+4.24.3-0+++UE4+Release-4.24 518 0
+Disabling core dumps.
+--- end CARLA log (full saved at /tmp/carla_vulkan_QZq6.log) ---
+
+############### CARLA run [nullrhi] rpc=53852 flags='-nullrhi' ###############
+carla pid=3810596 log=/tmp/carla_nullrhi_x5ft.log
+  t=5s : not listening yet
+  t=10s : not listening yet
+  t=15s : not listening yet
+  t=20s : not listening yet
+  t=25s : not listening yet
+  t=30s : not listening yet
+  t=35s : not listening yet
+RESULT[nullrhi]: rpc_port_up=YES at t<=40s
+--- last 60 lines of CARLA log ---
+chmod: changing permissions of '/home/carla/CarlaUE4/Binaries/Linux/CarlaUE4-Linux-Shipping': Read-only file system
+sh: 1: xdg-user-dir: not found
+4.24.3-0+++UE4+Release-4.24 518 0
+Disabling core dumps.
+--- end CARLA log (full saved at /tmp/carla_nullrhi_x5ft.log) ---
+
+############### Done 2026-04-28T08:56:25+09:00 ###############

@@ -1,0 +1,67 @@
+services:
+  node:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+      no_cache: true
+      args:
+        INSTALL_HEAVY_DEPS: ${INSTALL_HEAVY_DEPS:-0}
+    working_dir: /workspace
+    volumes:
+      - ./:/workspace
+      - ./collection_state:/workspace/collection_state
+      - ./logs:/workspace/logs
+      - ./dataset:/workspace/dataset
+    shm_size: "8gb"
+    environment:
+      # Only GPU #3 is allocated on this host. Docker maps it to device 0 inside.
+      NVIDIA_VISIBLE_DEVICES: ${NVIDIA_VISIBLE_DEVICES:-3}
+      # The container should see *one* GPU (mapped as CUDA device 0).
+      CUDA_VISIBLE_DEVICES: ${CUDA_VISIBLE_DEVICES:-0}
+      PHYSICAL_CUDA_DEVICE: ${PHYSICAL_CUDA_DEVICE:-0}
+
+      # Virtualization: number of parallel CARLA+worker slots to run.
+      VIRTUAL_GPUS: ${VIRTUAL_GPUS:-4}
+
+      # Port scheme (match repo defaults)
+      BASE_RPC_PORT: ${BASE_RPC_PORT:-2000}
+      PORT_SPACING: ${PORT_SPACING:-100}
+      TM_OFFSET: ${TM_OFFSET:-5000}
+
+      PROJECT_ROOT: /workspace
+      STATE_DIR: /workspace/collection_state
+      LOG_DIR: /workspace/logs
+      DATASET_DIR: /workspace/dataset
+
+      # Optional: permission controls for bind mounts (helps avoid root-owned files on host)
+      HOST_UID: ${HOST_UID:-}
+      HOST_GID: ${HOST_GID:-}
+      UMASK: ${UMASK:-0002}
+
+      # Use docker/native backend for server manager & evaluator
+      CARLA_LAUNCH_BACKEND: ${CARLA_LAUNCH_BACKEND:-native}
+
+      # Worker behavior
+      IDLE_SLEEP_S: ${IDLE_SLEEP_S:-10}
+      EXIT_ON_IDLE: ${EXIT_ON_IDLE:-0}
+      AUTO_RESET: ${AUTO_RESET:-0}
+
+      # This CARLA image only includes a subset of maps. Restrict queued routes accordingly.
+      CARLA_ALLOWED_TOWNS: ${CARLA_ALLOWED_TOWNS:-01,02,03,04,05}
+
+      # Storage control: disable dataset writing while keeping metrics/checkpoints.
+      # (Honored by leaderboard/team_code/consolidated_agent.py)
+      HPC_CARLA_COLLECT_DATA: ${HPC_CARLA_COLLECT_DATA:-}
+      COLLECT_DATA: ${COLLECT_DATA:-}
+      DISABLE_DATA_COLLECTION: ${DISABLE_DATA_COLLECTION:-}
+
+    entrypoint: ["/workspace/docker/node_entrypoint.sh"]
+
+    # Compose v2 GPU reservation (works on most modern Docker installs).
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              device_ids: ["${GPU_DEVICE_ID:-3}"]
+              capabilities: [gpu]

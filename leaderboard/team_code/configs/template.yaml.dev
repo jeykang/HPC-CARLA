@@ -34,6 +34,85 @@ model_path: /path/to/model/checkpoint.pth
 #   agent_class: MyAgentClass
 #   config_path: /workspace/leaderboard/team_code/my_agent/config.yaml
 
+# Option 4: Fully config-defined agent (pipeline mode)
+# ----------------------------------------------------
+# If `pipeline:` is present, ConsolidatedAgent will NOT load a legacy inner agent.
+# Instead it will execute these modules in order each tick, expecting them to
+# produce `control` in *one of several supported formats*:
+#   - carla.VehicleControl
+#   - dict {steer, throttle, brake} (preferred)
+#   - dict {steer, acc} where acc>=0 -> throttle, acc<0 -> brake
+#   - tuple/list of length 3 (defaults to [steer, throttle, brake])
+#
+# Optional: configure tuple ordering explicitly if you use tuple/list outputs:
+# pipeline_control_tuple_order: [steer, throttle, brake]
+#
+# pipeline:
+#   - module: team_code.pipeline_engine
+#     class_name: FixedControl
+#     args:
+#       steer: 0.0
+#       throttle: 0.3
+#       brake: 0.0
+
+# Example: build a "tick_data"-like context (similar to legacy agents), then
+# compute route command, then convert waypoints->control via PID.
+#
+# pipeline:
+#   # Optional: mimic legacy warmup / frame-skip behavior.
+#   # - module: leaderboard.team_code.pipeline_modules
+#   #   class_name: WarmupAndFrameSkip
+#   #   args:
+#   #     warmup_steps: 4
+#   #     every_n: 2
+#
+#   - module: leaderboard.team_code.pipeline_modules
+#     class_name: ExtractCameraRGB
+#     args: {sensor_id: rgb, out_key: rgb}
+#   - module: leaderboard.team_code.pipeline_modules
+#     class_name: ExtractGNSS
+#     args: {sensor_id: gps, out_key: gps}
+#   - module: leaderboard.team_code.pipeline_modules
+#     class_name: ExtractSpeed
+#     args: {sensor_id: speed, out_key: speed}
+#   - module: leaderboard.team_code.pipeline_modules
+#     class_name: ExtractCompass
+#     args: {sensor_id: imu, out_key: compass}
+#   - module: leaderboard.team_code.pipeline_modules
+#     class_name: RoutePlannerNextCommand
+#     args: {gps_key: gps, out_cmd_key: next_command}
+#   - module: leaderboard.team_code.pipeline_modules
+#     class_name: TargetPointFromNextWaypoint
+#     args: {pos_key: pos, compass_key: compass, next_waypoint_key: next_waypoint, out_key: target_point}
+#
+#   # At this point your model module could set context['waypoints'].
+#   # - module: my_pkg.my_model
+#   #   class_name: PredictWaypoints
+#   #   args: {...}
+#
+#   - module: leaderboard.team_code.pipeline_modules
+#     class_name: PIDFromWaypoints
+#     args:
+#       waypoints_key: waypoints
+#       speed_key: speed
+#       out_key: control
+#       config:
+#         turn_KP: 1.0
+#         turn_KI: 0.0
+#         turn_KD: 0.1
+#         speed_KP: 1.0
+#         speed_KI: 0.0
+#         speed_KD: 0.0
+#         brake_speed: 0.4
+#         brake_ratio: 1.1
+#         clip_delta: 0.25
+#         max_throttle: 0.75
+
+# Example: if your model predicts (acc, steer) instead, you can do:
+#   - module: leaderboard.team_code.pipeline_modules
+#     class_name: ControlFromAccSteer
+#     args: {acc_key: acc, steer_key: steer, out_key: control}
+
 # ============================================================================
 # EXTERNAL CONFIGURATION LOADING
 # ============================================================================
