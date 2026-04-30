@@ -9,5 +9,6 @@ echo "[metrics] starting on node ${SLURMD_NODENAME:-$(hostname)}; state=${STATE_
 # Prefer python3 from host; fall back to env
 nohup python3 "${PROJECT_ROOT}/metrics_daemon.py" \
   --state-dir "${STATE_DIR}" --interval "${METRICS_INTERVAL:-2}" \
+  --job-id "${SLURM_JOB_ID:-}" \
   >/dev/null 2>&1 &
 echo $! > "${STATE_DIR}/metrics_daemon.pid"

@@ -9,10 +9,11 @@ def main():
     ap.add_argument("--state-dir", default=os.environ.get("STATE_DIR") or (Path(os.environ.get("PROJECT_ROOT",".")).resolve()/"collection_state"))
     ap.add_argument("--interval", type=float, default=float(os.environ.get("METRICS_INTERVAL", "2.0")))
     ap.add_argument("--burst", type=int, default=1, help="number of gpu polls per tick (kept for future smoothing)")
+    ap.add_argument("--job-id", default=os.environ.get("SLURM_JOB_ID", ""), help="SLURM job ID used as log file suffix")
     args = ap.parse_args()
 
     Path(args.state_dir).mkdir(parents=True, exist_ok=True)
-    writer = MetricsWriter(Path(args.state_dir))
+    writer = MetricsWriter(Path(args.state_dir), job_id=args.job_id)
     sys_s = SystemSampler()
     try:
         gpu_s = GPUSampler()
@@ -20,7 +21,7 @@ def main():
         print(f"[metrics] GPU metrics unavailable: {e}", file=sys.stderr)
         gpu_s = None
 
-    print(f"[metrics] daemon up: state={args.state_dir} interval={args.interval}s")
+    print(f"[metrics] daemon up: state={args.state_dir} interval={args.interval}s job_id={args.job_id!r}")
     while True:
         try:
             if gpu_s:

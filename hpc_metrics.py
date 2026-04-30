@@ -112,7 +112,8 @@ class SystemSampler:
                 return data
             except Exception:
                 pass
-        # Minimal fallback via /proc
+        # Minimal fallback via /proc (no psutil)
+        mem_total = mem_avail = None
         try:
             with open("/proc/meminfo") as f:
                 mi = {k.strip(":"): int(v.split()[0]) for k,v in
@@ -120,22 +121,52 @@ class SystemSampler:
             mem_total = mi.get("MemTotal")
             mem_avail = mi.get("MemAvailable")
         except Exception:
-            mem_total = mem_avail = None
+            pass
+
+        load_1 = None
+        try:
+            with open("/proc/loadavg") as f:
+                load_1 = float(f.read().split()[0])
+        except Exception:
+            pass
+
+        cpu_pct = None
+        try:
+            # Two-snapshot delta of /proc/stat for real utilisation.
+            def _read_stat():
+                with open("/proc/stat") as f:
+                    for line in f:
+                        if line.startswith("cpu "):
+                            vals = list(map(int, line.split()[1:]))
+                            idle = vals[3] + (vals[4] if len(vals) > 4 else 0)
+                            return idle, sum(vals)
+                return None, None
+            idle0, total0 = _read_stat()
+            time.sleep(0.1)
+            idle1, total1 = _read_stat()
+            if total1 is not None and total1 > total0:
+                cpu_pct = round(100.0 * (1.0 - (idle1 - idle0) / (total1 - total0)), 1)
+        except Exception:
+            pass
+
         data.update({
-            "cpu_pct": None,
-            "load_1": None,
+            "cpu_pct": cpu_pct,
+            "load_1": load_1,
             "ram_total_MiB": int(mem_total/1024) if mem_total else None,
             "ram_used_MiB": int((mem_total-mem_avail)/1024) if mem_total and mem_avail else None,
         })
         return data
 
 class MetricsWriter:
-    def __init__(self, state_dir: Path):
+    def __init__(self, state_dir: Path, job_id: str = ""):
         self.state_dir = Path(state_dir)
         self.metrics_dir = self.state_dir/"metrics"/"node"/node_name()
         (self.metrics_dir/"last").mkdir(parents=True, exist_ok=True)
-        (self.metrics_dir).mkdir(parents=True, exist_ok=True)
         self.health_dir = self.state_dir/"health"
+        # Per-job file suffix: "gpu.12345.jsonl" or "gpu.jsonl" when no job ID.
+        suffix = f".{job_id}" if job_id else ""
+        self._gpu_file = self.metrics_dir / f"gpu{suffix}.jsonl"
+        self._sys_file = self.metrics_dir / f"system{suffix}.jsonl"
 
     def _active_job_by_gpu(self):
         # read all healthbeats and build (gpu->current_job) map
@@ -155,7 +186,7 @@ class MetricsWriter:
         job_map = self._active_job_by_gpu()
         ts = iso_now()
         # append JSONL
-        with open(self.metrics_dir/"gpu.jsonl","a") as f:
+        with open(self._gpu_file,"a") as f:
             for s in samples:
                 rec = dict(s)
                 rec["node"] = node_name()
@@ -168,5 +199,5 @@ class MetricsWriter:
     def write_system_sample(self, sample):
         rec = dict(sample)
         rec["node"] = node_name()
-        with open(self.metrics_dir/"system.jsonl","a") as f:
+        with open(self._sys_file,"a") as f:
             f.write(json.dumps(rec, ensure_ascii=False)+"\n")
