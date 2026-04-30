@@ -1178,7 +1178,7 @@ class InterfuserControllerModule:
 # TCP modules
 # ─────────────────────────────────────────────────────────────────────────────
 
-class TCPModelRunner(PipelineModule):
+class TCPModelRunner:
     """Load the TCP model and run forward(img, state, target_point).
 
     The TCP checkpoint stores weights under a "model." prefix; we strip it.
@@ -1240,7 +1240,7 @@ class TCPModelRunner(PipelineModule):
         return context
 
 
-class TCPStateAssemble(PipelineModule):
+class TCPStateAssemble:
     """Build the (1, 9) state tensor for TCP: [speed/12, target_x, target_y, cmd_one_hot(6)].
 
     Command is 0-based (TCP convention); negative commands map to index 3 (follow-lane).
@@ -1280,7 +1280,7 @@ class TCPStateAssemble(PipelineModule):
         return context
 
 
-class TCPBetaControl(PipelineModule):
+class TCPBetaControl:
     """Sample Beta-distribution action from TCP pred dict → {steer, throttle, brake}.
 
     Mirrors TCP.process_action() using deterministic Beta mean for evaluation.
@@ -1335,7 +1335,7 @@ class TCPBetaControl(PipelineModule):
         return context
 
 
-class TCPPIDControl(PipelineModule):
+class TCPPIDControl:
     """PID control on TCP predicted waypoints → {steer, throttle, brake}.
 
     Re-implements TCP.control_pid() without depending on the original TCP class.
@@ -1443,7 +1443,7 @@ class TCPPIDControl(PipelineModule):
         return context
 
 
-class TurningStatusDetector(PipelineModule):
+class TurningStatusDetector:
     """Classify current driving as turning (1) or straight (0).
 
     Rolling 20-frame window of |steer| from the previously emitted control dict.
@@ -1485,7 +1485,7 @@ class TurningStatusDetector(PipelineModule):
         return context
 
 
-class TCPBlendControl(PipelineModule):
+class TCPBlendControl:
     """Blend Beta-control and trajectory-PID outputs based on turning status.
 
     straight (status=0): 0.3*ctrl + 0.7*traj
@@ -1544,7 +1544,7 @@ class TCPBlendControl(PipelineModule):
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-class LidarVehicleBodyFilter(PipelineModule):
+class LidarVehicleBodyFilter:
     """Remove LiDAR points inside a configurable ego-vehicle bounding box.
 
     Filters points satisfying ALL of: x in (min_x, max_x), y in (min_y, max_y),
@@ -1578,7 +1578,7 @@ class LidarVehicleBodyFilter(PipelineModule):
         return context
 
 
-class HorizontalCameraConcat(PipelineModule):
+class HorizontalCameraConcat:
     """Concatenate multiple camera images horizontally (axis=1) into a single array."""
 
     def __init__(self, in_keys: list, out_key: str = "rgb_wide_raw"):
@@ -1591,7 +1591,7 @@ class HorizontalCameraConcat(PipelineModule):
         return context
 
 
-class MultiCameraToTorchBatch(PipelineModule):
+class MultiCameraToTorchBatch:
     """Stack N camera images (H, W, C) into a batched float tensor (N, C, H, W).
 
     No normalization — suitable for models that expect raw uint8-scaled floats
@@ -1621,7 +1621,7 @@ class MultiCameraToTorchBatch(PipelineModule):
         return context
 
 
-class EKFEgoLocalizer(PipelineModule):
+class EKFEgoLocalizer:
     """Kinematic bicycle model EKF fusing GPS, compass, and speed.
 
     Outputs a smoothed ego-position and heading for use in temporal LiDAR
@@ -1702,7 +1702,7 @@ class EKFEgoLocalizer(PipelineModule):
         return context
 
 
-class TemporalLidarAccumulator(PipelineModule):
+class TemporalLidarAccumulator:
     """Accumulate LiDAR frames over time with ego-motion compensation.
 
     Maintains a rolling FIFO of (lidar_array, ekf_pos, ekf_compass) tuples.
@@ -1808,7 +1808,7 @@ class TemporalLidarAccumulator(PipelineModule):
         return context
 
 
-class PointPaintingModule(PipelineModule):
+class PointPaintingModule:
     """Project LiDAR points onto semantic segmentation maps and append painted features.
 
     For each camera, projects each LiDAR point into the image plane and samples
@@ -1877,7 +1877,7 @@ class PointPaintingModule(PipelineModule):
         return context
 
 
-class BEVHeatmapNMS(PipelineModule):
+class BEVHeatmapNMS:
     """Non-maximum suppression on BEV heatmaps → list of detections per class.
 
     Uses maxpool NMS: a pixel is a peak iff it equals the local max within a
@@ -1944,7 +1944,7 @@ class BEVHeatmapNMS(PipelineModule):
         return context
 
 
-class WaypointTrackingPID(PipelineModule):
+class WaypointTrackingPID:
     """Command-conditioned PID controller tracking planned waypoints.
 
     Computes desired_speed from the mean inter-waypoint displacement, selects a
@@ -2044,7 +2044,7 @@ class _SimplePID:
         return self.KP * error + self.KI * integral + self.KD * derivative
 
 
-class EmergencyBrakeOverride(PipelineModule):
+class EmergencyBrakeOverride:
     """Apply safety overrides on top of a planned control output.
 
     Handles: brake-prediction threshold, collision flag, max speed, and
@@ -2114,7 +2114,7 @@ class EmergencyBrakeOverride(PipelineModule):
 
 # ── LAV-specific model wrappers ───────────────────────────────────────────────
 
-class LAVRGBSegmentationRunner(PipelineModule):
+class LAVRGBSegmentationRunner:
     """Run LAV's ERFNet segmentation model on a batch of camera images.
 
     CAVEAT: wraps team_code.lav.models.rgb.RGBSegmentationModel — architecture
@@ -2162,7 +2162,7 @@ class LAVRGBSegmentationRunner(PipelineModule):
         return context
 
 
-class LAVBrakePredictionRunner(PipelineModule):
+class LAVBrakePredictionRunner:
     """Run LAV's cross-attention brake predictor.
 
     CAVEAT: wraps team_code.lav.models.rgb.RGBBrakePredictionModel — architecture
@@ -2217,7 +2217,7 @@ class LAVBrakePredictionRunner(PipelineModule):
         return context
 
 
-class LAVLiDARModelRunner(PipelineModule):
+class LAVLiDARModelRunner:
     """Run LAV's PointPillar-based LiDAR object detection model.
 
     CAVEAT: wraps team_code.lav.models.lidar.LiDARModel — architecture is
@@ -2283,7 +2283,7 @@ class LAVLiDARModelRunner(PipelineModule):
         return context
 
 
-class LAVUniPlannerRunner(PipelineModule):
+class LAVUniPlannerRunner:
     """Run LAV's GRU-based multi-command motion planner.
 
     CAVEAT: wraps team_code.lav.models.uniplanner.UniPlanner + BEVPlanner —
@@ -2403,7 +2403,7 @@ class LAVUniPlannerRunner(PipelineModule):
         return context
 
 
-class LAVCollisionCheck(PipelineModule):
+class LAVCollisionCheck:
     """Check if any high-confidence other-vehicle trajectory intersects the ego plan.
 
     CAVEAT: input format (other_cast_locs, other_cast_cmds) is specific to
