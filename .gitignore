@@ -182,11 +182,7 @@ cython_debug/
 .abstra/
 
 # Visual Studio Code
-#  Visual Studio Code specific template is maintained in a separate VisualStudioCode.gitignore 
-#  that can be found at https://github.com/github/gitignore/blob/main/Global/VisualStudioCode.gitignore
-#  and can be added to the global gitignore or merged into this file. However, if you prefer, 
-#  you could uncomment the following to ignore the entire vscode folder
-# .vscode/
+.vscode/
 
 # Ruff stuff:
 .ruff_cache/
@@ -208,7 +204,12 @@ __marimo__/
 # Data & Logs
 dataset/
 logs/
+logs_bak/
 collection_state/
+
+# SLURM job stdout/stderr dumped at repo root (probe jobs, srun output, etc.)
+*.out
+*.err
 
 # Apptainer portable
 install-dir/
@@ -216,18 +217,20 @@ install-dir/
 # wandb
 wandb/
 
-# weights
+# weights / model checkpoints
 *.tar
 *.th
+*.pt
 *.ckpt
+*.pth
+*.pth.tar
+leaderboard/team_code/*/weights/
+leaderboard/team_code/interfuser/*.pth.tar
 
-#old
+# Extracted CARLA map content (binary UE4 assets, populated from SIF + AdditionalMaps)
+carla_maps/
+
+# old / scratch
 old/
-
-#docker
 docker/
-
-#backup logs
-logs_bak/
-
 plots/

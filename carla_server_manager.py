@@ -119,6 +119,12 @@ def _build_run_args(rpc: int, tm: int) -> List[str]:
     GPUCOMP = "/usr/lib/x86_64-linux-gnu/libnvidia-gpucomp.so.575.57.08"
     if os.path.exists(GPUCOMP):
         args += ["-B", f"{GPUCOMP}:{GPUCOMP}"]
+    # Additional maps (Town06, Town07, Town10HD) are not in the base SIF image.
+    # A merged Maps directory (base towns + additional towns) lives at
+    # PROJECT_ROOT/carla_maps/ and is bind-mounted over the SIF's Maps dir.
+    EXTRA_MAPS = PROJECT_ROOT / "carla_maps"
+    if EXTRA_MAPS.is_dir():
+        args += ["-B", f"{EXTRA_MAPS}:/home/carla/CarlaUE4/Content/Carla/Maps"]
     args += [
         SIF_PATH,
         "-opengl",
