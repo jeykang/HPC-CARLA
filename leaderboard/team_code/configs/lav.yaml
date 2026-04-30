@@ -1,106 +1,103 @@
-# LAV Agent Configuration
-agent_config:
-  # Path to the original LAV agent implementation
-  agent_file: /workspace/leaderboard/team_code/lav_agent.py
-  # Class name defined in lav_agent.py
-  agent_class: LAVAgent
-  config_path: /workspace/leaderboard/team_code/lav/config.yaml
+# LAV — best-effort modular pipeline implementation
+#
+# The pipeline re-uses generic modules wherever possible and wraps LAV-specific
+# components where the architecture is too model-specific to generalise cleanly.
+# Caveats are noted per step below.
+#
+# Generic modules (reusable with other models):
+#   ExtractCameraRGB, ExtractSpeed, ExtractGNSS, ExtractCompass, ExtractLidarXYZ,
+#   LidarVehicleBodyFilter, HorizontalCameraConcat, MultiCameraToTorchBatch,
+#   EKFEgoLocalizer, RoutePlannerNextCommand, TargetPointFromNextWaypoint,
+#   TemporalLidarAccumulator, PointPaintingModule, BEVHeatmapNMS,
+#   WaypointTrackingPID, EmergencyBrakeOverride
+#
+# LAV-specific wrappers (see CAVEAT notes in pipeline_modules.py):
+#   LAVRGBSegmentationRunner — ERFNet seg, channels [4,6,7,10]
+#   LAVBrakePredictionRunner — dual-stream ResNet18 + cross-attention
+#   LAVLiDARModelRunner      — PointPillarNet + CNN detection heads
+#   LAVUniPlannerRunner      — GRU-based command-conditioned trajectory planner
+#   LAVCollisionCheck        — plan_collide() logic against forecast trajectories
+#
+# To revert to legacy mode, delete the `pipeline:` block and restore:
+#   agent_config:
+#     agent_file:  /workspace/leaderboard/team_code/lav/lav_agent.py
+#     agent_class: LAVAgent
+#     config_path: /workspace/leaderboard/team_code/lav/config.yaml
 
-model_type: lav
-
-model_components:
-  lidar_model:
-    path: /workspace/leaderboard/team_code/lav/weights/lidar_15.th
-    type: checkpoint
-  uniplanner:
-    path: /workspace/leaderboard/team_code/lav/weights/uniplanner_15.th
-    type: checkpoint
-  bev_model:
-    path: /workspace/leaderboard/team_code/lav/weights/bev_160.th
-    type: checkpoint
-  seg_model:
-    path: /workspace/leaderboard/team_code/lav/weights/seg_1.th
-    type: checkpoint
-  bra_model:
-    path: /workspace/leaderboard/team_code/lav/weights/bra_10.th
-    type: checkpoint
-
-model_config:
-  camera_x: 1.3
-  camera_z: 2.3
-  
-# LAV uses specific sensor IDs and configurations
 sensors:
   - type: sensor.speedometer
+    reading_frequency: 20
     id: EGO
-    
+
   - type: sensor.other.gnss
     x: 0.0
     y: 0.0
-    z: 2.3
+    z: 2.4
+    roll: 0.0
+    pitch: 0.0
+    yaw: 0.0
+    sensor_tick: 0.05
     id: GPS
-    
+
   - type: sensor.other.imu
     x: 0.0
     y: 0.0
-    z: 2.3
+    z: 2.4
     roll: 0.0
     pitch: 0.0
     yaw: 0.0
     sensor_tick: 0.05
     id: IMU
-    
+
   - type: sensor.lidar.ray_cast
     x: 0.0
     y: 0.0
-    z: 2.3
+    z: 2.4
+    roll: 0.0
+    pitch: 0.0
     yaw: 0.0
-    pitch: 0.0
-    roll: 0.0
     id: LIDAR
-    
-  # Three cameras at different angles
+
   - type: sensor.camera.rgb
-    x: 1.3
+    x: 1.5
     y: 0.0
-    z: 2.3
+    z: 2.4
     roll: 0.0
     pitch: 0.0
-    yaw: -60
+    yaw: -60.0
     width: 256
     height: 288
     fov: 64
     id: RGB_0
-    
+
   - type: sensor.camera.rgb
-    x: 1.3
+    x: 1.5
     y: 0.0
-    z: 2.3
+    z: 2.4
     roll: 0.0
     pitch: 0.0
-    yaw: 0
+    yaw: 0.0
     width: 256
     height: 288
     fov: 64
     id: RGB_1
-    
+
   - type: sensor.camera.rgb
-    x: 1.3
+    x: 1.5
     y: 0.0
-    z: 2.3
+    z: 2.4
     roll: 0.0
     pitch: 0.0
-    yaw: 60
+    yaw: 60.0
     width: 256
     height: 288
     fov: 64
     id: RGB_2
-    
-  # Telephoto RGB camera
+
   - type: sensor.camera.rgb
-    x: 1.3
+    x: 1.5
     y: 0.0
-    z: 2.3
+    z: 2.4
     roll: 0.0
     pitch: 0.0
     yaw: 0.0
@@ -109,7 +106,313 @@ sensors:
     fov: 40
     id: TEL_RGB
 
-control:
-  target_speed: 25.0
-  brake_threshold: 0.4
-  steer_damping: 0.2
+pipeline:
+
+  # ── Sensor extraction ──────────────────────────────────────────────────────
+
+  - module: team_code.pipeline_modules
+    class: ExtractCameraRGB
+    args:
+      sensor_id: RGB_0
+      out_key: rgb_0_raw
+      bgr_to_rgb: true
+
+  - module: team_code.pipeline_modules
+    class: ExtractCameraRGB
+    args:
+      sensor_id: RGB_1
+      out_key: rgb_1_raw
+      bgr_to_rgb: true
+
+  - module: team_code.pipeline_modules
+    class: ExtractCameraRGB
+    args:
+      sensor_id: RGB_2
+      out_key: rgb_2_raw
+      bgr_to_rgb: true
+
+  - module: team_code.pipeline_modules
+    class: ExtractCameraRGB
+    args:
+      sensor_id: TEL_RGB
+      out_key: rgb_tel_raw
+      bgr_to_rgb: true
+
+  - module: team_code.pipeline_modules
+    class: ExtractSpeed
+    args:
+      sensor_id: EGO
+      out_key: speed
+
+  - module: team_code.pipeline_modules
+    class: ExtractGNSS
+    args:
+      sensor_id: GPS
+      out_key: gps_raw
+      take: 2
+
+  - module: team_code.pipeline_modules
+    class: ExtractCompass
+    args:
+      sensor_id: IMU
+      out_key: compass
+
+  - module: team_code.pipeline_modules
+    class: ExtractLidarXYZ
+    args:
+      sensor_id: LIDAR
+      out_key: lidar_raw
+      flip_y: false
+
+  # ── EKF localization ───────────────────────────────────────────────────────
+  # Outputs ekf_pos (x, y) and ekf_compass from the previous-step EKF update,
+  # then updates the EKF with current speed/steer/GPS for the NEXT frame.
+  # Reads previous control's steer for the bicycle-model prediction step.
+
+  - module: team_code.pipeline_modules
+    class: EKFEgoLocalizer
+    args:
+      gps_key: gps_raw
+      compass_key: compass
+      speed_key: speed
+      last_control_key: control
+      out_pos_key: ekf_pos
+      out_compass_key: ekf_compass
+      cos0: 1.0
+      lf: 1.477531
+      lr: 1.393600
+      gnss_noise: 0.000005
+      compass_noise: 1.0e-7
+      max_steer_angle: 70.0
+      freq: 20.0
+
+  # ── Route planning ─────────────────────────────────────────────────────────
+
+  - module: team_code.pipeline_modules
+    class: RoutePlannerNextCommand
+    args:
+      gps_key: gps_raw
+      out_pos_key: pos
+      out_wp_key: next_waypoint
+      out_cmd_key: next_command
+      min_distance: 4.0
+      max_distance: 50.0
+      gps_in_degrees: true
+
+  - module: team_code.pipeline_modules
+    class: TargetPointFromNextWaypoint
+    args:
+      pos_key: pos
+      compass_key: compass
+      next_waypoint_key: next_waypoint
+      out_key: target_point
+
+  # ── LiDAR preprocessing ────────────────────────────────────────────────────
+  # Remove points inside the ego-vehicle body (sensor self-reflections).
+
+  - module: team_code.pipeline_modules
+    class: LidarVehicleBodyFilter
+    args:
+      lidar_key: lidar_raw
+      out_key: lidar_filtered
+      min_x: -2.4
+      max_x: 0.0
+      min_y: -0.8
+      max_y: 0.8
+      min_z: -1.5
+      max_z: -1.0
+
+  # ── Semantic point painting ────────────────────────────────────────────────
+  # Stack the three wide cameras as a batch, run LAV's ERFNet segmentation,
+  # then project the semantic labels onto the LiDAR point cloud.
+  # CAVEAT: LAVRGBSegmentationRunner is LAV-specific (ERFNet + channels [4,6,7,10]).
+  # CAVEAT: PointPaintingModule wraps LAV's CoordConverter geometry code.
+
+  - module: team_code.pipeline_modules
+    class: MultiCameraToTorchBatch
+    args:
+      in_keys: [rgb_0_raw, rgb_1_raw, rgb_2_raw]
+      out_key: rgb_batch_t
+      device: cuda
+      divide_by_255: false
+
+  - module: team_code.pipeline_modules
+    class: LAVRGBSegmentationRunner
+    args:
+      checkpoint_path: /workspace/leaderboard/team_code/lav/weights/seg_1.th
+      in_key: rgb_batch_t
+      out_key: rgb_seg
+      seg_channels: [4, 6, 7, 10]
+      device: cuda
+
+  - module: team_code.pipeline_modules
+    class: PointPaintingModule
+    args:
+      lidar_key: lidar_filtered
+      seg_key: rgb_seg
+      out_key: lidar_fused
+      cam_yaws: [-60, 0, 60]
+      lidar_xyz: [0, 0, 2.4]
+      cam_xyz: [1.5, 0, 2.4]
+      rgb_h: 288
+      rgb_w: 256
+      fov: 64.0
+
+  # ── Temporal LiDAR accumulation ────────────────────────────────────────────
+  # Maintains a rolling FIFO, concatenates current + previous frame for density
+  # (concat_with_prev), samples every gap=5 frames, applies ego-motion
+  # compensation using EKF poses, and appends one-hot time-encoding channels.
+
+  - module: team_code.pipeline_modules
+    class: TemporalLidarAccumulator
+    args:
+      lidar_key: lidar_fused
+      pos_key: ekf_pos
+      compass_key: ekf_compass
+      out_key: lidar_stacked
+      num_frame_stack: 2
+      gap: 5
+      concat_with_prev: true
+
+  # ── LiDAR model + BEV detection ───────────────────────────────────────────
+  # CAVEAT: LAVLiDARModelRunner is LAV-specific (PointPillarNet + CNN heads).
+  # num_input = xyz(3) + intensity(1) + painted(4) + time_one_hot(3) = 11.
+
+  - module: team_code.pipeline_modules
+    class: LAVLiDARModelRunner
+    args:
+      checkpoint_path: /workspace/leaderboard/team_code/lav/weights/lidar_v2_7.th
+      lidar_key: lidar_stacked
+      out_features_key: lav_features
+      out_heatmaps_key: lav_heatmaps
+      out_sizemaps_key: lav_sizemaps
+      out_orimaps_key: lav_orimaps
+      num_input: 11
+      backbone: cnn
+      num_features: [64, 64]
+      min_x: -10.0
+      max_x:  70.0
+      min_y: -40.0
+      max_y:  40.0
+      pixels_per_meter: 4.0
+      device: cuda
+
+  - module: team_code.pipeline_modules
+    class: BEVHeatmapNMS
+    args:
+      heatmaps_key: lav_heatmaps
+      sizemaps_key: lav_sizemaps
+      orimaps_key: lav_orimaps
+      out_key: lav_detections
+      kernel_size: 7
+      min_score: 0.1
+      max_det: 15
+
+  # ── RGB brake prediction ───────────────────────────────────────────────────
+  # Concatenate wide cameras horizontally for the brake model's first input.
+  # CAVEAT: LAVBrakePredictionRunner is LAV-specific (dual ResNet18 + attention).
+
+  - module: team_code.pipeline_modules
+    class: HorizontalCameraConcat
+    args:
+      in_keys: [rgb_0_raw, rgb_1_raw, rgb_2_raw]
+      out_key: rgb_wide_raw
+
+  - module: team_code.pipeline_modules
+    class: LAVBrakePredictionRunner
+    args:
+      checkpoint_path: /workspace/leaderboard/team_code/lav/weights/bra_v2_9.th
+      wide_key: rgb_wide_raw
+      tel_key: rgb_tel_raw
+      out_key: brake_pred
+      crop_tel_bottom: 96
+      device: cuda
+
+  # ── Motion planning ────────────────────────────────────────────────────────
+  # CAVEAT: LAVUniPlannerRunner is LAV-specific (GRU-based multi-command planner).
+  # target_point is negated inside the runner to match LAV's nxps convention.
+
+  - module: team_code.pipeline_modules
+    class: LAVUniPlannerRunner
+    args:
+      checkpoint_path: /workspace/leaderboard/team_code/lav/weights/uniplanner_v2_7.th
+      bev_checkpoint_path: /workspace/leaderboard/team_code/lav/weights/bev_v2_64.th
+      features_key: lav_features
+      detections_key: lav_detections
+      cmd_key: next_command
+      target_point_key: target_point
+      out_ego_plan_key: lav_ego_plan
+      out_cast_locs_key: lav_cast_locs
+      out_other_cast_key: lav_other_cast
+      out_other_cmds_key: lav_other_cmds
+      pixels_per_meter: 4.0
+      crop_size: 96
+      num_cmds: 6
+      num_plan: 20
+      num_plan_iter: 5
+      num_frame_stack: 2
+      num_features: [64, 64]
+      feature_x_jitter: 1.5
+      feature_angle_jitter: 20.0
+      min_x: -10.0
+      device: cuda
+
+  # ── Collision check ────────────────────────────────────────────────────────
+  # CAVEAT: LAVCollisionCheck input format is specific to LAVUniPlannerRunner output.
+
+  - module: team_code.pipeline_modules
+    class: LAVCollisionCheck
+    args:
+      ego_plan_key: lav_ego_plan
+      other_cast_key: lav_other_cast
+      other_cmds_key: lav_other_cmds
+      out_key: lav_collision
+      pixels_per_meter: 4.0
+      cmd_thresh: 0.2
+      brake_speed: 0.2
+      dist_threshold_static: 1.0
+      dist_threshold_moving: 2.5
+
+  # ── PID control ────────────────────────────────────────────────────────────
+  # Tracks planned waypoints with command-conditioned aim points and speed ratios.
+  # All values match lav/config.yaml defaults.
+
+  - module: team_code.pipeline_modules
+    class: WaypointTrackingPID
+    args:
+      waypoints_key: lav_ego_plan
+      speed_key: speed
+      cmd_key: next_command
+      out_key: control_base
+      pixels_per_meter: 4.0
+      aim_point: [4, 4, 4, 3, 6, 6]
+      speed_ratio: [0.8, 0.8, 0.8, 0.6, 0.8, 0.8]
+      turn_KP: 0.8
+      turn_KI: 0.5
+      turn_KD: 0.2
+      turn_n: 40
+      speed_KP: 5.0
+      speed_KI: 0.5
+      speed_KD: 1.0
+      speed_n: 40
+      brake_speed: 0.2
+      clip_delta: 0.25
+      max_throttle: 0.8
+
+  # ── Emergency overrides ────────────────────────────────────────────────────
+  # Applies brake-pred threshold, collision flag, max speed, and stuck recovery.
+  # All values match lav/config.yaml defaults.
+
+  - module: team_code.pipeline_modules
+    class: EmergencyBrakeOverride
+    args:
+      control_key: control_base
+      brake_pred_key: brake_pred
+      collision_key: lav_collision
+      speed_key: speed
+      out_key: control
+      brake_threshold: 0.1
+      max_speed_kmh: 35.0
+      stop_limit: 600
+      force_throttle: 0.4
+      force_frames: 20

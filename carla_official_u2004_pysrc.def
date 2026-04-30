@@ -178,6 +178,32 @@ Stage: final
     # the container's LD_LIBRARY_PATH, so no extra ld config needed.
     touch /usr/lib/x86_64-linux-gnu/libnvidia-gpucomp.so.575.57.08
 
+    echo "[nvidia-icd] install NVIDIA Vulkan ICD + GLVND EGL vendor files..."
+    # The old carlasim/carla:0.9.10.1 image had these baked in (it was based on
+    # NVIDIA's CUDA Docker base). The ubuntu:20.04 base has neither. Without them:
+    #   - libvulkan1 (Vulkan loader) finds no NVIDIA ICD → "Vulkan Driver required"
+    #   - libEGL.so.1 (GLVND dispatch, bound by --nv) finds no NVIDIA EGL vendor
+    #     → eglGetDisplay returns no device → UE4 OpenGL RHI crashes at context
+    #     creation, even though libEGL_nvidia.so.0 is physically present.
+    mkdir -p /etc/vulkan/icd.d /usr/share/glvnd/egl_vendor.d
+    cat > /etc/vulkan/icd.d/nvidia_icd.json << 'NVIDIA_ICD'
+{
+    "file_format_version" : "1.0.0",
+    "ICD" : {
+        "library_path" : "libGLX_nvidia.so.0",
+        "api_version" : "1.1.70"
+    }
+}
+NVIDIA_ICD
+    cat > /usr/share/glvnd/egl_vendor.d/10_nvidia.json << 'NVIDIA_EGL'
+{
+    "file_format_version" : "1.0.0",
+    "ICD" : {
+        "library_path" : "libEGL_nvidia.so.0"
+    }
+}
+NVIDIA_EGL
+
     echo "[ldconfig] refresh /etc/ld.so.cache so newly-apt-installed libs (libvulkan1) are findable..."
     # apt's postinst usually does this, but doing it explicitly here insulates
     # us from any apt quirk where the cache wasn't refreshed.

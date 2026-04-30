@@ -35,15 +35,11 @@ BIND_SPECS=( "${PROJECT_ROOT}:/workspace" )
 # /.singularity.d/libs/ where it joins the rest of the --nv-bound NVIDIA libs
 # (that dir is already on LD_LIBRARY_PATH).
 NVIDIA_GPUCOMP_HOST="/usr/lib/x86_64-linux-gnu/libnvidia-gpucomp.so.575.57.08"
-if [[ -e "${NVIDIA_GPUCOMP_HOST}" ]]; then
-  # Bind onto a placeholder pre-created in the SIF at the SAME path. The path
-  # is on the loader's default search and on the container's LD_LIBRARY_PATH,
-  # so no LD_LIBRARY_PATH gymnastics needed. Requires the SIF to have been
-  # built from the latest .def (which contains a `touch` of this path).
-  BIND_SPECS+=( "${NVIDIA_GPUCOMP_HOST}:${NVIDIA_GPUCOMP_HOST}" )
-else
-  echo "[start_job][WARN] ${NVIDIA_GPUCOMP_HOST} not found on host — UE4 RHI init may still fail."
-fi
+# Bind unconditionally: the SIF contains a 0-byte placeholder at this path so
+# the bind destination always exists. The host file is absent on the login node
+# but present on compute nodes — the existence check was incorrectly running on
+# the login node and silently skipping the bind every time.
+BIND_SPECS+=( "${NVIDIA_GPUCOMP_HOST}:${NVIDIA_GPUCOMP_HOST}" )
 
 _bind_join() {
   # Append each entry in BIND_SPECS to the named env var (Singularity or Apptainer
@@ -74,10 +70,19 @@ echo "[start_job] APPTAINER_BINDPATH=${APPTAINER_BINDPATH}"
 
 # --- Command template for the evaluator -------------------------------------
 # Escape ${CARLA_SIF} so Python .format() doesn’t treat it as a placeholder.
+# The -B for libnvidia-gpucomp is the same workaround applied in
+# carla_server_manager.py: driver 575.x split GPU compute into a new lib that
+# the cluster's --nv doesn't auto-bind. Without this bind on the leaderboard
+# client too, the client's CARLA Python API would also fail to dlopen the
+# GL/Vulkan stack if it ever needs it.
 EVAL_CMD_TEMPLATE="$(cat <<'EOF'
-singularity exec --nv --pwd /workspace "${{CARLA_SIF}}" bash -lc '
+singularity exec --nv --pwd /workspace \
+  -B /usr/lib/x86_64-linux-gnu/libnvidia-gpucomp.so.575.57.08:/usr/lib/x86_64-linux-gnu/libnvidia-gpucomp.so.575.57.08 \
+  "${{CARLA_SIF}}" bash -lc '
   set -euo pipefail
   export PYTHONPATH="/workspace:/workspace/leaderboard:/workspace/scenario_runner:${{PYTHONPATH:-}}"
+  export ROUTES="{ROUTES_FILE}"
+  export SCENARIOS="{SCENARIOS_FILE}"
   python3 -m leaderboard.leaderboard_evaluator \
     --routes "{ROUTES_FILE}" \
     --scenarios "{SCENARIOS_FILE}" \

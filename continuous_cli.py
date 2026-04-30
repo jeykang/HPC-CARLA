@@ -221,7 +221,7 @@ class ContinuousCLI:
         
         # Default GPUs if not specified
         if not slurm_config.gpus_per_node and not slurm_config.gres:
-            slurm_config.gpus_per_node = 8
+            slurm_config.gres = "gpu:8"
         
         # Calculate GPU counts for environment setup
         if slurm_config.gpus_per_node:

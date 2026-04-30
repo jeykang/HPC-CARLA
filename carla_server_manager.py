@@ -82,6 +82,18 @@ def _container_env_for_gpu(gpu_id: int) -> Dict[str, str]:
         "SINGULARITYENV_SDL_VIDEODRIVER": "offscreen",
         "SINGULARITYENV_SDL_AUDIODRIVER": "dummy",
         "SINGULARITYENV_DISABLE_PYTHON": "1",   # CARLA binary only
+        # GLVND EGL vendor registration: the ubuntu:20.04 SIF base doesn't
+        # include the NVIDIA EGL vendor file (that came from the CUDA Docker
+        # base in the old carlasim image). Without it libEGL.so.1 (GLVND)
+        # finds no EGL implementation → UE4 OpenGL RHI crashes at context
+        # creation. Point directly at the file in /workspace (always bound).
+        "SINGULARITYENV___EGL_VENDOR_LIBRARY_FILENAMES": "/workspace/nvidia_egl_vendor.json",
+        # Vulkan ICD: same problem — nvidia_icd.json was baked into the old
+        # carlasim image but absent from the new ubuntu base.
+        "SINGULARITYENV_VK_ICD_FILENAMES": "/workspace/nvidia_icd.json",
+        # Mirror for Apptainer
+        "APPTAINERENV___EGL_VENDOR_LIBRARY_FILENAMES": "/workspace/nvidia_egl_vendor.json",
+        "APPTAINERENV_VK_ICD_FILENAMES": "/workspace/nvidia_icd.json",
     })
     # Prevent core dumps inside container
     env["SINGULARITYENV_ULIMIT_CORE"] = "0"
@@ -94,7 +106,20 @@ def _build_run_args(rpc: int, tm: int) -> List[str]:
     """
     args = [
         "singularity", "run", "--nv",
-        "-B", f"{str(PROJECT_ROOT)}:/workspace",  # mount project at /workspace for Python sidecars
+        "-B", f"{str(PROJECT_ROOT)}:/workspace",  # project tree at /workspace for sidecars
+    ]
+    # Driver 575.x requires libnvidia-gpucomp.so but the cluster's --nv
+    # (legacy nvliblist.conf) doesn't auto-bind it. Without this, UE4's GL/Vulkan
+    # RHI dlopens libGLX_nvidia which then can't resolve gpucomp, and CARLA
+    # dies before binding the RPC port. SIF must contain a 0-byte placeholder
+    # at the same path (created by the .def's %post `touch` line); the bind
+    # below overlays the host file onto it. Hardcoded here rather than via
+    # SINGULARITY_BINDPATH because the auto-generated SLURM submission script
+    # does not propagate that env var.
+    GPUCOMP = "/usr/lib/x86_64-linux-gnu/libnvidia-gpucomp.so.575.57.08"
+    if os.path.exists(GPUCOMP):
+        args += ["-B", f"{GPUCOMP}:{GPUCOMP}"]
+    args += [
         SIF_PATH,
         "-opengl",
         "-RenderOffScreen",
@@ -103,7 +128,6 @@ def _build_run_args(rpc: int, tm: int) -> List[str]:
         f"-trafficManagerPort={tm}",
         "-carla-server",
     ]
-    # If your image expects '-nosound' (your %runscript already adds it), no need to pass it again.
     return args
 
 def start_one(gpu_id: int, rpc: int, tm: int) -> Optional[int]:

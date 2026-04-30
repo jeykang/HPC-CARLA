@@ -458,8 +458,13 @@ class ConsolidatedAgent(AutonomousAgent):
         """
         super().set_global_plan(global_plan_gps, global_plan_world_coord)
 
-        # Ensure inner agent exists before forwarding
         self._ensure_config_loaded(path_hint=None)
+
+        # Pipeline mode: RoutePlannerNextCommand reads _global_plan directly from
+        # context['agent'] (= this object), which super() already updated above.
+        if self._config is not None and self._config.get("pipeline") is not None:
+            return
+
         self._ensure_inner_agent_loaded()
 
         if hasattr(self._inner_agent, "set_global_plan"):
@@ -658,10 +663,22 @@ class ConsolidatedAgent(AutonomousAgent):
             or os.environ.get("WEATHER_INDEX")
             or "unknown"
         )
+        # Normalize a bare integer index to "weather_N" to match manage_continuous labels.
+        try:
+            weather = f"weather_{int(weather)}"
+        except (ValueError, TypeError):
+            pass
 
-        # Compose final path
-        run_tag = os.environ.get("HPC_CARLA_RUN_TAG") or _now_string()
-        self.save_path = os.path.join(self.save_root, agent_name, weather, f"{route_stem}_{run_tag}")
+        # If the orchestrator (manage_continuous.py) pre-computed the full leaf
+        # path, honour it directly so sensor data and leaderboard checkpoint land
+        # in the same directory tree (weather_N/map_NN/route_name/).
+        explicit_save_path = os.environ.get("SAVE_PATH")
+        if explicit_save_path:
+            self.save_path = explicit_save_path
+            run_tag = os.environ.get("HPC_CARLA_RUN_TAG") or Path(explicit_save_path).name
+        else:
+            run_tag = os.environ.get("HPC_CARLA_RUN_TAG") or _now_string()
+            self.save_path = os.path.join(self.save_root, agent_name, weather, f"{route_stem}_{run_tag}")
         os.makedirs(self.save_path, exist_ok=True)
 
         # Initialize metadata file
@@ -742,9 +759,8 @@ class ConsolidatedAgent(AutonomousAgent):
 
         # Camera-like: numpy array with shape (H, W, C)
         if isinstance(raw, np.ndarray) and raw.ndim == 3:
-            # CARLA default is BGRA; convert to BGR for OpenCV and save PNG
-            img = raw[:, :, :3]
-            img_bgr = cv2.cvtColor(img, cv2.COLOR_RGB2BGR) if img.shape[2] == 3 else img[:, :, :3]
+            # CARLA gives BGRA; drop alpha. cv2.imwrite expects BGR — no conversion needed.
+            img_bgr = raw[:, :, :3]
             out_path = os.path.join(sensor_dir, base_name + ".png")
             cv2.imwrite(out_path, img_bgr)
 
