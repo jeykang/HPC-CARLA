@@ -45,6 +45,33 @@ import yaml
 import carla
 from leaderboard.autoagents.autonomous_agent import AutonomousAgent, Track
 
+# Weather presets — mirrors auto_pilot.py WEATHERS / WEATHERS_IDS exactly.
+# Index 0–13 match leaderboard training splits; 14–20 are night variants.
+_WEATHERS = {
+    "ClearNoon":       carla.WeatherParameters.ClearNoon,
+    "ClearSunset":     carla.WeatherParameters.ClearSunset,
+    "CloudyNoon":      carla.WeatherParameters.CloudyNoon,
+    "CloudySunset":    carla.WeatherParameters.CloudySunset,
+    "WetNoon":         carla.WeatherParameters.WetNoon,
+    "WetSunset":       carla.WeatherParameters.WetSunset,
+    "MidRainyNoon":    carla.WeatherParameters.MidRainyNoon,
+    "MidRainSunset":   carla.WeatherParameters.MidRainSunset,
+    "WetCloudyNoon":   carla.WeatherParameters.WetCloudyNoon,
+    "WetCloudySunset": carla.WeatherParameters.WetCloudySunset,
+    "HardRainNoon":    carla.WeatherParameters.HardRainNoon,
+    "HardRainSunset":  carla.WeatherParameters.HardRainSunset,
+    "SoftRainNoon":    carla.WeatherParameters.SoftRainNoon,
+    "SoftRainSunset":  carla.WeatherParameters.SoftRainSunset,
+    "ClearNight":      carla.WeatherParameters(5.0,   0.0,  0.0,  10.0, -1.0, -90.0, 60.0, 75.0,  1.0,   0.0),
+    "CloudyNight":     carla.WeatherParameters(60.0,  0.0,  0.0,  10.0, -1.0, -90.0, 60.0, 0.75,  0.1,   0.0),
+    "WetNight":        carla.WeatherParameters(5.0,   0.0, 50.0,  10.0, -1.0, -90.0, 60.0, 75.0,  1.0,  60.0),
+    "WetCloudyNight":  carla.WeatherParameters(60.0,  0.0, 50.0,  10.0, -1.0, -90.0, 60.0, 0.75,  0.1,  60.0),
+    "SoftRainNight":   carla.WeatherParameters(60.0, 30.0, 50.0,  30.0, -1.0, -90.0, 60.0, 0.75,  0.1,  60.0),
+    "MidRainyNight":   carla.WeatherParameters(80.0, 60.0, 60.0,  60.0, -1.0, -90.0, 60.0, 0.75,  0.1,  80.0),
+    "HardRainNight":   carla.WeatherParameters(100.0,100.0, 90.0, 100.0, -1.0, -90.0,100.0, 0.75,  0.1, 100.0),
+}
+_WEATHER_IDS = list(_WEATHERS)
+
 # Pipeline support (used only when config contains `pipeline:`).
 # Keep this import resilient across environments and Python versions.
 PipelineEngine = None  # type: ignore
@@ -206,6 +233,11 @@ class ConsolidatedAgent(AutonomousAgent):
         # Optional extension hooks (all no-op unless configured)
         self._extensions_loaded: bool = False
         self._extensions: List[Any] = []
+
+        # Weather: applied once on the first run_step call (world is ready by then).
+        # _init() is commented out in the leaderboard evaluator, so run_step is
+        # the earliest reliable point to call world.set_weather().
+        self._weather_applied: bool = False
 
         super().__init__(path_to_conf_file)
 
@@ -398,6 +430,29 @@ class ConsolidatedAgent(AutonomousAgent):
         Stage 4: Apply global control post-processing.
         """
         self._global_step += 1
+
+        # Apply weather on the first step — the world is guaranteed to be ready
+        # by this point (CarlaDataProvider.set_world() has been called), whereas
+        # setup() runs before the world is loaded and _init() is commented out
+        # in the leaderboard evaluator.
+        if not self._weather_applied:
+            self._weather_applied = True
+            try:
+                from srunner.scenariomanager.carla_data_provider import CarlaDataProvider
+                world = CarlaDataProvider.get_world()
+                if world is not None:
+                    idx_str = (
+                        os.environ.get("WEATHER_INDEX")
+                        or os.environ.get("WEATHER")
+                        or os.environ.get("WEATHERS")
+                        or ""
+                    ).strip()
+                    if idx_str:
+                        idx = int(idx_str)
+                        if 0 <= idx < len(_WEATHER_IDS):
+                            world.set_weather(_WEATHERS[_WEATHER_IDS[idx]])
+            except Exception:
+                pass
 
         # Ensure full initialization (for the first call when run_step is
         # invoked before setup() for any reason).
