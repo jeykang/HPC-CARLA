@@ -640,12 +640,13 @@ class ContinuousManager:
             with open(self.queue_file, 'r') as f:
                 q = json.load(f)
 
-            # choose among PENDING: smallest attempts first, then longest estimated time
+            # choose among PENDING: smallest attempts first, then agent priority (tcp/lav before interfuser), then longest estimated time
+            _agent_priority = {"tcp": 0, "lav": 1, "interfuser": 2}
             pending = [j for j in q['jobs'] if j.get('status') == 'pending']
             if not pending:
                 return None
 
-            pending.sort(key=lambda j: (j.get('attempts', 0), -_estimate_sec(j)))
+            pending.sort(key=lambda j: (j.get('attempts', 0), _agent_priority.get(j.get('agent', ''), 99), -_estimate_sec(j)))
 
             job = pending[0]
             job['status'] = 'running'

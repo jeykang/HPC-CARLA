@@ -1306,11 +1306,11 @@ class TCPBetaControl:
         import torch
 
         pred = context[self.pred_key]
-        mu = pred["mu_branches"]        # (1, pred_len, 2)
-        sigma = pred["sigma_branches"]  # (1, pred_len, 2)
+        mu = pred["mu_branches"]        # (1, 2)
+        sigma = pred["sigma_branches"]  # (1, 2)
 
-        mu0 = mu[0, 0].clamp(1e-4, 1.0 - 1e-4)
-        sigma0 = sigma[0, 0].clamp(1e-4, 1.0 - 1e-4)
+        mu0 = mu[0].clamp(1e-4, 1.0 - 1e-4)
+        sigma0 = sigma[0].clamp(1e-4, 1.0 - 1e-4)
         var = sigma0 ** 2
         alpha = mu0 * (mu0 * (1.0 - mu0) / var.clamp(min=1e-6) - 1.0).clamp(min=1e-4)
         beta_p = (1.0 - mu0) * (mu0 * (1.0 - mu0) / var.clamp(min=1e-6) - 1.0).clamp(min=1e-4)
@@ -1884,8 +1884,8 @@ class BEVHeatmapNMS:
     (kernel_size × kernel_size) neighbourhood and exceeds min_score.
 
     Returns context[out_key] as a list of lists:
-      [[( score, x, y, w, h, cos, sin ), ...],   # class 0 (vehicles)
-       [( score, x, y, w, h, cos, sin ), ...]]   # class 1 (pedestrians)
+      [[(x, y, w, h, cos, sin), ...],   # class 0 (vehicles)
+       [(x, y, w, h, cos, sin), ...]]   # class 1 (pedestrians)
 
     Mirrors lav_agent.py det_inference() / extract_peak().
     """
@@ -1937,7 +1937,7 @@ class BEVHeatmapNMS:
                 h = float(sizemaps[1, y, x])
                 cos = float(orimaps[0, y, x])
                 sin = float(orimaps[1, y, x])
-                cls_dets.append((s, x, y, w, h, cos, sin))
+                cls_dets.append((x, y, w, h, cos, sin))
             dets.append(cls_dets)
 
         context[self.out_key] = dets
@@ -2008,6 +2008,10 @@ class WaypointTrackingPID:
         speed = float(context[self.speed_key])
         cmd = int(context[self.cmd_key])
         cmd = max(0, min(cmd, len(self.aim_point) - 1))
+
+        if np.isnan(wps).any():
+            context[self.out_key] = {"steer": 0.0, "throttle": 0.0, "brake": 0.0}
+            return context
 
         # Scale to pixel space and flip y to match LAV convention
         wps *= self.pixels_per_meter
