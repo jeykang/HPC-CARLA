@@ -178,6 +178,7 @@ pipeline:
     args:
       pred_key: tcp_pred
       speed_key: speed
+      target_point_key: target_point
       out_key: ctrl_traj
       aim_dist: 4.0
       angle_thresh: 0.3
@@ -194,7 +195,6 @@ pipeline:
       speed_KI: 0.5
       speed_KD: 1.0
       speed_n: 40
-      desired_speed: 4.0
 
   # ── Blend ──────────────────────────────────────────────────────────────────
 

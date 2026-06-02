@@ -1306,19 +1306,25 @@ class TCPBetaControl:
         import torch
 
         pred = context[self.pred_key]
-        mu = pred["mu_branches"]        # (1, 2)
-        sigma = pred["sigma_branches"]  # (1, 2)
+        # mu_branches and sigma_branches are Softplus outputs → they ARE α and β directly,
+        # not mean/sigma. Implement _get_action_beta from tcp/TCP/model.py lines 231-249.
+        alpha = pred["mu_branches"][0].clamp(min=1e-4)    # shape (2,), α ∈ (0, ∞)
+        beta_p = pred["sigma_branches"][0].clamp(min=1e-4)  # shape (2,), β ∈ (0, ∞)
 
-        mu0 = mu[0].clamp(1e-4, 1.0 - 1e-4)
-        sigma0 = sigma[0].clamp(1e-4, 1.0 - 1e-4)
-        var = sigma0 ** 2
-        alpha = mu0 * (mu0 * (1.0 - mu0) / var.clamp(min=1e-6) - 1.0).clamp(min=1e-4)
-        beta_p = (1.0 - mu0) * (mu0 * (1.0 - mu0) / var.clamp(min=1e-6) - 1.0).clamp(min=1e-4)
-        dist = torch.distributions.Beta(alpha, beta_p)
-        action = dist.mean.cpu().numpy()
+        x = torch.full_like(alpha, 0.5)
+        # mode = (α-1)/(α+β-2) when both > 1
+        mask1 = (alpha > 1) & (beta_p > 1)
+        x[mask1] = (alpha[mask1] - 1.0) / (alpha[mask1] + beta_p[mask1] - 2.0)
+        # boundary cases
+        mask2 = (alpha <= 1) & (beta_p > 1);  x[mask2] = 0.0
+        mask3 = (alpha > 1) & (beta_p <= 1);  x[mask3] = 1.0
+        # both ≤ 1: use mean as tiebreak (mode is bimodal / undefined)
+        mask4 = (alpha <= 1) & (beta_p <= 1)
+        x[mask4] = alpha[mask4] / (alpha[mask4] + beta_p[mask4]).clamp(min=1e-5)
 
-        acc = float(action[0]) * 2.0 - 1.0
-        steer = float(action[1]) * 2.0 - 1.0
+        action = (x * 2.0 - 1.0).cpu().numpy()   # scale [0,1] → [-1,1]
+        acc = float(action[0])
+        steer = float(np.clip(action[1], -1.0, 1.0))
 
         if acc >= 0.0:
             throttle = acc
@@ -1338,13 +1344,15 @@ class TCPBetaControl:
 class TCPPIDControl:
     """PID control on TCP predicted waypoints → {steer, throttle, brake}.
 
-    Re-implements TCP.control_pid() without depending on the original TCP class.
+    Faithful re-implementation of TCP.control_pid(), including the angle_target
+    outlier-rejection logic that suppresses waypoint noise on straight roads.
     """
 
     def __init__(
         self,
         pred_key: str = "tcp_pred",
         speed_key: str = "speed",
+        target_point_key: str = "target_point",
         out_key: str = "ctrl_traj",
         aim_dist: float = 4.0,
         angle_thresh: float = 0.3,
@@ -1361,10 +1369,10 @@ class TCPPIDControl:
         speed_KI: float = 0.5,
         speed_KD: float = 1.0,
         speed_n: int = 40,
-        desired_speed: float = 4.0,
     ):
         self.pred_key = pred_key
         self.speed_key = speed_key
+        self.target_point_key = target_point_key
         self.out_key = out_key
         self.aim_dist = aim_dist
         self.angle_thresh = angle_thresh
@@ -1373,7 +1381,6 @@ class TCPPIDControl:
         self.brake_ratio = brake_ratio
         self.clip_delta = clip_delta
         self.max_throttle = max_throttle
-        self.desired_speed = desired_speed
         self._turn_KP = turn_KP
         self._turn_KI = turn_KI
         self._turn_KD = turn_KD
@@ -1408,38 +1415,56 @@ class TCPPIDControl:
         pred = context[self.pred_key]
         speed = float(context[self.speed_key])
 
-        wps = pred["pred_waypoints"][0].cpu().numpy()  # (pred_len, 2)
+        wps = pred["pred_wp"][0].cpu().numpy()  # (pred_len, 2)
+        wps[:, 1] *= -1  # forward is negative y in TCP waypoints
 
-        aim = wps[-1]
-        for wp in wps:
-            if np.linalg.norm(wp) >= self.aim_dist:
-                aim = wp
-                break
+        target = np.asarray(context[self.target_point_key], dtype=np.float64).flatten()[:2].copy()
+        target[1] *= -1  # same y-flip as waypoints
 
-        if np.linalg.norm(aim) > self.dist_thresh:
-            aim = wps[0]
+        num_pairs = len(wps) - 1
+        desired_speed_dyn = 0.0
+        best_norm = 1e5
+        aim = wps[0]
+        for i in range(num_pairs):
+            desired_speed_dyn += np.linalg.norm(wps[i + 1] - wps[i]) * 2.0 / num_pairs
+            norm = np.linalg.norm((wps[i + 1] + wps[i]) / 2.0)
+            if abs(self.aim_dist - best_norm) > abs(self.aim_dist - norm):
+                aim = wps[i]
+                best_norm = norm
 
-        angle = float(np.arctan2(aim[1], aim[0]))
+        aim_last = wps[-1] - wps[-2]
+
+        angle = float(np.degrees(np.pi / 2 - np.arctan2(aim[1], aim[0])) / 90.0)
+        angle_last = float(np.degrees(np.pi / 2 - np.arctan2(aim_last[1], aim_last[0])) / 90.0)
+        angle_target = float(np.degrees(np.pi / 2 - np.arctan2(target[1], target[0])) / 90.0)
+
+        # Outlier rejection: prefer GPS target angle when waypoints are noisier
+        # (reduces straight-road drift; helps with sudden turn commands)
+        use_target = abs(angle_target) < abs(angle) or (
+            abs(angle_target - angle_last) > self.angle_thresh and target[1] < self.dist_thresh
+        )
+        angle_final = angle_target if use_target else angle
+
         steer_delta = self._pid(self._turn_window, self._turn_KP, self._turn_KI,
-                                self._turn_KD, angle)
-        steer = float(np.clip(steer_delta, -self.clip_delta, self.clip_delta))
+                                self._turn_KD, angle_final)
+        steer = float(np.clip(steer_delta, -1.0, 1.0))
 
-        speed_error = self.desired_speed - speed
+        delta = float(np.clip(desired_speed_dyn - speed, 0.0, self.clip_delta))
         throttle_delta = self._pid(self._speed_window, self._speed_KP, self._speed_KI,
-                                   self._speed_KD, speed_error)
+                                   self._speed_KD, delta)
         throttle = float(np.clip(throttle_delta, 0.0, self.max_throttle))
-        brake = 0.0
+        brake = bool(desired_speed_dyn < self.brake_speed or (
+            desired_speed_dyn > 1e-3 and speed / desired_speed_dyn > self.brake_ratio
+        ))
 
-        if speed >= self.brake_speed * self.brake_ratio:
-            brake = 1.0
+        if brake:
             throttle = 0.0
-        elif throttle > brake:
-            brake = 0.0
 
-        if brake < 0.05:
-            brake = 0.0
-
-        context[self.out_key] = {"steer": steer, "throttle": throttle, "brake": brake}
+        context[self.out_key] = {
+            "steer": steer,
+            "throttle": throttle,
+            "brake": float(brake),
+        }
         return context
 
 
@@ -1515,17 +1540,17 @@ class TCPBlendControl:
         else:
             w_ctrl, w_traj = 0.3, 0.7
 
-        steer = w_ctrl * ctrl["steer"] + w_traj * traj["steer"]
-        throttle = w_ctrl * ctrl["throttle"] + w_traj * traj["throttle"]
-        brake = w_ctrl * ctrl["brake"] + w_traj * traj["brake"]
+        steer = float(np.clip(w_ctrl * ctrl["steer"] + w_traj * traj["steer"], -1.0, 1.0))
+        throttle = float(np.clip(w_ctrl * ctrl["throttle"] + w_traj * traj["throttle"], 0.0, 0.75))
+        brake = float(np.clip(w_ctrl * ctrl["brake"] + w_traj * traj["brake"], 0.0, 1.0))
 
         if brake > 0.5:
             throttle = 0.0
 
         context[self.out_key] = {
-            "steer": float(steer),
-            "throttle": float(throttle),
-            "brake": float(brake),
+            "steer": steer,
+            "throttle": throttle,
+            "brake": brake,
         }
         return context
 
@@ -1899,6 +1924,10 @@ class BEVHeatmapNMS:
         kernel_size: int = 7,
         min_score: float = 0.1,
         max_det: int = 15,
+        pixels_per_meter: float = 4.0,
+        ego_pixel_x: int = 160,
+        ego_pixel_y: int = 280,
+        ego_filter_radius: float = 2.0,
     ):
         self.heatmaps_key = heatmaps_key
         self.sizemaps_key = sizemaps_key
@@ -1907,6 +1936,10 @@ class BEVHeatmapNMS:
         self.kernel_size = kernel_size
         self.min_score = min_score
         self.max_det = max_det
+        self.pixels_per_meter = pixels_per_meter
+        self.ego_pixel_x = ego_pixel_x
+        self.ego_pixel_y = ego_pixel_y
+        self.ego_filter_radius = ego_filter_radius
 
     @staticmethod
     def _extract_peak(heatmap, kernel_size, min_score, max_det):
@@ -1935,6 +1968,12 @@ class BEVHeatmapNMS:
             for s, x, y in self._extract_peak(c, self.kernel_size, self.min_score, self.max_det):
                 w = float(sizemaps[0, y, x])
                 h = float(sizemaps[1, y, x])
+                # Filter detections at the ego vehicle pixel location (sensor self-returns)
+                if np.linalg.norm([x - self.ego_pixel_x, y - self.ego_pixel_y]) <= self.ego_filter_radius:
+                    continue
+                # Filter undersized pedestrian detections (class 1)
+                if i == 1 and (w < 0.1 * self.pixels_per_meter or h < 0.2 * self.pixels_per_meter):
+                    continue
                 cos = float(orimaps[0, y, x])
                 sin = float(orimaps[1, y, x])
                 cls_dets.append((x, y, w, h, cos, sin))
@@ -2361,6 +2400,9 @@ class LAVUniPlannerRunner:
         )
         self.device = device
         self._model = None
+        # Lane-change state machine (mirrors lav_agent.py lines 157-160, 301-312)
+        self._lane_change_counter = 0
+        self._lane_changed = None  # set to cmd value once counter exceeds threshold
 
     def _load(self):
         import torch
@@ -2383,6 +2425,20 @@ class LAVUniPlannerRunner:
         dets = context[self.detections_key]
         cmd = int(context[self.cmd_key])
         cmd = max(0, min(cmd, self.num_cmds - 1))
+
+        # Lane-change state machine: mirrors lav_agent.py lines 301-312.
+        # Hold lane-change commands for 300 frames before reverting to LANEFOLLOW (3).
+        if cmd in [4, 5]:
+            if self._lane_changed is not None and cmd != self._lane_changed:
+                self._lane_change_counter = 0
+            self._lane_change_counter += 1
+            self._lane_changed = cmd if self._lane_change_counter > 300 else None
+        else:
+            self._lane_change_counter = 0
+            self._lane_changed = None
+        if cmd == self._lane_changed:
+            cmd = 3  # revert to LANEFOLLOW once lane change is completed
+
         tp = np.asarray(context[self.target_point_key], dtype=np.float32).flatten()[:2]
         nxps = torch.from_numpy(np.array([-tp[0], -tp[1]], dtype=np.float32)).to(self.device)
 
