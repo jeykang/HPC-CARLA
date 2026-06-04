@@ -214,14 +214,14 @@ python3 continuous_cli.py add --agent tcp --weather 14 15 16
 
 ## What Remains
 
-| Item | Priority | Notes |
-|------|----------|-------|
-| Confirm LAV end-to-end | High | Jobs running; watch `global_steps > 0` in run summaries |
-| Validate InterFuser end-to-end | High | No systematic validation yet |
-| Redundant scenario pruning | Medium | Dropping jobs where a harder same-route job already succeeded would reduce redundant compute; complexity ~1 order of magnitude above the difficulty scorer |
-| Expand weather to night presets (indices 14–20) | Medium | Night conditions not yet queued by default |
-| Data quality audit | Medium | Verify collected frames are free from silent pipeline bugs |
-| Leaderboard score reporting | Low | Parse `results.json` scores into `completed_jobs.json` for cross-agent comparison |
+| Item | Status | Notes |
+|------|--------|-------|
+| Confirm LAV end-to-end | Done | Confirmed working — runs show motion without crashes |
+| Validate InterFuser end-to-end | In progress | Set to priority 0; jobs now running |
+| Redundant scenario pruning | Done | `python3 manage_continuous.py prune [--dry-run]` — skips pending easy-weather jobs when a harder same-route run already completed |
+| Expand weather to night presets (indices 14–20) | Done | Default weather range changed to 0–20; next `reset` will include night conditions |
+| Leaderboard score reporting | Done | `_finish()` now parses `results.json` and records `score_composed`, `score_route`, `score_n_routes`, `route_statuses` into `completed_jobs.json` |
+| Data quality audit | Pending | Verify collected frames are free from silent pipeline bugs across all three agents |
 
 ---
 

@@ -131,9 +131,10 @@ class ContinuousManager:
                 print("Warning: No agent configs found, using default")
                 agents_list = ['interfuser']
         
-        # Default weather
+        # Default weather: 0-20 covers all CARLA presets including night conditions.
+        # (0=ClearNoon … 13=SoftRainSunset; 14=ClearNight … 20=HardRainNight)
         if weather_list is None:
-            weather_list = list(range(15))  # 0-14
+            weather_list = list(range(21))  # 0-20
         
         # Filter routes if specific ones requested
         if routes_list is not None:
@@ -486,6 +487,103 @@ class ContinuousManager:
             print("No completed jobs found")
             return None
     
+    def prune_redundant(self, dry_run: bool = False) -> int:
+        """Mark pending easy-weather jobs redundant when a harder variant already completed.
+
+        Logic: for each (agent, route) pair, compute the difficulty score of every
+        completed job.  Any *pending* job whose difficulty score is strictly lower than
+        the maximum completed difficulty for that pair is considered redundant — if the
+        model handled the hardest condition we've seen, the easier variant adds little
+        new signal — and is marked 'skipped'.
+
+        Returns the number of jobs pruned.  Pass dry_run=True to report without writing.
+        """
+        import math as _math
+        import xml.etree.ElementTree as _ET
+
+        # ── Difficulty helpers (duplicated locally so this method is self-contained) ─
+        _WEATHER_DIFF = [
+            0.0, 0.5, 0.5, 1.0, 1.5, 2.0, 2.5, 3.0, 1.5, 2.0,
+            3.5, 4.0, 2.0, 2.5, 3.0, 3.5, 4.0, 4.5, 4.5, 5.0, 5.5,
+        ]
+
+        def _geo(route_name, _cache={}):
+            if route_name in _cache:
+                return _cache[route_name]
+            try:
+                root = _ET.parse(str(self.routes_dir / route_name)).getroot()
+                scores = []
+                for el in root.findall('route'):
+                    wps = el.findall('waypoint')
+                    if len(wps) < 2:
+                        scores.append(0.0); continue
+                    xs   = [float(w.get('x', 0)) for w in wps]
+                    ys   = [float(w.get('y', 0)) for w in wps]
+                    yaws = [float(w.get('yaw', 0)) % 360 for w in wps]
+                    path = sum(_math.hypot(xs[i+1]-xs[i], ys[i+1]-ys[i]) for i in range(len(xs)-1))
+                    deltas = []
+                    for i in range(1, len(yaws)):
+                        d = abs(yaws[i] - yaws[i-1])
+                        if d > 180: d = 360 - d
+                        deltas.append(d)
+                    scores.append(sum(1 for d in deltas if d > 45) * 2.0
+                                  + path / 500.0 + sum(deltas) / 180.0)
+                v = sum(scores) / len(scores) if scores else 0.0
+            except Exception:
+                v = 0.0
+            _cache[route_name] = v
+            return v
+
+        def _difficulty(agent, route, weather):
+            w = _WEATHER_DIFF[weather] if weather < len(_WEATHER_DIFF) else 2.5
+            return _geo(route) + w
+
+        def _do_prune():
+            try:
+                with open(self.completed_file) as f:
+                    comp = json.load(f)
+                completed_jobs = comp.get('jobs', [])
+            except Exception:
+                completed_jobs = []
+
+            with open(self.queue_file) as f:
+                q = json.load(f)
+
+            # Max difficulty successfully completed per (agent, route)
+            best: dict = {}
+            for j in completed_jobs:
+                if j.get('status') == 'completed':
+                    key = (j['agent'], j['route'])
+                    d = _difficulty(j['agent'], j['route'], int(j.get('weather', 0)))
+                    best[key] = max(best.get(key, 0.0), d)
+
+            pruned = 0
+            for j in q['jobs']:
+                if j.get('status') != 'pending':
+                    continue
+                key = (j['agent'], j['route'])
+                if key not in best:
+                    continue
+                d = _difficulty(j['agent'], j['route'], int(j.get('weather', 0)))
+                if d < best[key]:
+                    if not dry_run:
+                        j['status'] = 'skipped'
+                    pruned += 1
+                    print(f"  {'[dry] ' if dry_run else ''}skip job {j['id']}"
+                          f" {j['agent']}/{j['route']} w{j['weather']}"
+                          f" (difficulty {d:.2f} < best {best[key]:.2f})")
+
+            if not dry_run and pruned:
+                with open(self.queue_file, 'w') as f:
+                    json.dump(q, f, indent=2)
+
+            return pruned
+
+        n = self._with_lock(_do_prune)
+        label = "would prune" if dry_run else "pruned"
+        print(f"Redundant pruning: {label} {n} pending jobs.")
+        return n
+
     def optimize_runtime_estimates(self):
         """Optimize runtime estimates based on completed jobs"""
         def _optimize():
@@ -819,7 +917,7 @@ class ContinuousManager:
             # choose among PENDING: fewest attempts first, then agent priority (lav first for
             # debugging), then hardest scenario first (route geometry + weather), then longest
             # estimated time as tiebreak.
-            _agent_priority = {"lav": 0, "tcp": 1, "interfuser": 2}
+            _agent_priority = {"interfuser": 0, "tcp": 1, "lav": 2}
             pending = [j for j in q['jobs'] if j.get('status') == 'pending']
             if not pending:
                 return None
@@ -1027,6 +1125,23 @@ class ContinuousManager:
             entry['status'] = 'completed' if rc == 0 else 'failed'
             entry['end_time'] = datetime.utcnow().isoformat() + 'Z'
             entry['duration'] = int(end_ts - start_ts)
+
+            # Parse leaderboard scores from results.json if available.
+            results_path = Path(save_path) / 'results.json'
+            try:
+                with open(results_path) as _rf:
+                    lb = json.load(_rf)
+                records = lb.get('_checkpoint', {}).get('records', [])
+                if records:
+                    composed = [r['scores']['score_composed'] for r in records if 'scores' in r]
+                    route_pct = [r['scores']['score_route']    for r in records if 'scores' in r]
+                    entry['score_composed']   = round(sum(composed)  / len(composed),  4) if composed  else None
+                    entry['score_route']      = round(sum(route_pct) / len(route_pct), 4) if route_pct else None
+                    entry['score_n_routes']   = len(records)
+                    entry['route_statuses']   = [r.get('status', '') for r in records]
+            except Exception:
+                pass  # results.json absent or malformed; scores omitted
+
             comp['jobs'].append(entry)
             with open(self.completed_file, 'w') as f:
                 json.dump(comp, f, indent=2)
@@ -1090,6 +1205,9 @@ def main():
     
     subparsers.add_parser('optimize', help='Optimize runtime estimates')
     subparsers.add_parser('analyze', help='Show runtime analysis')
+
+    prune_parser = subparsers.add_parser('prune', help='Skip pending jobs made redundant by harder completed jobs')
+    prune_parser.add_argument('--dry-run', action='store_true', help='Report without modifying the queue')
     
     default_state_dir = os.path.join(
         os.environ.get('PROJECT_ROOT', os.getcwd()),
@@ -1131,6 +1249,8 @@ def main():
         manager.optimize_runtime_estimates()
     elif args.command == 'analyze':
         manager.show_runtime_analysis()
+    elif args.command == 'prune':
+        manager.prune_redundant(dry_run=getattr(args, 'dry_run', False))
     elif args.command == 'run':
         extra = args.extra if hasattr(args, 'extra') else []
         if extra and extra[0] == '--':  # argparse quirk when using REMAINDER
