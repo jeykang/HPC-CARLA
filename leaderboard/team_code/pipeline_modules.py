@@ -120,16 +120,20 @@ class ExtractCompass:
 
 
 class ExtractLidarXYZ:
-    """Extract LiDAR point cloud and store Nx3 (float32) under context[out_key].
+    """Extract LiDAR point cloud and store Nx`num_cols` (float32) under context[out_key].
 
-    Leaderboard typically provides LiDAR as an (N,4) array-like (x,y,z,intensity).
-    This module keeps only xyz and optionally flips y to match many agent conventions.
+    Leaderboard provides LiDAR as an (N,4) array-like (x,y,z,intensity).
+    Default num_cols=3 keeps only xyz; set num_cols=4 to retain intensity (required
+    by LAV, whose PointPillarNet checkpoint was trained on xyzI + painted features).
+    flip_y negates column 1 (y-axis only) to match agent coordinate conventions.
     """
 
-    def __init__(self, sensor_id: str = "lidar", out_key: str = "lidar_xyz", flip_y: bool = True):
+    def __init__(self, sensor_id: str = "lidar", out_key: str = "lidar_xyz",
+                 flip_y: bool = True, num_cols: int = 3):
         self.sensor_id = sensor_id
         self.out_key = out_key
         self.flip_y = bool(flip_y)
+        self.num_cols = int(num_cols)
 
     def run(self, context: Dict[str, Any]) -> Dict[str, Any]:
         input_data = context["input_data"]
@@ -137,10 +141,10 @@ class ExtractLidarXYZ:
         arr = np.asarray(raw, dtype=np.float32)
         if arr.ndim != 2 or arr.shape[1] < 3:
             raise ValueError(f"LiDAR must be (N,>=3), got {arr.shape}")
-        xyz = arr[:, :3].copy()
-        if self.flip_y and xyz.shape[1] >= 2:
-            xyz[:, 1] *= -1.0
-        context[self.out_key] = xyz
+        pts = arr[:, :self.num_cols].copy()
+        if self.flip_y:
+            pts[:, 1] *= -1.0
+        context[self.out_key] = pts
         return context
 
 
@@ -1971,8 +1975,9 @@ class BEVHeatmapNMS:
                 # Filter detections at the ego vehicle pixel location (sensor self-returns)
                 if np.linalg.norm([x - self.ego_pixel_x, y - self.ego_pixel_y]) <= self.ego_filter_radius:
                     continue
-                # Filter undersized pedestrian detections (class 1)
-                if i == 1 and (w < 0.1 * self.pixels_per_meter or h < 0.2 * self.pixels_per_meter):
+                # Mirror reference operator-precedence exactly:
+                # (i==1 and w<0.1*ppm) OR (h<0.2*ppm) — height filter applies to ALL classes.
+                if (i == 1 and w < 0.1 * self.pixels_per_meter) or h < 0.2 * self.pixels_per_meter:
                     continue
                 cos = float(orimaps[0, y, x])
                 sin = float(orimaps[1, y, x])

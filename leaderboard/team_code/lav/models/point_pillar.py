@@ -69,8 +69,8 @@ class PointPillarNet(nn.Module):
         super().__init__()
         self.point_net = DynamicPointNet(num_input, num_features)
 
-        self.nx = (max_x-min_x) * pixels_per_meter
-        self.ny = (max_y-min_y) * pixels_per_meter
+        self.nx = int((max_x-min_x) * pixels_per_meter)
+        self.ny = int((max_y-min_y) * pixels_per_meter)
         self.min_x = min_x 
         self.min_y = min_y 
         self.max_x = max_x 

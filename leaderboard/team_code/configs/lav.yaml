@@ -163,6 +163,7 @@ pipeline:
       sensor_id: LIDAR
       out_key: lidar_raw
       flip_y: false
+      num_cols: 4    # keep xyzI; intensity is needed by LAVPointPainter → stacker → PointPillarNet
 
   # ── EKF localization ───────────────────────────────────────────────────────
   # Outputs ekf_pos (x, y) and ekf_compass from the previous-step EKF update,
