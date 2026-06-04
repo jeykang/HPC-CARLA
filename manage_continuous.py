@@ -636,17 +636,200 @@ class ContinuousManager:
             est = rt.get("combinations", {}).get(key, rt.get("default", 3600))
             return int(est)
 
+        def _route_difficulty(route_name, _cache={}):
+            """Parse route XML and return mean per-route geometric difficulty score.
+
+            Score = sharp_turns*2 + path_length_m/500 + total_heading_change_deg/180
+              - sharp_turns: waypoint-to-waypoint heading jumps > 45° (intersections)
+              - path_length: total Euclidean distance along waypoints
+              - total_heading_change: accumulated absolute heading change (curves/loops)
+            Result is memoised — each XML file is parsed at most once per process.
+            """
+            import xml.etree.ElementTree as _ET
+            import math as _math
+            if route_name in _cache:
+                return _cache[route_name]
+            xml_path = self.routes_dir / route_name
+            try:
+                root = _ET.parse(str(xml_path)).getroot()
+                route_scores = []
+                for route_el in root.findall('route'):
+                    wps = route_el.findall('waypoint')
+                    if len(wps) < 2:
+                        route_scores.append(0.0)
+                        continue
+                    xs   = [float(w.get('x',   0.0)) for w in wps]
+                    ys   = [float(w.get('y',   0.0)) for w in wps]
+                    yaws = [float(w.get('yaw', 0.0)) % 360 for w in wps]
+
+                    path_len = sum(
+                        _math.hypot(xs[i+1] - xs[i], ys[i+1] - ys[i])
+                        for i in range(len(xs) - 1)
+                    )
+                    heading_deltas = []
+                    for i in range(1, len(yaws)):
+                        d = abs(yaws[i] - yaws[i - 1])
+                        if d > 180:
+                            d = 360 - d
+                        heading_deltas.append(d)
+                    total_heading = sum(heading_deltas)
+                    sharp_turns   = sum(1 for d in heading_deltas if d > 45)
+
+                    route_scores.append(sharp_turns * 2.0 + path_len / 500.0 + total_heading / 180.0)
+
+                score = sum(route_scores) / len(route_scores) if route_scores else 0.0
+            except Exception:
+                score = 0.0
+            _cache[route_name] = score
+            return score
+
+        # Weather difficulty table indexed by position in _WEATHER_IDS from consolidated_agent.py:
+        # [ClearNoon, ClearSunset, CloudyNoon, CloudySunset, WetNoon, WetSunset,
+        #  MidRainyNoon, MidRainSunset, WetCloudyNoon, WetCloudySunset,
+        #  HardRainNoon, HardRainSunset, SoftRainNoon, SoftRainSunset,
+        #  ClearNight, CloudyNight, WetNight, WetCloudyNight,
+        #  SoftRainNight, MidRainyNight, HardRainNight]
+        _WEATHER_DIFF = [
+            0.0,  # 0  ClearNoon        — baseline, full visibility
+            0.5,  # 1  ClearSunset      — low sun, mild glare
+            0.5,  # 2  CloudyNoon
+            1.0,  # 3  CloudySunset
+            1.5,  # 4  WetNoon          — slippery road surface
+            2.0,  # 5  WetSunset
+            2.5,  # 6  MidRainyNoon     — rain + reduced visibility
+            3.0,  # 7  MidRainSunset
+            1.5,  # 8  WetCloudyNoon
+            2.0,  # 9  WetCloudySunset
+            3.5,  # 10 HardRainNoon     — heavy rain, low visibility
+            4.0,  # 11 HardRainSunset
+            2.0,  # 12 SoftRainNoon
+            2.5,  # 13 SoftRainSunset
+            3.0,  # 14 ClearNight       — darkness, perception-heavy
+            3.5,  # 15 CloudyNight
+            4.0,  # 16 WetNight
+            4.5,  # 17 WetCloudyNight
+            4.5,  # 18 SoftRainNight
+            5.0,  # 19 MidRainyNight
+            5.5,  # 20 HardRainNight    — worst case
+        ]
+
+        def _scenario_difficulty(route_name, _cache={}, _town_cache={}):
+            """Count adversarial trigger locations within 25 m of the route.
+
+            All scenario types (Scenario1..Scenario10) share identical spawn
+            positions in each town JSON — confirmed by inspection. We therefore:
+              1. Extract unique event positions from any one type.
+              2. For each route, count how many of those positions are within
+                 RADIUS metres of at least one waypoint (inner loop short-circuits).
+              3. Deduplicate hits at 20 m grid resolution to avoid over-counting
+                 the multiple offset variations clustered around each road point.
+              4. Scale by mean scenario-type difficulty weight × SCALE.
+
+            TYPE_WEIGHT reflects hazard severity:
+              Scenario1  — slow leading vehicle (low challenge)
+              Scenario3  — cut-in vehicle
+              Scenario4  — stationary obstacle
+              Scenario7  — pedestrian at marked crossing
+              Scenario8  — jaywalking pedestrian
+              Scenario9  — sudden appearance (pedestrian/cyclist from occluded area)
+              Scenario10 — slow vehicle + secondary hazard
+            """
+            import re as _re, xml.etree.ElementTree as _ET, math as _math
+
+            if route_name in _cache:
+                return _cache[route_name]
+
+            m = _re.search(r'town(\d+)', route_name, _re.IGNORECASE)
+            if not m:
+                _cache[route_name] = 0.0
+                return 0.0
+
+            town_tag = f"town{m.group(1).zfill(2)}"
+
+            if town_tag not in _town_cache:
+                TYPE_WEIGHT = {
+                    'Scenario1':  1.0,
+                    'Scenario3':  3.0,
+                    'Scenario4':  2.0,
+                    'Scenario7':  2.5,
+                    'Scenario8':  3.5,
+                    'Scenario9':  4.5,
+                    'Scenario10': 2.0,
+                }
+                try:
+                    spath = self.scenarios_dir / f"{town_tag}_all_scenarios.json"
+                    with open(str(spath)) as _f:
+                        sdata = json.load(_f)
+                    town_key = list(sdata['available_scenarios'][0].keys())[0]
+                    slist = sdata['available_scenarios'][0][town_key]
+
+                    # Unique positions (all types share the same set — verified)
+                    evt_pos = list({
+                        (round(ev['transform']['x'], 1), round(ev['transform']['y'], 1))
+                        for ev in slist[0]['available_event_configurations']
+                    })
+
+                    ws = [TYPE_WEIGHT.get(s['scenario_type'], 2.0) for s in slist]
+                    mean_w = sum(ws) / len(ws) if ws else 2.0
+                    _town_cache[town_tag] = (evt_pos, mean_w)
+                except Exception:
+                    _town_cache[town_tag] = ([], 2.0)
+
+            evt_pos, mean_w = _town_cache[town_tag]
+            if not evt_pos:
+                _cache[route_name] = 0.0
+                return 0.0
+
+            RADIUS = 25.0   # metres — distance from waypoint to trigger location
+            SCALE  = 0.25   # per hit-cell contribution (calibrated to geometry score scale)
+
+            try:
+                root = _ET.parse(str(self.routes_dir / route_name)).getroot()
+                route_scores = []
+                for route_el in root.findall('route'):
+                    wps = [
+                        (float(w.get('x', 0.0)), float(w.get('y', 0.0)))
+                        for w in route_el.findall('waypoint')
+                    ]
+                    hit_cells = set()
+                    for ex, ey in evt_pos:
+                        for wx, wy in wps:
+                            if _math.hypot(wx - ex, wy - ey) <= RADIUS:
+                                hit_cells.add((int(ex // 20), int(ey // 20)))
+                                break   # one waypoint match is enough per event
+                    route_scores.append(len(hit_cells) * mean_w * SCALE)
+                score = sum(route_scores) / len(route_scores) if route_scores else 0.0
+            except Exception:
+                score = 0.0
+
+            _cache[route_name] = score
+            return score
+
+        def _job_difficulty(job):
+            route        = job.get('route', '')
+            route_score  = _route_difficulty(route) + _scenario_difficulty(route)
+            weather_idx  = int(job.get('weather', 0))
+            weather_score = _WEATHER_DIFF[weather_idx] if weather_idx < len(_WEATHER_DIFF) else 2.5
+            return route_score + weather_score
+
         def _reserve_next():
             with open(self.queue_file, 'r') as f:
                 q = json.load(f)
 
-            # choose among PENDING: smallest attempts first, then agent priority (tcp/lav before interfuser), then longest estimated time
-            _agent_priority = {"tcp": 0, "lav": 1, "interfuser": 2}
+            # choose among PENDING: fewest attempts first, then agent priority (lav first for
+            # debugging), then hardest scenario first (route geometry + weather), then longest
+            # estimated time as tiebreak.
+            _agent_priority = {"lav": 0, "tcp": 1, "interfuser": 2}
             pending = [j for j in q['jobs'] if j.get('status') == 'pending']
             if not pending:
                 return None
 
-            pending.sort(key=lambda j: (j.get('attempts', 0), _agent_priority.get(j.get('agent', ''), 99), -_estimate_sec(j)))
+            pending.sort(key=lambda j: (
+                j.get('attempts', 0),
+                _agent_priority.get(j.get('agent', ''), 99),
+                -_job_difficulty(j),
+                -_estimate_sec(j),
+            ))
 
             job = pending[0]
             job['status'] = 'running'

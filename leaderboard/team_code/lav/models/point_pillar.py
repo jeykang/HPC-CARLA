@@ -3,10 +3,35 @@ Credit: Tianwei Yin
 """
 
 from os import stat
-from torch_scatter import scatter_mean, scatter_max
-from torch import nn 
-import numpy as np 
-import torch 
+from torch import nn
+import numpy as np
+import torch
+
+
+def _scatter_mean(src, index, dim_size=None):
+    """scatter_mean replacement using only core PyTorch (scatter_add_ + count)."""
+    if dim_size is None:
+        dim_size = int(index.max().item()) + 1
+    out = src.new_zeros((dim_size, src.shape[1]))
+    out.scatter_add_(0, index.unsqueeze(1).expand_as(src), src)
+    count = src.new_zeros((dim_size, 1))
+    count.scatter_add_(0, index.unsqueeze(1), src.new_ones(src.shape[0], 1))
+    return out / count.clamp(min=1.0)
+
+
+def _scatter_max(src, index, dim_size=None):
+    """scatter_max replacement; prefers scatter_reduce_ (PyTorch ≥1.12), falls back to segmented loop."""
+    if dim_size is None:
+        dim_size = int(index.max().item()) + 1
+    out = src.new_full((dim_size, src.shape[1]), float('-inf'))
+    try:
+        out.scatter_reduce_(0, index.unsqueeze(1).expand_as(src), src, reduce='amax', include_self=True)
+    except (TypeError, AttributeError):
+        for i in range(dim_size):
+            mask = index == i
+            if mask.any():
+                out[i] = src[mask].max(0).values
+    return out
 
 
 class DynamicPointNet(nn.Module):
@@ -30,7 +55,7 @@ class DynamicPointNet(nn.Module):
         TODO: multiple layers
         """
         feat = self.net(points)
-        feat_max = scatter_max(feat, inverse_indices, dim=0)[0]
+        feat_max = _scatter_max(feat, inverse_indices)
         # feat_max = scatter_max(points, inverse_indices, dim=0)[0]
         return feat_max
 
@@ -59,7 +84,7 @@ class PointPillarNet(nn.Module):
 
         xyz = points[:, :3]
 
-        points_cluster = xyz - scatter_mean(xyz, inverse_indices, dim=0)[inverse_indices]
+        points_cluster = xyz - _scatter_mean(xyz, inverse_indices)[inverse_indices]
 
         points_xp = xyz[:, :1] - x_centers 
         points_yp = xyz[:, 1:2] - y_centers

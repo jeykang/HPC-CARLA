@@ -3,39 +3,12 @@
         "global_record": {},
         "progress": [
             0,
-            10
+            20
         ],
-        "records": [
-            {
-                "index": 0,
-                "infractions": {
-                    "collisions_layout": [],
-                    "collisions_pedestrian": [],
-                    "collisions_vehicle": [],
-                    "outside_route_lanes": [],
-                    "red_light": [],
-                    "route_dev": [],
-                    "route_timeout": [],
-                    "stop_infraction": [],
-                    "vehicle_blocked": []
-                },
-                "meta": {
-                    "duration_game": 0.0,
-                    "duration_system": 0.0,
-                    "route_length": 1129.3702320707187
-                },
-                "route_id": "RouteScenario_40",
-                "scores": {
-                    "score_composed": 0.0,
-                    "score_penalty": 1.0,
-                    "score_route": 0.0
-                },
-                "status": "Failed - Simulation crashed"
-            }
-        ]
+        "records": []
     },
-    "eligible": false,
-    "entry_status": "Crashed",
+    "eligible": "",
+    "entry_status": "",
     "labels": [],
     "sensors": [
         "carla_speedometer",
