@@ -276,7 +276,11 @@ pipeline:
 
   # ── LiDAR model + BEV detection ───────────────────────────────────────────
   # CAVEAT: LAVLiDARModelRunner is LAV-specific (PointPillarNet + CNN heads).
-  # num_input = xyz(3) + intensity(1) + painted(4) + time_one_hot(3) = 11.
+  # num_input is the post-decorate() feature count fed into DynamicPointNet's first
+  # nn.Linear.  decorate() appends 5 features (3 cluster-offset + xp + yp) to the
+  # raw point, so: raw(11) + decorate(5) = 16.
+  # raw = xyz(3) + intensity(1) + painted(4) + time_one_hot(3) = 11.
+  # Checkpoint lidar_v2_7.th confirms: net.0.weight shape [64, 16].
 
   - module: team_code.pipeline_modules
     class: LAVLiDARModelRunner
@@ -287,7 +291,7 @@ pipeline:
       out_heatmaps_key: lav_heatmaps
       out_sizemaps_key: lav_sizemaps
       out_orimaps_key: lav_orimaps
-      num_input: 11
+      num_input: 16
       backbone: cnn
       num_features: [64, 64]
       min_x: -10.0

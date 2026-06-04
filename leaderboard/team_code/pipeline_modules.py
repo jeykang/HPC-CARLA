@@ -2278,7 +2278,7 @@ class LAVLiDARModelRunner:
         out_heatmaps_key: str = "lav_heatmaps",
         out_sizemaps_key: str = "lav_sizemaps",
         out_orimaps_key: str = "lav_orimaps",
-        num_input: int = 11,
+        num_input: int = 16,  # raw(11) + decorate(5); checkpoint lidar_v2_7.th expects 16
         backbone: str = "cnn",
         num_features: list = (64, 64),
         min_x: float = -10.0,
