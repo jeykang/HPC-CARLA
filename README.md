@@ -12,8 +12,10 @@ Three imitation-learning agents from the CARLA Leaderboard are reimplemented as 
 inference pipelines and run across every combination of:
 
 - **Agents**: TCP, LAV, InterFuser
-- **Routes**: all training routes (town01–07, town10; long/short/tiny variants)
-- **Weather**: 15 CARLA weather presets (ClearNoon → HardRainNight)
+- **Routes**: all training routes (town01–07, town10; long/short/tiny variants; 22 route files)
+- **Weather**: 21 CARLA weather presets (ClearNoon → HardRainNight, including night variants 14–20)
+
+This yields 3 × 22 × 21 = **1,386 jobs per collection cycle** (462 per agent).
 
 Each agent has been ported from its original monolithic class into a YAML-driven pipeline of
 composable `pipeline_modules.py` stages. This decoupling makes sensor wiring, model parameters,
@@ -54,7 +56,7 @@ and control logic independently configurable without touching agent code.
 ### TCP — Trajectory-guided Control with PID
 **Status: confirmed working.**
 
-Implements the dual-path control strategy from [TCP (Chen et al., 2022)](https://github.com/OpenDriveLab/TCP):
+Implements the dual-path control strategy from [TCP (Wu et al., NeurIPS 2022)](https://github.com/OpenDriveLab/TCP):
 a Beta-distribution policy head and a PID waypoint tracker are blended based on whether the
 vehicle is turning.
 
@@ -71,7 +73,7 @@ Config: `leaderboard/team_code/configs/tcp.yaml`
 ---
 
 ### LAV — Learning from All Vehicles
-**Status: implementation complete; end-to-end confirmation in progress.**
+**Status: confirmed working end-to-end; runs show motion without crashes. Collection queued.**
 
 Implements the full LAV perception and planning pipeline from
 [LAV (Chen et al., 2022)](https://github.com/dotchen/LAV). The pipeline is:
@@ -102,15 +104,20 @@ Config: `leaderboard/team_code/configs/lav.yaml`
 ---
 
 ### InterFuser — Interpretable Multi-sensor Fusion Transformer
-**Status: implemented; not yet systematically validated.**
+**Status: validated (faithful to reference, no code bugs found); collection in progress.**
 
 Implements the transformer-based multi-sensor fusion model from
-[InterFuser (Shao et al., 2023)](https://github.com/opendilab/InterFuser). Takes multi-camera
+[InterFuser (Shao et al., CoRL 2022)](https://github.com/opendilab/InterFuser). Takes multi-camera
 RGB, LiDAR histogram, route target point, and speed as input; outputs waypoints, junction flag,
 traffic light state, stop sign detection, and traffic object metadata.
 
 The `InterfuserControllerModule` wraps the original safety-aware PID controller with traffic light
 and stop-sign override logic.
+
+**Known model-inherent behaviour** (verified identical to the reference `InterfuserAgent`): on
+stop-sign-dense routes the controller's 3-cycle brake sequence and speed-proportional clearance
+logic cause long stationary episodes, broken by 12 forced frames each time the 1,200-frame
+anti-deadlock counter fires. This is a property of the agent, not an integration bug.
 
 Config: `leaderboard/team_code/configs/interfuser.yaml`
 
@@ -124,7 +131,7 @@ Config: `leaderboard/team_code/configs/interfuser.yaml`
 Jobs are sorted by:
 
 1. **Fewest attempts first** — failed jobs are retried but not prioritised over fresh ones.
-2. **Agent priority** — currently LAV first (debugging), then TCP, then InterFuser.
+2. **Agent priority** — currently InterFuser first, then TCP, then LAV (validation ordering).
 3. **Difficulty score** — harder scenarios run before easier ones (see below).
 4. **Estimated runtime** — longer routes run first within the same difficulty tier.
 
@@ -135,10 +142,10 @@ Each job is scored before scheduling:
 - **Route geometry**: `sharp_turns×2 + path_length/500 + total_heading_change/180`
   — counts 45°+ waypoint-to-waypoint heading jumps as intersection proxies, rewards path length
   and overall road complexity.
-- **Scenario density**: counts unique adversarial scenario trigger locations (vehicles, pedestrians,
-  cyclists) within 25 m of the route, weighted by mean scenario-type difficulty. All scenario
-  types share identical spawn locations per town; the weight reflects type severity
-  (Scenario9 "sudden appearance" = 4.5 vs Scenario1 "slow vehicle" = 1.0).
+- **Scenario density**: counts unique 20 m grid cells containing adversarial scenario triggers
+  (vehicle and pedestrian events) within 25 m of the route, weighted by mean scenario-type
+  difficulty. All scenario types share identical spawn locations per town; the weight reflects
+  type severity (Scenario9 "sudden appearance" = 4.5 vs Scenario1 "slow vehicle" = 1.0).
 - **Weather difficulty**: additive offset 0.0 (ClearNoon) to 5.5 (HardRainNight) based on the
   `_WEATHER_IDS` table in `consolidated_agent.py`.
 
@@ -212,15 +219,26 @@ python3 continuous_cli.py add --agent tcp --weather 14 15 16
 
 ---
 
+## Current Collection Status (as of 2026-06-05)
+
+| Agent | Routes completed | Weather conditions | Towns | Frames |
+|-------|------------------|--------------------|-------|--------|
+| InterFuser | 16 | 12 | Town03, Town04 | ~179,520 |
+| TCP | 0 (queued) | — | — | — |
+| LAV | 0 (queued) | — | — | — |
+
+Queue: 1,386 total jobs (462 per agent), 16 running, 1,370 pending.
+Total sensor files on disk: **3,413,973** (InterFuser data only).
+InterFuser runs on `routes_town04_long` (5 sub-routes) yield 11,150–11,342 frames per run
+(mean ≈ 11,220) across 7 sensor streams.
+
+---
+
 ## What Remains
 
 | Item | Status | Notes |
 |------|--------|-------|
-| Confirm LAV end-to-end | Done | Confirmed working — runs show motion without crashes |
-| Validate InterFuser end-to-end | In progress | Set to priority 0; jobs now running |
-| Redundant scenario pruning | Done | `python3 manage_continuous.py prune [--dry-run]` — skips pending easy-weather jobs when a harder same-route run already completed |
-| Expand weather to night presets (indices 14–20) | Done | Default weather range changed to 0–20; next `reset` will include night conditions |
-| Leaderboard score reporting | Done | `_finish()` now parses `results.json` and records `score_composed`, `score_route`, `score_n_routes`, `route_statuses` into `completed_jobs.json` |
+| TCP + LAV data collection | Pending | Queued behind InterFuser sweep |
 | Data quality audit | Pending | Verify collected frames are free from silent pipeline bugs across all three agents |
 
 ---
