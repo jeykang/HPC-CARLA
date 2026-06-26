@@ -226,6 +226,10 @@ wandb/
 *.pth.tar
 leaderboard/team_code/*/weights/
 leaderboard/team_code/interfuser/*.pth.tar
+# ...but keep the committed LAV checkpoints (required at runtime; small enough to
+# vendor). The dir must be un-ignored before the file negation can take effect.
+!leaderboard/team_code/lav/weights/
+!leaderboard/team_code/lav/weights/*.pt
 
 # Extracted CARLA map content (binary UE4 assets, populated from SIF + AdditionalMaps)
 carla_maps/
@@ -237,3 +241,11 @@ plots/
 
 # generated single-route validation files (created on demand by `reset --smoke`)
 leaderboard/data/training_routes/*_smoke.xml
+
+# OS / editor cruft
+.DS_Store
+
+# runtime artifacts
+*.pid
+# live leaderboard checkpoint at repo root (per-job results.json live under dataset/)
+/simulation_results.json
