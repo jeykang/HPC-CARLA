@@ -328,7 +328,22 @@ class ContinuousCLI:
             "export BASE_TM_PORT=${BASE_TM_PORT:-8000}",
             ""
         ])
-        
+
+        # Forward optional runtime knobs from the submit environment so every
+        # node's workers see them. sbatch --export=ALL already propagates the
+        # submit env, but baking the values in is robust to --export changes and
+        # documents what the run was configured with. (Port bases are computed
+        # per-node below, so they are intentionally not forwarded here.)
+        _passthrough = [
+            'JOB_TIMEOUT_SEC', 'AGENT_GPU_PIN', 'AGENT_GPU_OFFSET',
+            'DEAD_SERVER_BACKOFF_SEC', 'CARLA_SIF',
+        ]
+        _fwd = [f'export {k}="{os.environ[k]}"' for k in _passthrough if os.environ.get(k)]
+        if _fwd:
+            script_parts.append("# Forwarded runtime knobs (from launcher env)")
+            script_parts.extend(_fwd)
+            script_parts.append("")
+
         # Add agent/weather/route configuration if specified
         if agents:
             script_parts.append(f"export AGENTS=\"{' '.join(agents)}\"")
