@@ -234,3 +234,6 @@ carla_maps/
 old/
 docker/
 plots/
+
+# generated single-route validation files (created on demand by `reset --smoke`)
+leaderboard/data/training_routes/*_smoke.xml

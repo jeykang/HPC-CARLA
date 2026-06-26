@@ -9,6 +9,8 @@ import os
 import sys
 import subprocess
 import time
+import signal
+import socket
 from typing import Optional
 import argparse
 import fcntl
@@ -73,21 +75,27 @@ class ContinuousManager:
             finally:
                 fcntl.flock(lock, fcntl.LOCK_UN)
     
-    def _discover_routes_and_scenarios(self) -> Dict[str, List[str]]:
+    def _discover_routes_and_scenarios(self, include_smoke: bool = False) -> Dict[str, List[str]]:
         """
         Discover available route files and their corresponding scenarios.
         Returns a mapping of town -> list of route files for that town.
+
+        `*_smoke.xml` files (generated for `reset --smoke`) are excluded from
+        normal discovery so they never pollute a full sweep; pass
+        include_smoke=True to surface them.
         """
         town_routes = {}
-        
+
         if not self.routes_dir.exists():
             print(f"Warning: Routes directory not found at {self.routes_dir}")
             return {}
-        
+
         # Find all route XML files
         route_files = list(self.routes_dir.glob('*.xml'))
-        
+
         for route_file in route_files:
+            if route_file.name.endswith('_smoke.xml') and not include_smoke:
+                continue
             # Extract town number from filename (e.g., routes_town01_short.xml -> 01)
             match = re.search(r'routes_town(\d+)_', route_file.name, flags=re.IGNORECASE)
             if match:
@@ -107,15 +115,16 @@ class ContinuousManager:
         
         return town_routes
     
-    def _get_valid_combinations(self, agents_list: List[str] = None, 
+    def _get_valid_combinations(self, agents_list: List[str] = None,
                                weather_list: List[int] = None,
-                               routes_list: List[str] = None) -> List[Dict]:
+                               routes_list: List[str] = None,
+                               include_smoke: bool = False) -> List[Dict]:
         """
         Generate only valid combinations of agent/weather/route.
         Ensures routes are matched with their correct town scenarios.
         """
         # Discover available routes grouped by town
-        town_routes = self._discover_routes_and_scenarios()
+        town_routes = self._discover_routes_and_scenarios(include_smoke=include_smoke)
         
         if not town_routes:
             print("ERROR: No valid route/scenario combinations found!")
@@ -175,6 +184,37 @@ class ContinuousManager:
         print(f"\nTotal valid combinations: {len(combinations)}")
         return combinations
 
+    def _ensure_smoke_routes(self, towns=('01', '03')) -> List[str]:
+        """Generate minimal single-route files for a fast smoke test.
+
+        For each town, extracts the FIRST <route> from routes_town{NN}_tiny.xml
+        into routes_town{NN}_smoke.xml (idempotent). Returns the smoke filenames
+        that were successfully created. One short route per town is enough to
+        validate the pipeline end-to-end without running the hundreds of routes
+        a full *_tiny.xml file contains.
+        """
+        import xml.etree.ElementTree as ET
+        created = []
+        for nn in towns:
+            src = self.routes_dir / f'routes_town{nn}_tiny.xml'
+            if not src.exists():
+                print(f"[smoke] skip town{nn}: {src.name} not found")
+                continue
+            try:
+                root = ET.parse(str(src)).getroot()
+                first = root.find('route')
+                if first is None:
+                    print(f"[smoke] skip town{nn}: no <route> in {src.name}")
+                    continue
+                new_root = ET.Element(root.tag, root.attrib)
+                new_root.append(first)
+                out = self.routes_dir / f'routes_town{nn}_smoke.xml'
+                ET.ElementTree(new_root).write(str(out), encoding='utf-8', xml_declaration=True)
+                created.append(out.name)
+            except Exception as e:
+                print(f"[smoke] failed to build town{nn} smoke route: {e}")
+        return created
+
     def _derive_gpu_id(self, fallback_port: int) -> int:
         env_gpu = os.environ.get('GPU_ID')
         if env_gpu is not None and str(env_gpu).isdigit():
@@ -219,15 +259,55 @@ class ContinuousManager:
             json.dump(st, f, indent=2)
 
         
-    def reset_queue(self, agents: List[str] = None, weather: List[int] = None, 
-                   routes: List[str] = None):
-        """Reset the job queue with specified combinations"""
+    def reset_queue(self, agents: List[str] = None, weather: List[int] = None,
+                   routes: List[str] = None, smoke: bool = False, limit: int = None):
+        """Reset the job queue with specified combinations.
+
+        smoke=True builds a tiny validation queue: tiny routes only + weather 0
+        (unless routes/weather are given explicitly), so the pipeline can be
+        validated end-to-end in ~1h instead of the full multi-day sweep.
+        limit=N caps the queue at N jobs, interleaved across agents so a small
+        cap still exercises every agent.
+        """
         def _reset(agents_list, weather_list, routes_list):
+            # Smoke preset: smallest representative slice that still touches
+            # every agent. Only fills in defaults the caller didn't specify.
+            # NB: *_tiny.xml files contain hundreds of short routes each, so we
+            # generate single-route *_smoke.xml files instead of using them.
+            if smoke:
+                if routes_list is None:
+                    routes_list = self._ensure_smoke_routes()
+                    if not routes_list:
+                        print("ERROR: could not generate any smoke routes")
+                        return 0
+                    print(f"[smoke] using single-route files: {routes_list}")
+                if weather_list is None:
+                    weather_list = [0]
+                    print("[smoke] using weather [0]")
+
             # Get valid combinations
-            combinations = self._get_valid_combinations(agents_list, weather_list, routes_list)
+            combinations = self._get_valid_combinations(agents_list, weather_list, routes_list,
+                                                        include_smoke=smoke)
             if not combinations:
                 print("ERROR: No valid combinations could be generated!")
                 return 0
+
+            # Cap total jobs, interleaving by agent so a small limit stays balanced.
+            if limit and limit > 0 and len(combinations) > limit:
+                from collections import defaultdict, deque
+                by_agent = defaultdict(deque)
+                for c in combinations:
+                    by_agent[c['agent']].append(c)
+                queues = list(by_agent.values())
+                interleaved = []
+                while queues and len(interleaved) < limit:
+                    for q in [q for q in queues if q]:
+                        interleaved.append(q.popleft())
+                        if len(interleaved) >= limit:
+                            break
+                    queues = [q for q in queues if q]
+                print(f"[limit] capping {len(combinations)} -> {len(interleaved)} jobs")
+                combinations = interleaved
             
             # Generate jobs
             jobs = []
@@ -282,6 +362,106 @@ class ContinuousManager:
         
         return self._with_lock(lambda: _reset(agents, weather, routes))
     
+    def reclaim_stale(self, stale_hours: float = 6.0):
+        """Recover jobs stuck in 'running' state whose workers are no longer alive.
+
+        A job is considered stale if it has been running longer than `stale_hours`
+        with no active health beacon.  For each stale job:
+          - If a run_summary.json exists at the expected save_path, the worker
+            finished successfully but _finish() never ran; mark completed and
+            write a best-effort entry to completed_jobs.json.
+          - Otherwise, reset to pending so the job gets retried.
+        """
+        import shutil as _shutil
+
+        def _label_weather(idx):
+            try: return f"weather_{int(idx)}"
+            except: return f"weather_{idx}"
+
+        def _label_map(tn):
+            try: return f"map_{int(tn):02d}"
+            except: return f"map_{tn or 'unknown'}"
+
+        def _reclaim():
+            with open(self.queue_file, 'r') as f:
+                q = json.load(f)
+
+            dataset_dir = os.environ.get('DATASET_DIR',
+                str(self.project_root / 'dataset'))
+            now = datetime.utcnow()
+            reclaimed_complete = 0
+            reclaimed_pending  = 0
+
+            for job in q['jobs']:
+                if job.get('status') != 'running':
+                    continue
+                start = job.get('start_time')
+                if start:
+                    try:
+                        elapsed = (now - datetime.fromisoformat(start.rstrip('Z'))).total_seconds() / 3600.0
+                        if elapsed < stale_hours:
+                            continue  # still young enough to be legitimately running
+                    except Exception:
+                        pass  # unparseable timestamp — treat as stale
+
+                route_stem  = Path(job['route']).stem
+                weather_lbl = _label_weather(job.get('weather', 0))
+                map_lbl     = _label_map(job.get('town', ''))
+                save_path   = os.path.join(dataset_dir, job['agent'], weather_lbl, map_lbl, route_stem)
+                summary_path = Path(save_path) / 'run_summary.json'
+
+                if summary_path.exists():
+                    # Worker finished — mark completed and record in completed_jobs.json
+                    job['status']   = 'completed'
+                    job['end_time'] = job.get('end_time') or now.isoformat() + 'Z'
+                    try:
+                        with open(summary_path) as sf:
+                            sm = json.load(sf)
+                        job['global_steps'] = sm.get('global_steps')
+                    except Exception:
+                        pass
+                    # Try to read leaderboard scores if results.json was written
+                    results_path = Path(save_path) / 'results.json'
+                    try:
+                        with open(results_path) as rf:
+                            lb = json.load(rf)
+                        records = lb.get('_checkpoint', {}).get('records', [])
+                        if records:
+                            composed  = [r['scores']['score_composed'] for r in records if 'scores' in r]
+                            route_pct = [r['scores']['score_route']    for r in records if 'scores' in r]
+                            job['score_composed'] = round(sum(composed) / len(composed), 4) if composed else None
+                            job['score_route']    = round(sum(route_pct) / len(route_pct), 4) if route_pct else None
+                            job['score_n_routes'] = len(records)
+                    except Exception:
+                        pass
+                    reclaimed_complete += 1
+                else:
+                    job['status']   = 'pending'
+                    job['end_time'] = None
+                    reclaimed_pending += 1
+
+            with open(self.queue_file, 'w') as f:
+                json.dump(q, f, indent=2)
+
+            # Append newly-completed entries to completed_jobs.json
+            if reclaimed_complete:
+                if self.completed_file.exists():
+                    with open(self.completed_file) as f:
+                        comp = json.load(f)
+                else:
+                    comp = {'jobs': []}
+                existing_ids = {j['id'] for j in comp['jobs']}
+                for job in q['jobs']:
+                    if job.get('status') == 'completed' and job['id'] not in existing_ids:
+                        comp['jobs'].append(dict(job))
+                with open(self.completed_file, 'w') as f:
+                    json.dump(comp, f, indent=2)
+
+            print(f"Reclaimed {reclaimed_complete} completed + {reclaimed_pending} pending (was stale-running)")
+            return reclaimed_complete, reclaimed_pending
+
+        return self._with_lock(_reclaim)
+
     def retry_failed(self, max_attempts: int = 3):
         """Reset failed jobs for retry"""
         def _retry():
@@ -1035,6 +1215,12 @@ class ContinuousManager:
             'SAVE_PATH':            save_path,
             'CHECKPOINT_ENDPOINT':  os.path.join(save_path, 'results.json'),
         })
+
+        # On retry (attempts > 1), wipe the previous run's artefacts so sensor
+        # frames from the failed attempt don't intermingle with the new run.
+        if job.get('attempts', 1) > 1 and Path(save_path).exists():
+            import shutil
+            shutil.rmtree(save_path)
         
         if 'WEATHER_PRESET' in os.environ and os.environ['WEATHER_PRESET'].strip():
             env['WEATHER_PRESET'] = os.environ['WEATHER_PRESET'].strip()
@@ -1073,6 +1259,7 @@ class ContinuousManager:
                 '--scenarios', str(scenarios_file),
                 '--agent', str(agent_code),
                 '--agent-config', str(agent_cfg),
+                '--checkpoint', os.path.join(save_path, 'results.json'),
                 '--host', host, '--port', port, '--trafficManagerPort', tm_port
             ]
 
@@ -1096,10 +1283,81 @@ class ContinuousManager:
             current_job=job['id']
         )
 
+        # --- Fast-fail if the CARLA server on this port isn't reachable ---
+        # On a degraded node the evaluator otherwise blocks the full client
+        # timeout (~600s) at get_trafficmanager() before dying. A sub-second
+        # socket probe turns that 10-minute waste into an instant skip. The job
+        # is returned to 'pending' (attempt refunded) so it retries once a
+        # healthy server is back; a short backoff avoids busy-spin on a dead node.
+        def _port_open(h, p, t=1.0):
+            try:
+                with socket.create_connection((h, int(p)), timeout=t):
+                    return True
+            except Exception:
+                return False
+
+        if not _port_open(host, port):
+            print(f"[run] CARLA RPC {host}:{port} unreachable; skipping job {job['id']} (server down)")
+            def _requeue():
+                with open(self.queue_file, 'r') as f:
+                    q = json.load(f)
+                for j in q['jobs']:
+                    if j['id'] == job['id']:
+                        j['status'] = 'pending'
+                        j['attempts'] = max(0, int(j.get('attempts', 1)) - 1)
+                        j['start_time'] = None
+                        break
+                with open(self.queue_file, 'w') as f:
+                    json.dump(q, f, indent=2)
+            self._with_lock(_requeue)
+            self._write_health(gpu_id=gpu_id_for_display, status="idle",
+                               message=f"server down on port {port}; job {job['id']} requeued",
+                               rpc_port=int(port), tm_port=int(tm_port), current_job=None)
+            time.sleep(float(os.environ.get('DEAD_SERVER_BACKOFF_SEC', '20')))
+            return 3
+
+        # --- Launch with a hard wall-clock cap ---
+        # The leaderboard's route timeout is measured in *game* time; on a node
+        # where the sim runs ~8-12x slower than real-time (observed median ratio
+        # ~0.12) a single route can burn many real hours, and a 20-route file
+        # (e.g. routes_town04_long) can run for days. JOB_TIMEOUT_SEC bounds the
+        # real wall-clock per job regardless of game-time progress.
+        job_timeout = int(os.environ.get('JOB_TIMEOUT_SEC', str(4 * 3600)))
         start_ts = time.time()
+        rc = None
+        proc = None
         try:
-            rc = subprocess.call(cmd, env=env)
+            # start_new_session => own process group, so we can kill the whole
+            # singularity->python subtree on timeout (the persistent CARLA
+            # server runs in a separate group and is left untouched).
+            proc = subprocess.Popen(cmd, env=env, start_new_session=True)
+            try:
+                rc = proc.wait(timeout=job_timeout)
+            except subprocess.TimeoutExpired:
+                print(f"[run] job {job['id']} exceeded JOB_TIMEOUT_SEC={job_timeout}s; terminating")
+                try:
+                    os.killpg(os.getpgid(proc.pid), signal.SIGTERM)
+                except Exception:
+                    pass
+                try:
+                    rc = proc.wait(timeout=60)
+                except subprocess.TimeoutExpired:
+                    try:
+                        os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
+                    except Exception:
+                        pass
+                    try:
+                        rc = proc.wait(timeout=30)
+                    except Exception:
+                        rc = 124
+                if rc is None:
+                    rc = 124  # conventional 'timed out' exit code
         except KeyboardInterrupt:
+            if proc is not None:
+                try:
+                    os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
+                except Exception:
+                    pass
             rc = 130
         end_ts = time.time()
 
@@ -1187,6 +1445,10 @@ def main():
     reset_parser.add_argument('--agents', nargs='+', help='Agents to include')
     reset_parser.add_argument('--weather', nargs='+', type=int, help='Weather indices')
     reset_parser.add_argument('--routes', nargs='+', help='Route files')
+    reset_parser.add_argument('--smoke', action='store_true',
+                              help='Tiny validation queue (tiny routes + weather 0) for ~1h end-to-end checks')
+    reset_parser.add_argument('--limit', type=int, default=None,
+                              help='Cap total jobs, interleaved across agents')
     
     retry_parser = subparsers.add_parser('retry', help='Retry failed jobs')
     retry_parser.add_argument('--max-attempts', type=int, default=3, help='Maximum attempts')
@@ -1208,6 +1470,10 @@ def main():
 
     prune_parser = subparsers.add_parser('prune', help='Skip pending jobs made redundant by harder completed jobs')
     prune_parser.add_argument('--dry-run', action='store_true', help='Report without modifying the queue')
+
+    reclaim_parser = subparsers.add_parser('reclaim', help='Recover jobs stuck in running state after worker crash')
+    reclaim_parser.add_argument('--stale-hours', type=float, default=6.0,
+                                help='Hours without health beacon before a running job is considered stale (default: 6)')
     
     default_state_dir = os.path.join(
         os.environ.get('PROJECT_ROOT', os.getcwd()),
@@ -1236,7 +1502,9 @@ def main():
         else:
             print("No active collection found")
     elif args.command == 'reset':
-        manager.reset_queue(args.agents, args.weather, args.routes)
+        manager.reset_queue(args.agents, args.weather, args.routes,
+                            smoke=getattr(args, 'smoke', False),
+                            limit=getattr(args, 'limit', None))
     elif args.command == 'retry':
         manager.retry_failed(args.max_attempts)
     elif args.command == 'add':
@@ -1251,6 +1519,8 @@ def main():
         manager.show_runtime_analysis()
     elif args.command == 'prune':
         manager.prune_redundant(dry_run=getattr(args, 'dry_run', False))
+    elif args.command == 'reclaim':
+        manager.reclaim_stale(stale_hours=args.stale_hours)
     elif args.command == 'run':
         extra = args.extra if hasattr(args, 'extra') else []
         if extra and extra[0] == '--':  # argparse quirk when using REMAINDER
