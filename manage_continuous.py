@@ -1221,7 +1221,12 @@ class ContinuousManager:
         if job.get('attempts', 1) > 1 and Path(save_path).exists():
             import shutil
             shutil.rmtree(save_path)
-        
+
+        # The leaderboard opens --checkpoint for writing at the very start of
+        # run() (clear_record), BEFORE the agent creates its save dir, so the
+        # parent must exist now or the evaluator dies with FileNotFoundError.
+        os.makedirs(save_path, exist_ok=True)
+
         if 'WEATHER_PRESET' in os.environ and os.environ['WEATHER_PRESET'].strip():
             env['WEATHER_PRESET'] = os.environ['WEATHER_PRESET'].strip()
 
