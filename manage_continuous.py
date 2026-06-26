@@ -184,7 +184,7 @@ class ContinuousManager:
         print(f"\nTotal valid combinations: {len(combinations)}")
         return combinations
 
-    def _ensure_smoke_routes(self, towns=('01', '03')) -> List[str]:
+    def _ensure_smoke_routes(self, towns=('01', '03', '04', '05')) -> List[str]:
         """Generate minimal single-route files for a fast smoke test.
 
         For each town, extracts the FIRST <route> from routes_town{NN}_tiny.xml
