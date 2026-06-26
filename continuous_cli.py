@@ -436,10 +436,60 @@ class ContinuousCLI:
         
         return script_path
     
-    def start(self, use_slurm: bool = None, agents: list = None, 
+    def _setup_eval_env(self):
+        """Set up the container env the evaluator needs (formerly start_job.sh).
+
+        Exports the Singularity/Apptainer binds (project tree -> /workspace plus
+        the libnvidia-gpucomp workaround), context vars, and EVAL_CMD_TEMPLATE.
+        These propagate to the SLURM job via sbatch --export=ALL and on to the
+        per-GPU workers, so `manage_continuous.py run` launches the leaderboard
+        evaluator inside the container with /workspace bound and the GL stack
+        usable. Idempotent; safe to call repeatedly.
+        """
+        sif = os.environ.get('CARLA_SIF', str(self.project_root / 'carla_official.sif'))
+        os.environ['CARLA_SIF'] = sif
+        if not Path(sif).is_file():
+            print(f"[start][WARN] CARLA image not found: {sif}")
+
+        gpucomp = "/usr/lib/x86_64-linux-gnu/libnvidia-gpucomp.so.575.57.08"
+        binds = [f"{self.project_root}:/workspace", f"{gpucomp}:{gpucomp}"]
+        for var in ('SINGULARITY_BINDPATH', 'APPTAINER_BINDPATH'):
+            cur = [b for b in os.environ.get(var, '').split(',') if b]
+            for b in binds:
+                if b not in cur:
+                    cur.append(b)
+            os.environ[var] = ','.join(cur)
+
+        for prefix in ('SINGULARITYENV_', 'APPTAINERENV_'):
+            os.environ[prefix + 'PROJECT_ROOT'] = str(self.project_root)
+            os.environ[prefix + 'CARLA_SIF'] = sif
+
+        # The {{...}} are escaped braces (literal shell ${...}); {NAME} are
+        # str.format placeholders filled per-job by manage_continuous.run_next_job
+        # (which supplies CHECKPOINT so each job writes its own results.json).
+        os.environ['EVAL_CMD_TEMPLATE'] = (
+            'singularity exec --nv --pwd /workspace \\\n'
+            f'  -B {gpucomp}:{gpucomp} \\\n'
+            '  "${{CARLA_SIF}}" bash -lc \'\n'
+            '  set -euo pipefail\n'
+            '  export PYTHONPATH="/workspace:/workspace/leaderboard:/workspace/scenario_runner:${{PYTHONPATH:-}}"\n'
+            '  python3 -m leaderboard.leaderboard_evaluator \\\n'
+            '    --routes "{ROUTES_FILE}" \\\n'
+            '    --scenarios "{SCENARIOS_FILE}" \\\n'
+            '    --agent "{AGENT_CODE}" \\\n'
+            '    --agent-config "{AGENT_CFG}" \\\n'
+            '    --checkpoint "{CHECKPOINT}" \\\n'
+            '    --host "{HOST}" --port "{PORT}" --trafficManagerPort "{TM_PORT}"\n'
+            "'"
+        )
+
+    def start(self, use_slurm: bool = None, agents: list = None,
              weather: list = None, routes: list = None,
              slurm_config: SLURMConfig = None):
         """Start continuous collection"""
+        # Set up the container/eval environment (replaces start_job.sh).
+        self._setup_eval_env()
+
         # Check prerequisites
         if not self.check_prerequisites():
             print("\nPlease ensure all required files are in place.")
@@ -665,6 +715,18 @@ class ContinuousCLI:
         if limit:
             cmd.extend(['--limit', str(limit)])
 
+        subprocess.run(cmd)
+
+    def reclaim(self, stale_hours: float = 6.0):
+        """Recover jobs stuck in 'running' after a worker crash."""
+        subprocess.run(['python3', str(self.manager_script), 'reclaim',
+                        '--stale-hours', str(stale_hours)])
+
+    def prune(self, dry_run: bool = False):
+        """Drop pending jobs made redundant by harder completed ones."""
+        cmd = ['python3', str(self.manager_script), 'prune']
+        if dry_run:
+            cmd.append('--dry-run')
         subprocess.run(cmd)
     
     def retry(self, max_attempts: int = 3):
@@ -961,7 +1023,17 @@ Examples:
     start_parser.add_argument('--agents', nargs='+', help='Agents to include')
     start_parser.add_argument('--weather', nargs='+', type=int, help='Weather indices')
     start_parser.add_argument('--routes', nargs='+', help='Route files')
-    
+    # Queue control at start time (a reset runs only if one of these is given).
+    start_parser.add_argument('--reset', action='store_true', help='Reset the queue before starting')
+    start_parser.add_argument('--smoke', action='store_true', help='Reset to the tiny validation queue (implies --reset)')
+    start_parser.add_argument('--limit', type=int, default=None, help='Cap the queue at N jobs on reset (implies --reset)')
+    # Runtime knobs (forwarded to the workers on every node).
+    start_parser.add_argument('--sif', help='Path to CARLA Singularity image (sets CARLA_SIF)')
+    start_parser.add_argument('--job-timeout', type=int, help='Per-job wall-clock cap, seconds (JOB_TIMEOUT_SEC)')
+    start_parser.add_argument('--agent-gpu-offset', type=int, help='Offset agent GPU from its CARLA GPU (AGENT_GPU_OFFSET; 0=co-locate)')
+    start_parser.add_argument('--agent-gpu-pin', type=int, help='Force all agents onto one GPU (AGENT_GPU_PIN; benchmark)')
+    start_parser.add_argument('--dead-server-backoff', type=int, help='Sleep seconds after skipping a dead server (DEAD_SERVER_BACKOFF_SEC)')
+
     # Add SLURM configuration options to start command
     add_slurm_arguments(start_parser)
     
@@ -996,6 +1068,15 @@ Examples:
                               help='Tiny validation queue (single-route files + weather 0)')
     reset_parser.add_argument('--limit', type=int, default=None,
                               help='Cap total jobs, interleaved across agents')
+
+    # Reclaim command (recover stuck 'running' jobs after a worker crash)
+    reclaim_parser = subparsers.add_parser('reclaim', help='Recover jobs stuck running after a worker crash')
+    reclaim_parser.add_argument('--stale-hours', type=float, default=6.0,
+                                help='Hours before a running job is considered stale (default 6)')
+
+    # Prune command (drop pending jobs made redundant by harder completed ones)
+    prune_parser = subparsers.add_parser('prune', help='Drop pending jobs made redundant by harder completed ones')
+    prune_parser.add_argument('--dry-run', action='store_true', help='Report without modifying the queue')
     
     # Retry command
     retry_parser = subparsers.add_parser('retry', help='Retry failed')
@@ -1047,10 +1128,26 @@ Examples:
         use_slurm = args.slurm if args.slurm or args.local else None
         if args.local:
             use_slurm = False
-        
+
+        # Apply runtime knobs / SIF to the env so they reach the workers.
+        if getattr(args, 'sif', None):
+            os.environ['CARLA_SIF'] = args.sif
+        for attr, env_name in (('job_timeout', 'JOB_TIMEOUT_SEC'),
+                               ('agent_gpu_offset', 'AGENT_GPU_OFFSET'),
+                               ('agent_gpu_pin', 'AGENT_GPU_PIN'),
+                               ('dead_server_backoff', 'DEAD_SERVER_BACKOFF_SEC')):
+            v = getattr(args, attr, None)
+            if v is not None:
+                os.environ[env_name] = str(v)
+
+        # Reset the queue only if explicitly requested.
+        if getattr(args, 'reset', False) or getattr(args, 'smoke', False) or getattr(args, 'limit', None):
+            cli.reset(args.agents, args.weather, args.routes,
+                      smoke=getattr(args, 'smoke', False), limit=getattr(args, 'limit', None))
+
         # Create SLURM config from arguments
         slurm_config = SLURMConfig.from_args(args) if use_slurm else None
-        
+
         cli.start(use_slurm, args.agents, args.weather, args.routes, slurm_config)
     
     elif args.command == 'stop':
@@ -1075,6 +1172,12 @@ Examples:
         cli.reset(args.agents, args.weather, args.routes,
                   smoke=getattr(args, 'smoke', False),
                   limit=getattr(args, 'limit', None))
+
+    elif args.command == 'reclaim':
+        cli.reclaim(args.stale_hours)
+
+    elif args.command == 'prune':
+        cli.prune(getattr(args, 'dry_run', False))
     
     elif args.command == 'retry':
         cli.retry(args.max_attempts)

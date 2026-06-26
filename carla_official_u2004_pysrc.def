@@ -167,11 +167,11 @@ Stage: final
     chmod a+x /home/carla/CarlaUE4.sh \
               /home/carla/CarlaUE4/Binaries/Linux/CarlaUE4-Linux-Shipping || true
 
-    echo "[bind-placeholder] Pre-create 0-byte file so start_job.sh can bind-mount the host's libnvidia-gpucomp over it..."
+    echo "[bind-placeholder] Pre-create 0-byte file so the launcher can bind-mount the host's libnvidia-gpucomp over it..."
     # Driver 575.x split GPU compute code into a new userspace lib that this
     # cluster's Singularity --nv (legacy nvliblist.conf) doesn't auto-bind.
     # UE4's RHI dlopens libGLX_nvidia which depends on it; without it, UE4 dies
-    # before binding the RPC port. start_job.sh sets SINGULARITY_BINDPATH to
+    # before binding the RPC port. the launcher (continuous_cli.py start) sets SINGULARITY_BINDPATH to
     # mount the host's real file over THIS placeholder. Singularity's --bind
     # for files requires the destination to already exist; this guarantees it.
     # /usr/lib/x86_64-linux-gnu is on the loader's default search path AND on

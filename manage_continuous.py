@@ -1276,6 +1276,7 @@ class ContinuousManager:
                 AGENT_CODE=str(agent_code),
                 ROUTES_FILE=str(routes_file),
                 SCENARIOS_FILE=str(scenarios_file),
+                CHECKPOINT=os.path.join(save_path, 'results.json'),
                 HOST=host, PORT=port, TM_PORT=tm_port, WEATHER=weather_idx
             )
             cmd = ['bash','-lc', fmt]
