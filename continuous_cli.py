@@ -650,7 +650,8 @@ class ContinuousCLI:
             if health_manager.exists():
                 subprocess.run(['python3', str(health_manager), 'status'])
     
-    def reset(self, agents: list = None, weather: list = None, routes: list = None):
+    def reset(self, agents: list = None, weather: list = None, routes: list = None,
+              smoke: bool = False, limit: int = None):
         """Reset job queue"""
         cmd = ['python3', str(self.manager_script), 'reset']
         if agents:
@@ -659,7 +660,11 @@ class ContinuousCLI:
             cmd.extend(['--weather'] + [str(w) for w in weather])
         if routes:
             cmd.extend(['--routes'] + routes)
-        
+        if smoke:
+            cmd.append('--smoke')
+        if limit:
+            cmd.extend(['--limit', str(limit)])
+
         subprocess.run(cmd)
     
     def retry(self, max_attempts: int = 3):
@@ -987,6 +992,10 @@ Examples:
     reset_parser.add_argument('--agents', nargs='+', help='Agents')
     reset_parser.add_argument('--weather', nargs='+', type=int, help='Weather')
     reset_parser.add_argument('--routes', nargs='+', help='Routes')
+    reset_parser.add_argument('--smoke', action='store_true',
+                              help='Tiny validation queue (single-route files + weather 0)')
+    reset_parser.add_argument('--limit', type=int, default=None,
+                              help='Cap total jobs, interleaved across agents')
     
     # Retry command
     retry_parser = subparsers.add_parser('retry', help='Retry failed')
@@ -1063,7 +1072,9 @@ Examples:
         cli.restart_gpu(args.gpu_id)
     
     elif args.command == 'reset':
-        cli.reset(args.agents, args.weather, args.routes)
+        cli.reset(args.agents, args.weather, args.routes,
+                  smoke=getattr(args, 'smoke', False),
+                  limit=getattr(args, 'limit', None))
     
     elif args.command == 'retry':
         cli.retry(args.max_attempts)
