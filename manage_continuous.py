@@ -1225,6 +1225,26 @@ class ContinuousManager:
         if 'WEATHER_PRESET' in os.environ and os.environ['WEATHER_PRESET'].strip():
             env['WEATHER_PRESET'] = os.environ['WEATHER_PRESET'].strip()
 
+        # --- Pin the agent's PyTorch to a specific GPU ---
+        # Without this, CUDA_VISIBLE_DEVICES was never set for the agent, so the
+        # model's hardcoded device="cuda" resolved to cuda:0 (physical GPU 0) in
+        # every worker — all 8 workers' inference dogpiled GPU 0 while the CARLA
+        # servers were correctly spread across GPUs. Co-locate each agent on its
+        # own CARLA server's GPU. AGENT_GPU_OFFSET (default 0 = co-locate) shifts
+        # the agent onto a neighbour GPU for split experiments; with all GPUs
+        # visible inside the container, CUDA_VISIBLE_DEVICES selects the physical
+        # one as torch cuda:0.
+        carla_gpu = job.get('gpu')
+        if carla_gpu is None:
+            carla_gpu = self._derive_gpu_id(port)
+        try:
+            offset = int(os.environ.get('AGENT_GPU_OFFSET', '0'))
+            local_gpus = max(1, int(self.local_gpus))
+            agent_gpu = (int(carla_gpu) + offset) % local_gpus
+        except Exception:
+            agent_gpu = int(carla_gpu)
+        env['CUDA_VISIBLE_DEVICES'] = str(agent_gpu)
+
         # Hard forward into container env
         def _mirror(keys):
             for k in keys:
@@ -1237,7 +1257,8 @@ class ContinuousManager:
             'AGENT_NAME','ROUTE_NAME','TOWN_NUM','DATASET_DIR',
             'WEATHER_INDEX','WEATHER_PRESET',
             'CARLA_HOST','CARLA_PORT','TM_PORT',
-            'SAVE_PATH','CHECKPOINT_ENDPOINT'
+            'SAVE_PATH','CHECKPOINT_ENDPOINT',
+            'CUDA_VISIBLE_DEVICES'
         ])
 
 
