@@ -1238,9 +1238,16 @@ class ContinuousManager:
         if carla_gpu is None:
             carla_gpu = self._derive_gpu_id(port)
         try:
-            offset = int(os.environ.get('AGENT_GPU_OFFSET', '0'))
             local_gpus = max(1, int(self.local_gpus))
-            agent_gpu = (int(carla_gpu) + offset) % local_gpus
+            pin = os.environ.get('AGENT_GPU_PIN')
+            if pin is not None and pin.strip() != '':
+                # Benchmark/override: force ALL agents onto one fixed GPU.
+                # AGENT_GPU_PIN=0 reproduces the pre-fix dogpile (every worker's
+                # inference on GPU 0) for A/B comparison against co-location.
+                agent_gpu = int(pin) % local_gpus
+            else:
+                offset = int(os.environ.get('AGENT_GPU_OFFSET', '0'))
+                agent_gpu = (int(carla_gpu) + offset) % local_gpus
         except Exception:
             agent_gpu = int(carla_gpu)
         env['CUDA_VISIBLE_DEVICES'] = str(agent_gpu)
