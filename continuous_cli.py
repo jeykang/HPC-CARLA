@@ -336,7 +336,7 @@ class ContinuousCLI:
         # per-node below, so they are intentionally not forwarded here.)
         _passthrough = [
             'JOB_TIMEOUT_SEC', 'AGENT_GPU_PIN', 'AGENT_GPU_OFFSET',
-            'DEAD_SERVER_BACKOFF_SEC', 'CARLA_SIF',
+            'DEAD_SERVER_BACKOFF_SEC', 'CARLA_SIF', 'RUN_SEED',
         ]
         _fwd = [f'export {k}="{os.environ[k]}"' for k in _passthrough if os.environ.get(k)]
         if _fwd:
@@ -479,6 +479,7 @@ class ContinuousCLI:
             '    --agent "{AGENT_CODE}" \\\n'
             '    --agent-config "{AGENT_CFG}" \\\n'
             '    --checkpoint "{CHECKPOINT}" \\\n'
+            '    --trafficManagerSeed "{TM_SEED}" --carlaProviderSeed "{PROVIDER_SEED}" \\\n'
             '    --host "{HOST}" --port "{PORT}" --trafficManagerPort "{TM_PORT}"\n'
             "'"
         )
@@ -1033,6 +1034,7 @@ Examples:
     start_parser.add_argument('--agent-gpu-offset', type=int, help='Offset agent GPU from its CARLA GPU (AGENT_GPU_OFFSET; 0=co-locate)')
     start_parser.add_argument('--agent-gpu-pin', type=int, help='Force all agents onto one GPU (AGENT_GPU_PIN; benchmark)')
     start_parser.add_argument('--dead-server-backoff', type=int, help='Sleep seconds after skipping a dead server (DEAD_SERVER_BACKOFF_SEC)')
+    start_parser.add_argument('--seed', type=int, help='Fixed RNG seed for scenario spawns + traffic manager (RUN_SEED; reproducible eval)')
 
     # Add SLURM configuration options to start command
     add_slurm_arguments(start_parser)
@@ -1135,7 +1137,8 @@ Examples:
         for attr, env_name in (('job_timeout', 'JOB_TIMEOUT_SEC'),
                                ('agent_gpu_offset', 'AGENT_GPU_OFFSET'),
                                ('agent_gpu_pin', 'AGENT_GPU_PIN'),
-                               ('dead_server_backoff', 'DEAD_SERVER_BACKOFF_SEC')):
+                               ('dead_server_backoff', 'DEAD_SERVER_BACKOFF_SEC'),
+                               ('seed', 'RUN_SEED')):
             v = getattr(args, attr, None)
             if v is not None:
                 os.environ[env_name] = str(v)
