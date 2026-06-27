@@ -253,3 +253,6 @@ leaderboard/data/training_routes/*_smoke.xml
 /coverage_cache.csv
 # scratch file-tree dump
 /file_struct.txt
+
+# generated verification reports (regenerable)
+/report/
