@@ -513,3 +513,34 @@ pipeline:
     class: PIDFromWaypoints
     args: {waypoints_key: waypoints, speed_key: speed, out_key: control}
 ```
+
+---
+
+## Context-key contract & offline validation
+
+Each tick the agent seeds the pipeline context with these keys (see
+`consolidated_agent.run_step`):
+
+`agent`, `input_data`, `timestamp`, `global_step`, `last_control`, `config`,
+`external_config`
+
+Modules then communicate by reading/writing **named context keys**, wired
+explicitly through their `args` — typically `*_key` / `in_key` / `out_key`
+fields (e.g. `ExtractSpeed(out_key='speed')` writes `speed`; a later
+`TCPStateAssemble(speed_key='speed')` reads it). The final control must be
+written to `context['control']` (a `carla.VehicleControl` or
+`{steer, throttle, brake}` dict).
+
+Because the wiring lives in the YAML args, you can review a pipeline's data flow
+**without CARLA, torch, or the cluster**:
+
+```bash
+python3 continuous_cli.py validate-config leaderboard/team_code/configs/tcp.yaml
+python3 continuous_cli.py validate-config --all      # validate every config
+python3 continuous_cli.py new-agent myagent          # scaffold a starter config
+```
+
+`validate-config` hard-fails on malformed shape, a missing `module`/`class`, bad
+`args`, or a step whose class doesn't exist in its module (catching typos before
+a cluster round-trip), and prints each step with its args so the key flow is
+reviewable. The same checks run in CI via `tests/test_config_schema.py`.

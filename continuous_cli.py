@@ -729,6 +729,54 @@ class ContinuousCLI:
         if dry_run:
             cmd.append('--dry-run')
         subprocess.run(cmd)
+
+    def validate_config(self, config: str = None, all_: bool = False):
+        """Validate/introspect an agent pipeline YAML (delegates to tools/validate_config.py)."""
+        tool = self.project_root / 'tools' / 'validate_config.py'
+        cmd = ['python3', str(tool)]
+        if all_ or not config:
+            cmd.append('--all')
+        else:
+            cmd.append(config)
+        return subprocess.run(cmd).returncode
+
+    def new_agent(self, name: str, force: bool = False):
+        """Scaffold a starter pipeline config at configs/<name>.yaml.
+
+        Reuses an existing config's sensors (so they're valid) and a trivial
+        FixedControl pipeline, giving a runnable skeleton to extend. Validates
+        the result before writing.
+        """
+        import yaml
+        cfg_dir = self.project_root / 'leaderboard' / 'team_code' / 'configs'
+        out = cfg_dir / f'{name}.yaml'
+        if out.exists() and not force:
+            print(f"✗ {out} already exists (use --force to overwrite)")
+            return 1
+        template = cfg_dir / 'tcp.yaml'
+        sensors = []
+        if template.exists():
+            base = yaml.safe_load(open(template))
+            for s in base.get('sensors', []):
+                if s.get('id') in ('rgb', 'speed', 'imu', 'gps'):
+                    sensors.append(s)
+        scaffold = {
+            'sensors': sensors or [{'type': 'sensor.speedometer', 'id': 'speed'}],
+            'pipeline': [
+                {'module': 'team_code.pipeline_modules', 'class': 'ExtractSpeed',
+                 'args': {'sensor_id': 'speed', 'out_key': 'speed'}},
+                {'module': 'team_code.pipeline_engine', 'class': 'FixedControl',
+                 'args': {'throttle': 0.3, 'steer': 0.0, 'brake': 0.0}},
+            ],
+        }
+        with open(out, 'w') as f:
+            f.write(f"# Starter pipeline for agent '{name}'.\n"
+                    f"# Extend the pipeline with stages from team_code.pipeline_modules;\n"
+                    f"# see leaderboard/team_code/PIPELINE_MODULES.md and the tcp/lav/interfuser configs.\n"
+                    f"# Validate with: python3 continuous_cli.py validate-config {out}\n\n")
+            yaml.safe_dump(scaffold, f, sort_keys=False)
+        print(f"✓ wrote {out}")
+        return self.validate_config(str(out))
     
     def retry(self, max_attempts: int = 3):
         """Retry failed jobs"""
@@ -1079,6 +1127,16 @@ Examples:
     # Prune command (drop pending jobs made redundant by harder completed ones)
     prune_parser = subparsers.add_parser('prune', help='Drop pending jobs made redundant by harder completed ones')
     prune_parser.add_argument('--dry-run', action='store_true', help='Report without modifying the queue')
+
+    # Validate-config command (offline pipeline validation + introspection)
+    vc_parser = subparsers.add_parser('validate-config', help='Validate/introspect an agent pipeline YAML (no CARLA)')
+    vc_parser.add_argument('config', nargs='?', help='Path to an agent config (default: all in configs/)')
+    vc_parser.add_argument('--all', action='store_true', help='Validate every config')
+
+    # New-agent command (scaffold a starter pipeline config)
+    na_parser = subparsers.add_parser('new-agent', help='Scaffold a starter agent pipeline config')
+    na_parser.add_argument('name', help='Agent name (creates configs/<name>.yaml)')
+    na_parser.add_argument('--force', action='store_true', help='Overwrite if the config exists')
     
     # Retry command
     retry_parser = subparsers.add_parser('retry', help='Retry failed')
@@ -1181,6 +1239,12 @@ Examples:
 
     elif args.command == 'prune':
         cli.prune(getattr(args, 'dry_run', False))
+
+    elif args.command == 'validate-config':
+        sys.exit(cli.validate_config(getattr(args, 'config', None), getattr(args, 'all', False)))
+
+    elif args.command == 'new-agent':
+        sys.exit(cli.new_agent(args.name, getattr(args, 'force', False)))
     
     elif args.command == 'retry':
         cli.retry(args.max_attempts)
