@@ -653,14 +653,26 @@ class ContinuousManager:
                     # stale/unknown don't count as active or idle
                     pass
 
+            # Derive ALL counts from job statuses. The stored 'completed'/'total'
+            # fields are written once at reset and never updated, so trusting them
+            # makes status/summary always report "completed: 0".
+            jobs = queue_data.get('jobs', [])
+            def _n(*statuses):
+                return sum(1 for j in jobs if j.get('status') in statuses)
+            # gpus_active from the queue's running set (distinct node/gpu), not
+            # heartbeat 'busy' files: workers write 'busy' once at job start and
+            # never refresh it, so stale beats over-count. Idle beats ARE
+            # refreshed (~15s), so they remain a meaningful idle signal.
+            running_jobs = [j for j in jobs if j.get('status') in ('assigned', 'running')]
+            gpus_active = len({(j.get('node'), j.get('gpu')) for j in running_jobs})
             status = {
-                'total': queue_data['total'],
-                'completed': queue_data['completed'],
-                'pending': sum(1 for j in queue_data['jobs'] if j['status'] == 'pending'),
-                'running': sum(1 for j in queue_data['jobs'] if j['status'] in ['assigned', 'running']),
-                'failed': sum(1 for j in queue_data['jobs'] if j['status'] == 'failed'),
-                'cancelled': sum(1 for j in queue_data['jobs'] if j['status'] == 'cancelled'),
-                'gpus_active': beats_busy,
+                'total': len(jobs),
+                'completed': _n('completed'),
+                'pending': _n('pending'),
+                'running': len(running_jobs),
+                'failed': _n('failed'),
+                'cancelled': _n('cancelled'),
+                'gpus_active': gpus_active,
                 'gpus_idle': beats_idle
             }
             return status

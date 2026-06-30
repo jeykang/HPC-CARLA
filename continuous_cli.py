@@ -915,58 +915,68 @@ class ContinuousCLI:
             print("\n" + "="*60)
             print(f"CONTINUOUS COLLECTION SUMMARY ({'Persistent' if self.persistent_mode else 'Original'} Mode)")
             print("="*60)
-            
-            # Overall statistics
-            total = queue_data['total']
-            completed = queue_data['completed']
-            failed = sum(1 for j in queue_data['jobs'] if j['status'] == 'failed')
-            
+
+            # Overall statistics — derive from job statuses (the stored
+            # 'total'/'completed' counters are never updated after reset).
+            jobs = queue_data.get('jobs', [])
+            total = len(jobs)
+            def _n(*st):
+                return sum(1 for j in jobs if j.get('status') in st)
+            completed = _n('completed')
+            failed = _n('failed')
+            pending = _n('pending')
+            running = _n('assigned', 'running')
+
             print(f"\nOverall Statistics:")
             print(f"  Total jobs: {total}")
-            print(f"  Completed: {completed} ({100*completed/total:.1f}%)" if total > 0 else "  Completed: 0")
-            print(f"  Failed: {failed}")
-            
+            if total > 0:
+                print(f"  Completed: {completed} ({100*completed/total:.1f}%)")
+            else:
+                print("  Completed: 0")
+            print(f"  Failed:    {failed}")
+            print(f"  Running:   {running}")
+            print(f"  Pending:   {pending}")
+
             # Time statistics
-            if completed_data['jobs']:
-                durations = [j['duration'] for j in completed_data['jobs'] 
-                           if j.get('duration')]
-                if durations:
-                    total_time = sum(durations)
-                    avg_time = total_time / len(durations)
-                    min_time = min(durations)
-                    max_time = max(durations)
-                    
-                    print(f"\nTime Statistics:")
-                    print(f"  Total runtime: {timedelta(seconds=int(total_time))}")
-                    print(f"  Average duration: {timedelta(seconds=int(avg_time))}")
-                    print(f"  Min/Max: {timedelta(seconds=int(min_time))} - "
-                          f"{timedelta(seconds=int(max_time))}")
-                    
-                    if self.persistent_mode:
-                        # Estimate time saved by not restarting CARLA
-                        estimated_saved = completed * 60  # ~60 seconds per restart
-                        print(f"\nPersistent Mode Benefits:")
-                        print(f"  Estimated time saved: {timedelta(seconds=estimated_saved)}")
-                        print(f"  Avoided CARLA restarts: {completed}")
-            
-            # GPU statistics
-            print(f"\nGPU Performance:")
+            avg_time = None
+            durations = [j['duration'] for j in completed_data.get('jobs', []) if j.get('duration')]
+            if durations:
+                total_time = sum(durations)
+                avg_time = total_time / len(durations)
+                print(f"\nTime Statistics:")
+                print(f"  Total job runtime: {timedelta(seconds=int(total_time))}")
+                print(f"  Average duration:  {timedelta(seconds=int(avg_time))}")
+                print(f"  Min/Max:           {timedelta(seconds=int(min(durations)))} - "
+                      f"{timedelta(seconds=int(max(durations)))}")
+
+            # GPU statistics — gpu_status.json is the v2 namespaced format
+            # {"nodes": {node: {gpu: {jobs_completed, total_runtime}}}};
+            # fall back to a legacy flat {gpu: {...}} map.
+            nodes = gpu_status.get('nodes') if isinstance(gpu_status, dict) else None
+            if not isinstance(nodes, dict) or not nodes:
+                flat = {k: v for k, v in (gpu_status or {}).items() if isinstance(v, dict) and 'jobs_completed' in v}
+                nodes = {'(local)': flat} if flat else {}
             total_gpu_time = 0
-            for gpu_id in range(8):
-                gpu_info = gpu_status.get(str(gpu_id), {})
-                jobs_done = gpu_info.get('jobs_completed', 0)
-                runtime = gpu_info.get('total_runtime', 0)
-                total_gpu_time += runtime
-                if jobs_done > 0:
-                    avg = runtime / jobs_done
-                    print(f"  GPU {gpu_id}: {jobs_done} jobs, "
-                          f"avg {timedelta(seconds=int(avg))}")
-            
-            # Efficiency
-            if total_gpu_time > 0 and completed > 0:
-                efficiency = (completed * avg_time) / total_gpu_time * 100
-                print(f"\nEfficiency: {efficiency:.1f}% GPU utilization")
-            
+            rows = []
+            for node in sorted(nodes):
+                for gpu_id in sorted(nodes[node], key=lambda x: int(x) if str(x).isdigit() else 0):
+                    gi = nodes[node][gpu_id]
+                    jobs_done = gi.get('jobs_completed', 0)
+                    runtime = gi.get('total_runtime', 0)
+                    total_gpu_time += runtime
+                    if jobs_done > 0:
+                        rows.append((node, gpu_id, jobs_done, runtime / jobs_done))
+            if rows:
+                print(f"\nGPU Performance:")
+                for node, gpu_id, jobs_done, avg in rows:
+                    print(f"  {node} GPU {gpu_id}: {jobs_done} jobs, avg {timedelta(seconds=int(avg))}")
+
+            # Efficiency: useful GPU-time (sum of completed-job durations) over
+            # total GPU busy-time. Only meaningful with both numbers present.
+            if total_gpu_time > 0 and durations:
+                efficiency = sum(durations) / total_gpu_time * 100
+                print(f"\nEfficiency: {efficiency:.1f}% (completed-job time / total GPU busy-time)")
+
             print("="*60)
             
         except FileNotFoundError:
@@ -985,8 +995,8 @@ class ContinuousCLI:
             print(f"\nPersistent Mode Features:")
             print(f"  ✓ One CARLA instance per GPU")
             print(f"  ✓ No restarts between jobs")
-            print(f"  ✓ Health monitoring via shared files")
-            print(f"  ✓ Automatic recovery from crashes")
+            print(f"  ✓ Health monitoring via shared files (heartbeats)")
+            print(f"  ✓ Recovery via `reclaim` (stuck jobs) and `restart-gpu` (manual)")
         else:
             print(f"\nOriginal Mode Features:")
             print(f"  • CARLA restarts for each job")
