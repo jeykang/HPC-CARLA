@@ -1164,7 +1164,11 @@ Examples:
     
     # Export command
     export_parser = subparsers.add_parser('export', help='Export results')
+    # Accept both `export results.json` (positional) and `export --output results.json`
+    # (matches manage_continuous.py and the common convention).
     export_parser.add_argument('output', nargs='?', default='results.json')
+    export_parser.add_argument('--output', '-o', dest='output_flag', default=None,
+                               help='Output file (overrides the positional argument)')
     
     # Optimize command
     subparsers.add_parser('optimize', help='Optimize estimates')
@@ -1266,7 +1270,7 @@ Examples:
         cli.cancel(args.agent)
     
     elif args.command == 'export':
-        cli.export(args.output)
+        cli.export(getattr(args, 'output_flag', None) or args.output)
     
     elif args.command == 'optimize':
         cli.optimize()
