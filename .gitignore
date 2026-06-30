@@ -256,3 +256,6 @@ leaderboard/data/training_routes/*_smoke.xml
 
 # generated verification reports (regenerable)
 /report/
+
+# generated paper data tables (regenerable)
+/paper_artifacts/
