@@ -89,6 +89,44 @@ pts[:, 4:] = np.random.uniform(0, 1, (N, pts.shape[1] - 4))  # painted/temporal 
 ctx = {"lidar_stacked": pts}
 print(f"  feeding {pts.shape} points to LAVLiDARModelRunner ...", flush=True)
 lidar_runner.run(ctx); torch.cuda.synchronize()
-print("  LiDAR forward OK -> PointPillar/_scatter are NOT the crash on synthetic "
-      "data (crash may be data-specific, e.g. empty/NaN points, or another model).",
+print("  LiDAR forward OK on well-formed input.", flush=True)
+
+# ---- real chain: filter -> camera batch -> ERFNet seg -> point-painting ->
+# temporal stacking (FIRST-frame: empty history) -> PointPillar -> NMS.
+# This exercises the actual data flow (and first-frame edge cases) the isolated
+# test skipped, without needing a CARLA server or the route planner.
+print("\n=== real LiDAR chain on synthetic raw sensors (steps 11..17) ===", flush=True)
+names = [type(m).__name__ for m in eng._modules]
+def _idx(n):
+    return names.index(n)
+ID_RGB = (256, 288)   # (width, height) for RGB_0/1/2  -> array (H, W, 3)
+chain = ["LidarVehicleBodyFilter", "MultiCameraToTorchBatch", "LAVRGBSegmentationRunner",
+         "PointPaintingModule", "TemporalLidarAccumulator", "LAVLiDARModelRunner",
+         "BEVHeatmapNMS"]
+N2 = 30000
+lidar_raw = np.empty((N2, 4), dtype=np.float32)
+lidar_raw[:, 0] = np.random.uniform(-10, 70, N2)
+lidar_raw[:, 1] = np.random.uniform(-40, 40, N2)
+lidar_raw[:, 2] = np.random.uniform(-3, 3, N2)
+lidar_raw[:, 3] = np.random.uniform(0, 1, N2)
+def _rgb():
+    return (np.random.rand(ID_RGB[1], ID_RGB[0], 3) * 255).astype(np.float32)
+ctx2 = {
+    "lidar_raw": lidar_raw,
+    "rgb_0_raw": _rgb(), "rgb_1_raw": _rgb(), "rgb_2_raw": _rgb(),
+    "ekf_pos": np.array([0.0, 0.0], dtype=np.float32), "ekf_compass": 0.0,
+    "control": None,
+}
+for cname in chain:
+    mod = eng._modules[_idx(cname)]
+    print(f"  running {cname} ...", flush=True)
+    out = mod.run(ctx2)
+    if isinstance(out, dict):
+        ctx2 = out
+    torch.cuda.synchronize()
+    print(f"    OK", flush=True)
+print("\nFull LiDAR chain OK on synthetic data. If the real run still crashes, the "
+      "trigger is real-sensor-specific (e.g. zero points in view) or in the seg/"
+      "brake/uniplanner path or server-side. The eval template now sets "
+      "PYTHONFAULTHANDLER=1, so the next real run dumps the crash frame to the worker log.",
       flush=True)

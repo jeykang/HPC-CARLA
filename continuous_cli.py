@@ -473,6 +473,7 @@ class ContinuousCLI:
             '  "${{CARLA_SIF}}" bash -lc \'\n'
             '  set -euo pipefail\n'
             '  export PYTHONPATH="/workspace:/workspace/leaderboard:/workspace/scenario_runner:${{PYTHONPATH:-}}"\n'
+            '  export PYTHONFAULTHANDLER=1   # dump a Python stack on fatal signals (SIGSEGV) to the worker log\n'
             '  python3 -m leaderboard.leaderboard_evaluator \\\n'
             '    --routes "{ROUTES_FILE}" \\\n'
             '    --scenarios "{SCENARIOS_FILE}" \\\n'
