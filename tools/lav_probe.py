@@ -55,6 +55,40 @@ eng.build()   # if this faults, faulthandler prints the frame; rc != 0
 print(f"BUILD OK: {len(eng._modules)} modules instantiated", flush=True)
 for i, m in enumerate(eng._modules):
     print(f"  [{i:2}] {type(m).__name__}", flush=True)
-print("\nModels loaded without crashing -> the first-route crash is at inference "
-      "or server-side, not model load. Tell me and I'll add a one-tick --infer stage.",
+
+if "--infer" not in sys.argv:
+    print("\nBUILD-only. Re-run with --infer to exercise the LiDAR/PointPillar "
+          "forward (the inference-crash suspect).", flush=True)
+    sys.exit(0)
+
+# ---- inference probe: exercise the prime suspects with cuda.synchronize() ----
+# cuda.synchronize() forces async CUDA faults to surface at the offending call
+# rather than later, so faulthandler/the traceback points at the real line.
+import numpy as np  # noqa: E402
+import torch  # noqa: E402
+
+print("\n=== isolating the scatter ops (torch", torch.__version__,
+      "vs scatter_reduce_ which needs >=1.12) ===", flush=True)
+from team_code.lav.models.point_pillar import _scatter_max, _scatter_mean  # noqa: E402
+src = torch.randn(2000, 32, device="cuda")
+idx = torch.randint(0, 256, (2000,), device="cuda")
+print("  _scatter_mean ...", flush=True)
+_ = _scatter_mean(src, idx); torch.cuda.synchronize(); print("    OK", flush=True)
+print("  _scatter_max  ...", flush=True)
+_ = _scatter_max(src, idx); torch.cuda.synchronize(); print("    OK", flush=True)
+
+print("\n=== LiDAR model forward on a synthetic in-range point cloud ===", flush=True)
+lidar_runner = next(m for m in eng._modules if type(m).__name__ == "LAVLiDARModelRunner")
+N = 24000
+pts = np.empty((N, 16 - 5), dtype=np.float32)   # raw=11; decorate() appends 5 -> 16
+pts[:, 0] = np.random.uniform(-10, 70, N)        # x in [min_x, max_x]
+pts[:, 1] = np.random.uniform(-40, 40, N)        # y in [min_y, max_y]
+pts[:, 2] = np.random.uniform(-3, 3, N)          # z
+pts[:, 3] = np.random.uniform(0, 1, N)           # intensity
+pts[:, 4:] = np.random.uniform(0, 1, (N, pts.shape[1] - 4))  # painted/temporal feats
+ctx = {"lidar_stacked": pts}
+print(f"  feeding {pts.shape} points to LAVLiDARModelRunner ...", flush=True)
+lidar_runner.run(ctx); torch.cuda.synchronize()
+print("  LiDAR forward OK -> PointPillar/_scatter are NOT the crash on synthetic "
+      "data (crash may be data-specific, e.g. empty/NaN points, or another model).",
       flush=True)
