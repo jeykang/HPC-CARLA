@@ -473,8 +473,25 @@ class RouteScenario(BasicScenario):
                                                                 random_location=True,
                                                                 rolename='background')
 
+        # Background traffic is ambient and optional. When not enough spawn
+        # points are free, request_new_batch_actors returns None. Rather than
+        # aborting the whole route (which discards all of its sensor data),
+        # retry with fewer vehicles and, as a last resort, continue without
+        # background activity.
+        while new_actors is None and amount > 1:
+            amount = amount // 2
+            print("Warning: background activity spawn failed; retrying with {} vehicles".format(amount))
+            new_actors = CarlaDataProvider.request_new_batch_actors('vehicle.*',
+                                                                    amount,
+                                                                    carla.Transform(),
+                                                                    autopilot=True,
+                                                                    random_location=True,
+                                                                    rolename='background')
+
         if new_actors is None:
-            raise Exception("Error: Unable to add the background activity, all spawn points were occupied")
+            print("Warning: could not add background activity (all spawn points occupied); "
+                  "continuing route without it")
+            new_actors = []
 
         for _actor in new_actors:
             self.other_actors.append(_actor)
