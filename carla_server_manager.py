@@ -99,6 +99,41 @@ def _container_env_for_gpu(gpu_id: int) -> Dict[str, str]:
     env["SINGULARITYENV_ULIMIT_CORE"] = "0"
     return env
 
+def _find_gpucomp() -> Optional[str]:
+    """Locate libnvidia-gpucomp.so.<driver> for the current node's NVIDIA driver.
+
+    The filename embeds the driver version and the directory varies by node type
+    (e.g. 575.57.08 under /usr/lib/x86_64-linux-gnu on L40S nodes, 580.82.07 under
+    /cm/local/apps/cuda/libs/current/lib64 on H100 nodes), so we search the loader
+    cache and known locations rather than hardcode a single path. Returns the
+    absolute path, or None if not found.
+    """
+    import glob
+    import subprocess
+    # 1) ldconfig cache - most reliable; respects the node's configured lib paths.
+    try:
+        out = subprocess.run(
+            ["ldconfig", "-p"], capture_output=True, text=True, timeout=10
+        ).stdout
+        for line in out.splitlines():
+            if "libnvidia-gpucomp.so" in line and "=>" in line:
+                path = line.split("=>")[-1].strip()
+                if os.path.exists(path):
+                    return path
+    except Exception:
+        pass
+    # 2) Fallback: glob known locations (L40S, H100/Bright-cluster, RHEL).
+    for pattern in (
+        "/usr/lib/x86_64-linux-gnu/libnvidia-gpucomp.so.*",
+        "/cm/local/apps/cuda/libs/current/lib64/libnvidia-gpucomp.so.*",
+        "/usr/lib64/libnvidia-gpucomp.so.*",
+    ):
+        hits = sorted(glob.glob(pattern))
+        if hits:
+            return hits[0]
+    return None
+
+
 def _build_run_args(rpc: int, tm: int) -> List[str]:
     """
     Use 'singularity run' so the container's %runscript invokes ${CARLA_ROOT}/CarlaUE4.sh.
@@ -108,17 +143,16 @@ def _build_run_args(rpc: int, tm: int) -> List[str]:
         "singularity", "run", "--nv",
         "-B", f"{str(PROJECT_ROOT)}:/workspace",  # project tree at /workspace for sidecars
     ]
-    # Driver 575.x requires libnvidia-gpucomp.so but the cluster's --nv
+    # The NVIDIA driver requires libnvidia-gpucomp.so but the cluster's --nv
     # (legacy nvliblist.conf) doesn't auto-bind it. Without this, UE4's GL/Vulkan
     # RHI dlopens libGLX_nvidia which then can't resolve gpucomp, and CARLA
-    # dies before binding the RPC port. SIF must contain a 0-byte placeholder
-    # at the same path (created by the .def's %post `touch` line); the bind
-    # below overlays the host file onto it. Hardcoded here rather than via
-    # SINGULARITY_BINDPATH because the auto-generated SLURM submission script
-    # does not propagate that env var.
-    GPUCOMP = "/usr/lib/x86_64-linux-gnu/libnvidia-gpucomp.so.575.57.08"
-    if os.path.exists(GPUCOMP):
-        args += ["-B", f"{GPUCOMP}:{GPUCOMP}"]
+    # dies before binding the RPC port. The filename embeds the driver version
+    # and the directory varies by node type (L40S 575 vs H100 580), so we detect
+    # it at runtime via _find_gpucomp() instead of hardcoding - this keeps the
+    # pipeline portable across heterogeneous GPU partitions.
+    gpucomp = _find_gpucomp()
+    if gpucomp:
+        args += ["-B", f"{gpucomp}:{gpucomp}"]
     # Additional maps (Town06, Town07, Town10HD) are not in the base SIF image.
     # A merged Maps directory (base towns + additional towns) lives at
     # PROJECT_ROOT/carla_maps/ and is bind-mounted over the SIF's Maps dir.
