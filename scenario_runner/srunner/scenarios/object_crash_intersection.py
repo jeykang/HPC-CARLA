@@ -12,9 +12,17 @@ moving along the road and encounters a cyclist ahead after taking a right or lef
 from __future__ import print_function
 
 import math
+import os
 import py_trees
 
 import carla
+
+# Spawn-retry cap for adversary placement (env-tunable). The default is low so a
+# persistently-blocked spawn point (occupied by background traffic) fails fast and
+# the route's scenario builder skips this scenario, instead of retrying many times
+# -- each retry can block ~minutes on a degraded/overloaded CARLA server, turning
+# a normal spawn conflict into a multi-hour hang.
+_SPAWN_ATTEMPTS = int(os.environ.get("SCENARIO_SPAWN_ATTEMPTS", "4"))
 
 from srunner.scenariomanager.carla_data_provider import CarlaDataProvider
 from srunner.scenariomanager.scenarioatomics.atomic_behaviors import (ActorTransformSetter,
@@ -130,7 +138,7 @@ class VehicleTurningRight(BasicScenario):
         # Timeout of scenario in seconds
         self.timeout = timeout
         # Total Number of attempts to relocate a vehicle before spawning
-        self._number_of_attempts = 6
+        self._number_of_attempts = _SPAWN_ATTEMPTS
         # Number of attempts made so far
         self._spawn_attempted = 0
 
@@ -297,7 +305,7 @@ class VehicleTurningLeft(BasicScenario):
         # Timeout of scenario in seconds
         self.timeout = timeout
         # Total Number of attempts to relocate a vehicle before spawning
-        self._number_of_attempts = 6
+        self._number_of_attempts = _SPAWN_ATTEMPTS
         # Number of attempts made so far
         self._spawn_attempted = 0
 
@@ -465,7 +473,7 @@ class VehicleTurningRoute(BasicScenario):
         # Timeout of scenario in seconds
         self.timeout = timeout
         # Total Number of attempts to relocate a vehicle before spawning
-        self._number_of_attempts = 6
+        self._number_of_attempts = _SPAWN_ATTEMPTS
         # Number of attempts made so far
         self._spawn_attempted = 0
 
