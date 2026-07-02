@@ -103,8 +103,12 @@ def _fmt_cell(value, width, fmt=".0f"):
     except Exception:
         return f"{'-':>{width}}"
 
-def _read_metrics(gpu_id: int):
-    p = METRICS_LAST_DIR / f"gpu{int(gpu_id)}.json"
+def _read_metrics(gpu_id: int, node: str = None):
+    # Metrics live per-node at metrics/node/<node>/last/gpu<id>.json. Key off the
+    # beat's node, NOT the local NODE_NAME -- otherwise `monitor` run from the
+    # login node (or any node != the GPU's) finds nothing and shows blank columns.
+    metrics_dir = (STATE_DIR / 'metrics' / 'node' / node / 'last') if node else METRICS_LAST_DIR
+    p = metrics_dir / f"gpu{int(gpu_id)}.json"
     if not p.exists(): return {}
     try:
         d = json.load(open(p))
@@ -151,7 +155,7 @@ def _print_table(beats, nodes_hint=None):
         rpc  = b.get('rpc_port') or '-'
         tm   = b.get('tm_port') or '-'
         msg  = b.get('message') or ''
-        m    = _read_metrics(gpu) if isinstance(gpu,(int,str)) and str(gpu).isdigit() else {}
+        m    = _read_metrics(gpu, node) if isinstance(gpu,(int,str)) and str(gpu).isdigit() else {}
         sm   = _fmt_cell(m.get('sm'), 5, '.0f')
         mem  = _fmt_cell(m.get('mem'), 6, '.0f')
         temp = _fmt_cell(m.get('temp'), 5, '.0f')
