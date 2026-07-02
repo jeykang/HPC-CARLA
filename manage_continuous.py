@@ -1436,8 +1436,21 @@ class ContinuousManager:
                 with open(self.queue_file, 'w') as f:
                     json.dump(q, f, indent=2)
             self._with_lock(_requeue)
+            # Request a server restart: the persistent CARLA servers segfault over
+            # time (cluster render/glibc instability) and nothing else brings them
+            # back, so a crashed server stays dead for the rest of the run and its
+            # GPU spins here forever. Drop a restart flag the worker picks up on its
+            # next loop (it re-ensures CARLA), so dead servers self-heal instead of
+            # permanently idling the GPU.
+            try:
+                restart_dir = self.state_dir / 'restart'
+                restart_dir.mkdir(parents=True, exist_ok=True)
+                (restart_dir / f"{self.node_name}_gpu{gpu_id_for_display}.restart").write_text(
+                    datetime.utcnow().isoformat() + 'Z')
+            except Exception:
+                pass
             self._write_health(gpu_id=gpu_id_for_display, status="idle",
-                               message=f"server down on port {port}; job {job['id']} requeued",
+                               message=f"server down on port {port}; job {job['id']} requeued (restart requested)",
                                rpc_port=int(port), tm_port=int(tm_port), current_job=None)
             time.sleep(float(os.environ.get('DEAD_SERVER_BACKOFF_SEC', '20')))
             return 3
