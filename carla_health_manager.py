@@ -103,6 +103,27 @@ def _fmt_cell(value, width, fmt=".0f"):
     except Exception:
         return f"{'-':>{width}}"
 
+def _gpu_jobs_map():
+    """{(node, gpu_id): jobs_completed} from gpu_status.json.
+
+    The per-GPU completed count is maintained in gpu_status.json (v2 namespaced
+    {"nodes": {node: {gpu: {jobs_completed, total_runtime}}}}), NOT in the
+    heartbeat files -- so the Jobs column must come from here.
+    """
+    d = _read_json(STATE_DIR / 'gpu_status.json') or {}
+    out = {}
+    nodes = d.get('nodes') if isinstance(d, dict) else None
+    if isinstance(nodes, dict):
+        for node, gpus in nodes.items():
+            if isinstance(gpus, dict):
+                for g, info in gpus.items():
+                    try:
+                        out[(node, int(g))] = int((info or {}).get('jobs_completed', 0))
+                    except Exception:
+                        pass
+    return out
+
+
 def _read_metrics(gpu_id: int, node: str = None):
     # Metrics live per-node at metrics/node/<node>/last/gpu<id>.json. Key off the
     # beat's node, NOT the local NODE_NAME -- otherwise `monitor` run from the
@@ -134,6 +155,7 @@ def _print_table(beats, nodes_hint=None):
     print("-"*138)
 
     run_idx = _index_running_jobs()
+    jobs_map = _gpu_jobs_map()
     seen_nodes, busy, idle, stale = set(), 0, 0, 0
 
     for b in sorted(beats, key=lambda x: (x.get('node','zzz'), int(x.get('gpu_id', -1)))):
@@ -150,7 +172,9 @@ def _print_table(beats, nodes_hint=None):
         elif st == 'idle': idle += 1
         elif st == 'stale': stale += 1
 
-        jobs = b.get('jobs_completed') or b.get('jobs') or '-'
+        jobs = jobs_map.get((node, int(gpu))) if str(gpu).isdigit() else None
+        if jobs is None:
+            jobs = b.get('jobs_completed') or b.get('jobs') or '-'
         age  = _fmt_age(b.get('age_sec', float('inf')))
         rpc  = b.get('rpc_port') or '-'
         tm   = b.get('tm_port') or '-'
