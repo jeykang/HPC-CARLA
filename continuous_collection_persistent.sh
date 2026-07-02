@@ -44,6 +44,18 @@ for gpu in $(seq 0 $((GPUS_PER_NODE - 1))); do
     exec bash "$PROJECT_ROOT/persistent_carla_worker.sh"
   ) &
   pids+=($!)
+
+  # Per-GPU progress watchdog: restarts a stalled CARLA when no new data is
+  # written for the running job (reuses the worker's restart-flag mechanism).
+  if [[ "${WATCHDOG_ENABLED:-1}" == "1" ]]; then
+    (
+      export GPU_ID=$gpu
+      export BASE_RPC_PORT
+      export PORT_SPACING
+      exec bash "$PROJECT_ROOT/carla_watchdog.sh"
+    ) &
+    pids+=($!)
+  fi
 done
 
 # Supervisor: exit once the global queue is empty AND nothing is running.
