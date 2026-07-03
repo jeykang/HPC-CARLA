@@ -11,8 +11,16 @@ moving along the road and encountering a cyclist ahead.
 from __future__ import print_function
 
 import math
+import os
 import py_trees
 import carla
+
+# Spawn-retry cap for adversary placement (env-tunable). Low default so a
+# persistently-blocked spawn point (occupied by background traffic) fails fast and
+# the route's scenario builder skips this scenario, instead of retrying many times
+# -- each retry can block ~minutes on a degraded/overloaded CARLA server, turning
+# a normal spawn conflict into a multi-hour hang.
+_SPAWN_ATTEMPTS = int(os.environ.get("SCENARIO_SPAWN_ATTEMPTS", "4"))
 
 from srunner.scenariomanager.carla_data_provider import CarlaDataProvider
 from srunner.scenariomanager.scenarioatomics.atomic_behaviors import (ActorTransformSetter,
@@ -163,7 +171,7 @@ class DynamicObjectCrossing(BasicScenario):
         self.timeout = timeout
         self._trigger_location = config.trigger_points[0].location
         # Total Number of attempts to relocate a vehicle before spawning
-        self._number_of_attempts = 20
+        self._number_of_attempts = _SPAWN_ATTEMPTS
         # Number of attempts made so far
         self._spawn_attempted = 0
 

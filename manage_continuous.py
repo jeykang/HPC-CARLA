@@ -636,32 +636,54 @@ class ContinuousManager:
             with open(self.runtime_file, 'r') as f:
                 runtime_data = json.load(f)
             
-            # Healthbeats override counters for active/idle
-            beats = self._scan_health()
-            beats_now = 0
-            beats_busy = 0
-            beats_idle = 0
-            now = time.time()
-            for b in beats:
-                beats_now += 1
-                status = (b.get('status') or '').lower()
-                if status == 'busy':
-                    beats_busy += 1
-                elif status == 'idle':
-                    beats_idle += 1
-                else:
-                    # stale/unknown don't count as active or idle
-                    pass
+            # Derive ALL counts from job statuses. The stored 'completed'/'total'
+            # fields are written once at reset and never updated, so trusting them
+            # makes status/summary always report "completed: 0".
+            jobs = queue_data.get('jobs', [])
+            def _n(*statuses):
+                return sum(1 for j in jobs if j.get('status') in statuses)
+
+            # gpus_active from the queue's running set (distinct node/gpu): workers
+            # write 'busy' heartbeats once at job start and never refresh them, so
+            # counting busy beats over-counts (stale beats from old/other runs,
+            # e.g. months-old files, linger). The queue running set is the truth.
+            running_jobs = [j for j in jobs if j.get('status') in ('assigned', 'running')]
+            active_gpus = {(j.get('node'), j.get('gpu')) for j in running_jobs}
+
+            # gpus_idle: only FRESH idle beats (idle workers re-write their beat
+            # ~every 15s, so a live idle GPU is <~20s old; stale idle beats from
+            # dead/old allocations are minutes-to-months old and must be dropped).
+            # Also exclude any GPU already counted active, and dedup by node/gpu —
+            # so active + idle can't exceed the live GPU count.
+            fresh_sec = float(os.environ.get('HEARTBEAT_FRESH_SEC', '120'))
+            def _beat_age(b):
+                ts = b.get('last_heartbeat') or b.get('timestamp')
+                if not ts:
+                    return float('inf')
+                try:  # beats are naive-UTC isoformat + 'Z'
+                    s = str(ts).replace('Z', '').replace('+00:00', '')
+                    return (datetime.utcnow() - datetime.fromisoformat(s)).total_seconds()
+                except Exception:
+                    return float('inf')
+            idle_gpus = set()
+            for b in self._scan_health():
+                if (b.get('status') or '').lower() != 'idle':
+                    continue
+                if _beat_age(b) > fresh_sec:
+                    continue
+                key = (b.get('node'), b.get('gpu_id'))
+                if key not in active_gpus:
+                    idle_gpus.add(key)
 
             status = {
-                'total': queue_data['total'],
-                'completed': queue_data['completed'],
-                'pending': sum(1 for j in queue_data['jobs'] if j['status'] == 'pending'),
-                'running': sum(1 for j in queue_data['jobs'] if j['status'] in ['assigned', 'running']),
-                'failed': sum(1 for j in queue_data['jobs'] if j['status'] == 'failed'),
-                'cancelled': sum(1 for j in queue_data['jobs'] if j['status'] == 'cancelled'),
-                'gpus_active': beats_busy,
-                'gpus_idle': beats_idle
+                'total': len(jobs),
+                'completed': _n('completed'),
+                'pending': _n('pending'),
+                'running': len(running_jobs),
+                'failed': _n('failed'),
+                'cancelled': _n('cancelled'),
+                'gpus_active': len(active_gpus),
+                'gpus_idle': len(idle_gpus)
             }
             return status
         except FileNotFoundError:
@@ -1414,8 +1436,21 @@ class ContinuousManager:
                 with open(self.queue_file, 'w') as f:
                     json.dump(q, f, indent=2)
             self._with_lock(_requeue)
+            # Request a server restart: the persistent CARLA servers segfault over
+            # time (cluster render/glibc instability) and nothing else brings them
+            # back, so a crashed server stays dead for the rest of the run and its
+            # GPU spins here forever. Drop a restart flag the worker picks up on its
+            # next loop (it re-ensures CARLA), so dead servers self-heal instead of
+            # permanently idling the GPU.
+            try:
+                restart_dir = self.state_dir / 'restart'
+                restart_dir.mkdir(parents=True, exist_ok=True)
+                (restart_dir / f"{self.node_name}_gpu{gpu_id_for_display}.restart").write_text(
+                    datetime.utcnow().isoformat() + 'Z')
+            except Exception:
+                pass
             self._write_health(gpu_id=gpu_id_for_display, status="idle",
-                               message=f"server down on port {port}; job {job['id']} requeued",
+                               message=f"server down on port {port}; job {job['id']} requeued (restart requested)",
                                rpc_port=int(port), tm_port=int(tm_port), current_job=None)
             time.sleep(float(os.environ.get('DEAD_SERVER_BACKOFF_SEC', '20')))
             return 3
