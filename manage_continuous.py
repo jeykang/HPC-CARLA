@@ -215,6 +215,64 @@ class ContinuousManager:
                 print(f"[smoke] failed to build town{nn} smoke route: {e}")
         return created
 
+    def _git_provenance(self):
+        """Return (sha, dirty) for the project repo; ('unknown', None) on failure."""
+        try:
+            sha = subprocess.check_output(
+                ['git', '-C', str(self.project_root), 'rev-parse', 'HEAD'],
+                text=True, stderr=subprocess.DEVNULL).strip()
+            dirty = bool(subprocess.check_output(
+                ['git', '-C', str(self.project_root), 'status', '--porcelain'],
+                text=True, stderr=subprocess.DEVNULL).strip())
+            return sha, dirty
+        except Exception:
+            return 'unknown', None
+
+    def _write_manifest(self, save_path, job, agent_cfg, routes_file,
+                        scenarios_file, weather_idx, run_dir, seed, gpu=None):
+        """Write a provenance manifest so any run is reproducible/citable.
+
+        Records exactly what produced the run: agent + config (with content hash),
+        route/scenario files, weather, seed, image, git SHA, host/gpu, time.
+        Best-effort — never blocks the run.
+        """
+        try:
+            import hashlib
+            cfg_sha = None
+            try:
+                with open(agent_cfg, 'rb') as f:
+                    cfg_sha = hashlib.sha256(f.read()).hexdigest()
+            except Exception:
+                pass
+            sha, dirty = self._git_provenance()
+            manifest = {
+                'agent': job.get('agent'),
+                'agent_config': str(agent_cfg),
+                'agent_config_sha256': cfg_sha,
+                'route_file': str(routes_file),
+                'route_name': job.get('route'),
+                'scenarios_file': str(scenarios_file),
+                'town': job.get('town'),
+                'weather_index': weather_idx,
+                'weather_preset': os.environ.get('WEATHER_PRESET'),
+                'seed': seed,
+                'tm_seed': seed,
+                'provider_seed': seed,
+                'carla_sif': os.environ.get('CARLA_SIF'),
+                'git_sha': sha,
+                'git_dirty': dirty,
+                'node': self.node_name,
+                'gpu': gpu,
+                'job_id': job.get('id'),
+                'attempt': job.get('attempts'),
+                'created_at': datetime.utcnow().isoformat() + 'Z',
+                'checkpoint': os.path.join(run_dir, 'results.json'),
+            }
+            with open(os.path.join(save_path, 'manifest.json'), 'w') as f:
+                json.dump(manifest, f, indent=2)
+        except Exception:
+            pass
+
     def _derive_gpu_id(self, fallback_port: int) -> int:
         env_gpu = os.environ.get('GPU_ID')
         if env_gpu is not None and str(env_gpu).isdigit():
@@ -1227,6 +1285,16 @@ class ContinuousManager:
         # parent must exist now or the evaluator dies with FileNotFoundError.
         os.makedirs(save_path, exist_ok=True)
 
+        # --- Reproducibility: fixed, recorded seeds ---
+        # A single RUN_SEED determines both the scenario-spawn RNG
+        # (CarlaDataProvider) and the traffic-manager device seed, so every agent
+        # faces identical scenarios (fair comparison) and any run is reproducible.
+        seed = int(os.environ.get('RUN_SEED', '2000'))
+
+        # Provenance manifest next to results.json: exactly what produced this run.
+        self._write_manifest(save_path, job, agent_cfg, routes_file, scenarios_file,
+                             weather_idx, save_path, seed, gpu=job.get('gpu'))
+
         if 'WEATHER_PRESET' in os.environ and os.environ['WEATHER_PRESET'].strip():
             env['WEATHER_PRESET'] = os.environ['WEATHER_PRESET'].strip()
 
@@ -1282,7 +1350,8 @@ class ContinuousManager:
                 ROUTES_FILE=str(routes_file),
                 SCENARIOS_FILE=str(scenarios_file),
                 CHECKPOINT=os.path.join(save_path, 'results.json'),
-                HOST=host, PORT=port, TM_PORT=tm_port, WEATHER=weather_idx
+                HOST=host, PORT=port, TM_PORT=tm_port, WEATHER=weather_idx,
+                TM_SEED=seed, PROVIDER_SEED=seed
             )
             cmd = ['bash','-lc', fmt]
         else:
@@ -1294,6 +1363,7 @@ class ContinuousManager:
                 '--agent', str(agent_code),
                 '--agent-config', str(agent_cfg),
                 '--checkpoint', os.path.join(save_path, 'results.json'),
+                '--trafficManagerSeed', str(seed), '--carlaProviderSeed', str(seed),
                 '--host', host, '--port', port, '--trafficManagerPort', tm_port
             ]
 
