@@ -29,7 +29,7 @@
 # To verify the fix worked, after build:
 #     srun -w hpc-pr-a-pod09 --gpus=1 singularity exec --nv carla_official.sif \
 #          python3 -c 'import ctypes; ctypes.CDLL("libEGL_nvidia.so.0"); print("OK")'
-# Expect "OK", not a segfault. Then resubmit start_job.sh as before.
+# Expect "OK", not a segfault. Then relaunch via continuous_cli.py start as before.
 
 # --------------------------------------------------------------------------
 # Stage 1: source-only image; we just want the files at /home/carla
@@ -177,7 +177,7 @@ Stage: final
     chmod a+x /home/carla/CarlaUE4.sh \
               /home/carla/CarlaUE4/Binaries/Linux/CarlaUE4-Linux-Shipping || true
 
-    echo "[bind-placeholder] Pre-create 0-byte file so start_job.sh can bind the host's libnvidia-gpucomp over it (Singularity file binds need pre-existing destinations)..."
+    echo "[bind-placeholder] Pre-create 0-byte file so the launcher can bind the host's libnvidia-gpucomp over it (Singularity file binds need pre-existing destinations)..."
     touch /usr/lib/x86_64-linux-gnu/libnvidia-gpucomp.so.575.57.08
 
     echo "[nvidia-icd] install NVIDIA Vulkan ICD + GLVND EGL vendor files..."

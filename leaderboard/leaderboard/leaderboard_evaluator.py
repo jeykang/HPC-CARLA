@@ -475,14 +475,25 @@ def main():
 
     statistics_manager = StatisticsManager()
 
+    failed = False
     try:
         leaderboard_evaluator = LeaderboardEvaluator(arguments, statistics_manager)
         leaderboard_evaluator.run(arguments)
 
     except Exception as e:
         traceback.print_exc()
+        failed = True
     finally:
-        del leaderboard_evaluator
+        # leaderboard_evaluator may be unbound if the constructor raised.
+        try:
+            del leaderboard_evaluator
+        except NameError:
+            pass
+
+    # Exit non-zero on failure so the orchestrator's rc check is meaningful
+    # (upstream swallowed all exceptions and exited 0, masking crashes).
+    if failed:
+        sys.exit(1)
 
 
 if __name__ == '__main__':
