@@ -615,6 +615,19 @@ normalization happens *inside* the encoder (`ImageCNN(normalize=True)`). `comman
 `steer = 2σ−1`, `throttle = σ·0.75`, `brake = σ`, then reference brake gating
 (`brake<0.05→0`; `throttle>brake→brake=0`).
 
+**Performance note (verified 2026-07-07):** CILRS's mean `score_composed` (≈39) is the roster
+floor — well below the others — but this is *genuine model weakness, not an integration artifact*.
+Audited end-to-end after the low score: channel order (`bgr_to_rgb`, the same helper the working
+agents use), the [0,255]/ImageNet-norm path (train-eval consistent), brake/throttle gating (verbatim
+`cilrs_agent.py:209-210`), and the `next_command` source (1-based RoadOption — the *same*
+`RoutePlannerNextCommand` output the known-good TCP consumes) all check out; the checkpoint loads
+`strict=True` with no missing/unexpected keys. The dominant failure is **timeout (59%)** — slow,
+conservative driving — not the collisions/route-deviations a perception bug produces, and CILRS
+still scores 100 on 15 routes (perception demonstrably works). ≈39 DS is in-line-to-above published
+CILRS baselines (~7–30). This is the *opposite* signature to the historical InterFuser color bug
+(which caused a **uniform** collapse); CILRS's bimodal functional-but-weak profile is what a real
+weak baseline looks like, and it usefully anchors the low end of the agent comparison.
+
 ### 5.5 NEAT — Neural Attention Fields
 
 **Paradigm:** implicit BEV attention fields → waypoints (camera-only).
