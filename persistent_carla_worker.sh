@@ -45,17 +45,57 @@ export TM_PORT=$TM_PORT
 # (Removed SAVE_PATH/CHECKPOINT_ENDPOINT precomputation; per-job paths are set by manage_continuous.py)
 # ================================================================================================
 
+# Stagger first-render across GPUs. Even with servers pre-started, all workers
+# would otherwise grab their first job at once -> simultaneous first map load ->
+# simultaneous EGL context creation + shader compile, spiking the driver and
+# correlating boot lockups. Spread the starts by GPU index.
+STAGGER_SEC=${SERVER_STAGGER_SEC:-7}
+if [[ "$GPU_ID" -gt 0 && "$STAGGER_SEC" -gt 0 ]]; then
+  echo "[worker] startup stagger: sleeping $(( GPU_ID * STAGGER_SEC ))s" | tee -a "$log"
+  sleep $(( GPU_ID * STAGGER_SEC ))
+fi
+
 # ----- Main job loop -----
 while true; do
-  # On-demand server restart
-  if [[ -f "$STATE_DIR/restart/${NODE_NAME}_gpu${GPU_ID}.restart" ]]; then
-    echo "[worker] restart flag detected; re-ensuring CARLA..." | tee -a "$log"
-    rm -f "$STATE_DIR/restart/${NODE_NAME}_gpu${GPU_ID}.restart" || true
+  RESTART_FLAG="$STATE_DIR/restart/${NODE_NAME}_gpu${GPU_ID}.restart"
+  PARK_FLAG="$STATE_DIR/parked/${NODE_NAME}_gpu${GPU_ID}.parked"
+
+  # Re-ensure CARLA on an explicit restart request OR when this GPU is parked.
+  # ensure() now kills any lingering/segfaulted server, relaunches with a health
+  # check, retries, and parks the GPU if every boot attempt segfaults. A later
+  # successful ensure() clears the park.
+  if [[ -f "$RESTART_FLAG" || -f "$PARK_FLAG" ]]; then
+    if [[ -f "$RESTART_FLAG" ]]; then
+      echo "[worker] restart flag detected; re-ensuring CARLA..." | tee -a "$log"
+      rm -f "$RESTART_FLAG" || true
+    fi
+    if [[ -f "$PARK_FLAG" ]]; then
+      echo "[worker] gpu parked; attempting recovery ensure..." | tee -a "$log"
+    fi
     python3 "$PROJECT_ROOT/carla_server_manager.py" ensure \
       --gpu "$GPU_ID" \
       --base-rpc-port "$BASE_RPC_PORT" \
       --port-spacing "$PORT_SPACING" \
       --tm-offset "$TM_OFFSET" | tee -a "$log" || true
+
+    # Still parked after the recovery attempt? Don't pull jobs -- that would
+    # just fast-fail (rc=3) and burn the queue for GPUs that CAN serve. Heartbeat
+    # 'parked' and back off before retrying.
+    if [[ -f "$PARK_FLAG" ]]; then
+      echo "[worker] gpu still parked; backing off ${PARK_RETRY_SEC:-300}s" | tee -a "$log"
+      python3 - <<'PY' "$STATE_DIR/health" "$NODE_NAME" "$GPU_ID"
+import json, sys, datetime, pathlib
+health_dir, node, gpu = sys.argv[1:]
+p=pathlib.Path(health_dir)/f"{node}_gpu{gpu}.json"
+try: d=json.loads(p.read_text())
+except Exception: d={}
+d['status']='parked'; d['message']='CARLA failed to boot; GPU parked (auto-retrying)'
+d['last_heartbeat']=datetime.datetime.utcnow().isoformat()+'Z'
+p.write_text(json.dumps(d, indent=2))
+PY
+      sleep "${PARK_RETRY_SEC:-300}"
+      continue
+    fi
   fi
 
   set +e

@@ -57,6 +57,91 @@ def wait_for_port(host: str, port: int, deadline: float) -> bool:
         time.sleep(0.2)
     return False
 
+def _proc_alive(pid: int) -> bool:
+    try:
+        os.kill(pid, 0); return True
+    except Exception:
+        return False
+
+def _pids_on_port(rpc: int) -> List[int]:
+    """PIDs of container/CARLA processes launched for this RPC port, matched on
+    the exact -carla-rpc-port=<rpc> argv token (verified via /proc) so a sibling
+    GPU's server on another port is never touched."""
+    token = f"-carla-rpc-port={rpc}".encode()
+    try:
+        out = subprocess.check_output(["pgrep", "-f", f"carla-rpc-port={rpc}"],
+                                      text=True, stderr=subprocess.DEVNULL)
+        cand = [int(x) for x in out.split()]
+    except Exception:
+        cand = []
+    pids, me = [], os.getpid()
+    for pid in cand:
+        if pid == me:
+            continue
+        try:
+            with open(f"/proc/{pid}/cmdline", "rb") as f:
+                if token in f.read().split(b"\0"):
+                    pids.append(pid)
+        except Exception:
+            pass
+    return pids
+
+def _kill_gpu_server(gpu_id: int, rpc: int, grace: float = 6.0) -> None:
+    """Kill any server bound to this GPU's RPC port and wait for the port to
+    free. A segfaulted CARLA can leave a child holding GPU memory or the socket;
+    relaunching over it makes the new server's GL init crash (the unrecoverable
+    crash-loop). Matches only this port, so sibling GPUs are untouched."""
+    if not _pids_on_port(rpc) and not is_port_open("127.0.0.1", rpc):
+        return
+    for sig in (signal.SIGTERM, signal.SIGKILL):
+        pids = _pids_on_port(rpc)
+        if not pids:
+            break
+        for pid in pids:
+            try:
+                os.killpg(os.getpgid(pid), sig)   # server has its own group
+            except Exception:
+                try: os.kill(pid, sig)
+                except Exception: pass
+        deadline = time.time() + grace
+        while time.time() < deadline and _pids_on_port(rpc):
+            time.sleep(0.3)
+    t = time.time() + 5
+    while time.time() < t and is_port_open("127.0.0.1", rpc):
+        time.sleep(0.3)
+
+def _wait_healthy(rpc: int, pid: Optional[int], timeout: int) -> bool:
+    """Healthy = the RPC port opens AND the process is still alive a few seconds
+    later. Catches the 'segfault right after binding the port' case that plain
+    wait_for_port() would wrongly report as up."""
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        if pid is not None and not _proc_alive(pid):
+            return False
+        if is_port_open("127.0.0.1", rpc):
+            break
+        time.sleep(0.5)
+    else:
+        return False
+    stable_until = time.time() + 3
+    while time.time() < stable_until:
+        if pid is not None and not _proc_alive(pid):
+            return False
+        time.sleep(0.5)
+    return is_port_open("127.0.0.1", rpc)
+
+# --- GPU parking: after repeated boot failures, stop assigning jobs to a GPU ---
+PARK_DIR = STATE_DIR / "parked"
+def _park_path(gpu_id: int) -> Path:
+    return PARK_DIR / f"{NODE_NAME}_gpu{gpu_id}.parked"
+def _park_gpu(gpu_id: int, reason: str) -> None:
+    PARK_DIR.mkdir(parents=True, exist_ok=True)
+    ts = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+    _park_path(gpu_id).write_text(json.dumps({"reason": reason, "at": ts}))
+def _clear_park(gpu_id: int) -> None:
+    try: _park_path(gpu_id).unlink()
+    except Exception: pass
+
 def discover_gpus() -> List[int]:
     cvd = os.environ.get("CUDA_VISIBLE_DEVICES")
     if cvd:
@@ -69,6 +154,15 @@ def _derive_ports(gpu_id: int, base: int, spacing: int, tm_off: int) -> Tuple[in
     rpc = base + gpu_id*spacing
     tm  = rpc + tm_off
     return rpc, tm
+
+def _gpu_home(gpu_id: int) -> Path:
+    """Isolated, writable HOME for one GPU's CARLA/UE4 instance.
+
+    Singularity bind-mounts the host $HOME into every container by default, so
+    all per-GPU servers would otherwise share ~/.config/Epic, ~/.cache (the GL
+    shader cache) and lock files -- concurrent writes there cause correlated
+    boot lockups on a multi-GPU node. Give each GPU its own directory instead."""
+    return STATE_DIR / "ue4_home" / f"gpu{gpu_id}"
 
 def _container_env_for_gpu(gpu_id: int) -> Dict[str, str]:
     """
@@ -94,6 +188,15 @@ def _container_env_for_gpu(gpu_id: int) -> Dict[str, str]:
         # Mirror for Apptainer
         "APPTAINERENV___EGL_VENDOR_LIBRARY_FILENAMES": "/workspace/nvidia_egl_vendor.json",
         "APPTAINERENV_VK_ICD_FILENAMES": "/workspace/nvidia_icd.json",
+        # Isolated per-GPU HOME/tmp/shader-cache (bound at /carla_home in
+        # _build_run_args) so 8 UE4 instances don't collide on shared
+        # ~/.config/Epic, ~/.cache and lock files -> correlated boot lockups.
+        "SINGULARITYENV_HOME": "/carla_home",
+        "SINGULARITYENV_TMPDIR": "/carla_home/tmp",
+        "SINGULARITYENV_XDG_CACHE_HOME": "/carla_home/.cache",
+        "APPTAINERENV_HOME": "/carla_home",
+        "APPTAINERENV_TMPDIR": "/carla_home/tmp",
+        "APPTAINERENV_XDG_CACHE_HOME": "/carla_home/.cache",
     })
     # Prevent core dumps inside container
     env["SINGULARITYENV_ULIMIT_CORE"] = "0"
@@ -134,7 +237,7 @@ def _find_gpucomp() -> Optional[str]:
     return None
 
 
-def _build_run_args(rpc: int, tm: int) -> List[str]:
+def _build_run_args(gpu_id: int, rpc: int, tm: int) -> List[str]:
     """
     Use 'singularity run' so the container's %runscript invokes ${CARLA_ROOT}/CarlaUE4.sh.
     All UE4/CARLA flags are passed as args to the runscript.
@@ -142,6 +245,7 @@ def _build_run_args(rpc: int, tm: int) -> List[str]:
     args = [
         "singularity", "run", "--nv",
         "-B", f"{str(PROJECT_ROOT)}:/workspace",  # project tree at /workspace for sidecars
+        "-B", f"{_gpu_home(gpu_id)}:/carla_home", # isolated per-GPU HOME (shader cache, locks)
     ]
     # The NVIDIA driver requires libnvidia-gpucomp.so but the cluster's --nv
     # (legacy nvliblist.conf) doesn't auto-bind it. Without this, UE4's GL/Vulkan
@@ -190,12 +294,21 @@ def _build_run_args(rpc: int, tm: int) -> List[str]:
 
 def start_one(gpu_id: int, rpc: int, tm: int) -> Optional[int]:
     log_path = LOG_DIR / f"carla_{NODE_NAME}_gpu{gpu_id}.log"
+    # Clean slate: kill any lingering/segfaulted server still bound to this RPC
+    # port before relaunching, so the new process doesn't inherit a fouled GPU
+    # context or a held socket (the unrecoverable crash-loop we diagnosed).
+    _kill_gpu_server(gpu_id, rpc)
+    # Isolated, writable per-GPU HOME (shader cache / config / tmp) must exist.
+    home = _gpu_home(gpu_id)
+    for sub in ("tmp", ".cache", ".config"):
+        (home / sub).mkdir(parents=True, exist_ok=True)
     try:
         with open(log_path, "ab", buffering=0) as logf:
             proc = subprocess.Popen(
-                _build_run_args(rpc, tm),
+                _build_run_args(gpu_id, rpc, tm),
                 stdout=logf, stderr=logf,
                 env=_container_env_for_gpu(gpu_id),
+                start_new_session=True,   # own process group -> clean, isolated kills
             )
         # Persist state
         state = _read_state()
@@ -218,7 +331,7 @@ def start_pool(gpus: List[int], base: int, spacing: int, tm_off: int) -> Dict[st
             started[str(gid)] = {"rpc_port": rpc, "tm_port": tm, "pid": None, "already_running": True}
             continue
         pid = start_one(gid, rpc, tm)
-        ok = wait_for_port("127.0.0.1", rpc, time.time() + 120)
+        ok = _wait_healthy(rpc, pid, 120)
         started[str(gid)] = {"rpc_port": rpc, "tm_port": tm, "pid": pid, "listening": ok}
     return started
 
@@ -244,15 +357,28 @@ def health() -> int:
 
 def ensure(gpu_id: int, base: int, spacing: int, tm_off: int) -> int:
     rpc, tm = _derive_ports(gpu_id, base, spacing, tm_off)
+    # Trust an existing listener -- never kill a server that's happily serving.
     if is_port_open("127.0.0.1", rpc):
+        _clear_park(gpu_id)
         return 0
-    print(f"[server_manager] gpu{gpu_id}: no listener on {rpc}, launching …")
-    pid = start_one(gpu_id, rpc, tm)
-    ok = wait_for_port("127.0.0.1", rpc, time.time() + 120)
-    if not ok:
-        print(f"[server_manager] gpu{gpu_id}: still no listener on {rpc}", file=sys.stderr)
-        return 2
-    return 0
+    attempts = int(os.environ.get("CARLA_BOOT_ATTEMPTS", "3"))
+    timeout  = int(os.environ.get("CARLA_BOOT_TIMEOUT_SEC", "120"))
+    for attempt in range(1, attempts + 1):
+        _kill_gpu_server(gpu_id, rpc)   # also done inside start_one; cheap + explicit
+        print(f"[server_manager] gpu{gpu_id}: launch attempt {attempt}/{attempts} on rpc {rpc}")
+        pid = start_one(gpu_id, rpc, tm)
+        if pid and _wait_healthy(rpc, pid, timeout):
+            print(f"[server_manager] gpu{gpu_id}: healthy on rpc {rpc}")
+            _clear_park(gpu_id)
+            return 0
+        print(f"[server_manager] gpu{gpu_id}: boot attempt {attempt} failed", file=sys.stderr)
+        _kill_gpu_server(gpu_id, rpc)   # tidy the failed attempt before retrying
+    # Every attempt segfaulted on boot -> park the GPU so workers stop throwing
+    # jobs at it (which would just fast-fail and burn the queue). The worker
+    # periodically re-runs ensure(); a later success clears the park.
+    _park_gpu(gpu_id, f"CARLA failed to boot {attempts}x on rpc {rpc}")
+    print(f"[server_manager] gpu{gpu_id}: PARKED after {attempts} failed boots", file=sys.stderr)
+    return 3
 
 def parse_args():
     p = argparse.ArgumentParser("carla_server_manager")

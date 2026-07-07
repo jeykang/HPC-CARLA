@@ -2507,7 +2507,11 @@ class LAVCollisionCheck:
 
         collision = False
         for trajs, cmds in zip(other_cast, other_cmds):
-            init_x, init_y = trajs[0, 0], trajs[0, 1]  # noqa: F841
+            # trajs is (num_cmds, T, 2): trajs[0, 0] is the (x, y) of cmd-0/step-0.
+            # The old `trajs[0, 0], trajs[0, 1]` assumed (T, 2) and made init_y a
+            # (2,) array -> "ambiguous truth value" ValueError whenever a vehicle
+            # was present. Matches lav_agent.plan_collide: `init_x, init_y = trajs[0, 0]`.
+            init_x, init_y = trajs[0, 0]  # noqa: F841
             if init_y > 0.5 * self.pixels_per_meter:
                 continue
             for traj, cmd_score in zip(trajs, cmds):

@@ -339,6 +339,9 @@ class ContinuousCLI:
             'DEAD_SERVER_BACKOFF_SEC', 'CARLA_SIF', 'RUN_SEED',
             # CARLA server render/quality/logging knobs (segfault debugging).
             'CARLA_RENDER_FLAG', 'CARLA_QUALITY', 'CARLA_UE4_STDOUT',
+            # Server boot-hardening: retry/park + parked-worker backoff + stagger.
+            'CARLA_BOOT_ATTEMPTS', 'CARLA_BOOT_TIMEOUT_SEC', 'PARK_RETRY_SEC',
+            'SERVER_STAGGER_SEC',
         ]
         _fwd = [f'export {k}="{os.environ[k]}"' for k in _passthrough if os.environ.get(k)]
         if _fwd:
@@ -453,6 +456,20 @@ class ContinuousCLI:
         if not Path(sif).is_file():
             print(f"[start][WARN] CARLA image not found: {sif}")
 
+        # Purge stale Python bytecode so the container recompiles agent code from
+        # the bind-mounted source this run. The container's Python did not
+        # reliably invalidate __pycache__ across the bind mount, so edits to
+        # leaderboard/team_code could silently have no effect (old .pyc ran).
+        # With PYTHONDONTWRITEBYTECODE=1 in EVAL_CMD_TEMPLATE, no stale .pyc
+        # re-accumulates after this one-time purge.
+        import shutil
+        _purged = 0
+        for base in ('leaderboard', 'scenario_runner'):
+            for pc in (self.project_root / base).rglob('__pycache__'):
+                shutil.rmtree(pc, ignore_errors=True); _purged += 1
+        if _purged:
+            print(f"[start] purged {_purged} stale __pycache__ dir(s)")
+
         gpucomp = "/usr/lib/x86_64-linux-gnu/libnvidia-gpucomp.so.575.57.08"
         binds = [f"{self.project_root}:/workspace", f"{gpucomp}:{gpucomp}"]
         for var in ('SINGULARITY_BINDPATH', 'APPTAINER_BINDPATH'):
@@ -476,6 +493,7 @@ class ContinuousCLI:
             '  set -euo pipefail\n'
             '  export PYTHONPATH="/workspace:/workspace/leaderboard:/workspace/scenario_runner:${{PYTHONPATH:-}}"\n'
             '  export PYTHONFAULTHANDLER=1   # dump a Python stack on fatal signals (SIGSEGV) to the worker log\n'
+            '  export PYTHONDONTWRITEBYTECODE=1  # never write .pyc: bound /workspace source edits must take effect (stale __pycache__ silently ran old agent code)\n'
             '  python3 -m leaderboard.leaderboard_evaluator \\\n'
             '    --routes "{ROUTES_FILE}" \\\n'
             '    --scenarios "{SCENARIOS_FILE}" \\\n'
