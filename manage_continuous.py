@@ -1170,6 +1170,12 @@ class ContinuousManager:
             weather_score = _WEATHER_DIFF[weather_idx] if weather_idx < len(_WEATHER_DIFF) else 2.5
             return route_score + weather_score
 
+        def _illum_bin(job):
+            # Illumination bin of a job's weather preset (see tools/weather_axes.py):
+            #   idx 0-13 alternate Noon (even) / Sunset (odd); 14-20 are Night (sun -90).
+            w = int(job.get('weather', 0))
+            return 'night' if w >= 14 else ('sunset' if w % 2 else 'noon')
+
         def _reserve_next():
             with open(self.queue_file, 'r') as f:
                 q = json.load(f)
@@ -1189,12 +1195,38 @@ class ContinuousManager:
             if not pending:
                 return None
 
-            pending.sort(key=lambda j: (
-                j.get('attempts', 0),
-                -_job_difficulty(j),       # hardest first (so easy same-route variants become prunable)
-                j.get('agent', ''),        # interleave agents within a (route,weather) tier
-                -_estimate_sec(j),         # longest first (tiebreak)
-            ))
+            # ── Illumination-stratified coverage ─────────────────────────────
+            # Hardest-first alone marches down the _WEATHER_DIFF ranking and never
+            # reaches the bright presets, so the completed sample collapses onto
+            # night+rain (weathers 14-20): illumination ends up unsampled and its
+            # per-model sensitivity is unidentifiable (tools/sensitivity_matrix.py).
+            # Guarantee COVERAGE_QUOTA finished jobs per (agent, illumination-bin)
+            # BEFORE reverting to pure hardest-first. COVERAGE_QUOTA=0 disables it
+            # (the key below then collapses to the original hardest-first sort).
+            try:
+                _quota = int(os.environ.get('COVERAGE_QUOTA', '3'))
+            except ValueError:
+                _quota = 3
+            _cov = {}
+            if _quota > 0:
+                for j in q['jobs']:
+                    if j.get('status') in ('completed', 'running'):
+                        k = (j.get('agent', ''), _illum_bin(j))
+                        _cov[k] = _cov.get(k, 0) + 1
+
+            def _sort_key(j):
+                c = _cov.get((j.get('agent', ''), _illum_bin(j)), 0)
+                under = _quota > 0 and c < _quota
+                return (
+                    j.get('attempts', 0),      # fewest attempts first (fair retries)
+                    0 if under else 1,         # coverage-deficit bins first (until quota)
+                    c if under else 0,         # within coverage: least-covered bin first
+                    -_job_difficulty(j),       # hardest first (primary once quotas met)
+                    j.get('agent', ''),        # interleave agents within a tier
+                    -_estimate_sec(j),         # longest first (tiebreak)
+                )
+
+            pending.sort(key=_sort_key)
 
             job = pending[0]
             job['status'] = 'running'

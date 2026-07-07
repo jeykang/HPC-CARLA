@@ -75,6 +75,11 @@ from pathlib import Path
 # Stdlib-only by design: the harvest is small and the CSV writer is
 # deterministic, so numpy/pandas are neither imported nor required.
 
+# Sibling module: weather-preset -> physical-axis decomposition (illum/precip/fog),
+# so illumination can be analysed apart from precipitation/fog downstream.
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import weather_axes  # noqa: E402
+
 
 # =============================================================================
 # Path construction — REPLICATED from manage_continuous.py so a harvested path
@@ -167,8 +172,15 @@ INFRACTION_COLUMNS = [
     ("route_dev", "infr_route_dev"),
 ]
 
+# Physical weather axes (tools/weather_axes.py) — let illumination be analysed
+# separately from precipitation/fog, which the single 0-20 ordinal fuses together.
+WEATHER_AXIS_COLUMNS = ["weather_name", "time_of_day", "sun_altitude",
+                        "illum_dark", "precip", "road_water", "cloud", "fog"]
+
 FIELDS = [
-    "agent", "route_file", "town", "weather", "route_id",
+    "agent", "route_file", "town", "weather",
+] + WEATHER_AXIS_COLUMNS + [
+    "route_id",
     "score_composed", "score_route", "score_penalty", "status",
 ] + [col for _, col in INFRACTION_COLUMNS] + [
     "route_length", "job_status", "job_id",
@@ -192,6 +204,15 @@ def _num(x):
         return float(x)
     except (TypeError, ValueError):
         return None
+
+
+def _weather_cols(weather):
+    """Physical-axis decomposition columns for a weather preset index. Blank
+    cells for an out-of-range / non-int index (never crashes)."""
+    try:
+        return weather_axes.axis_row(int(weather))
+    except Exception:
+        return {c: "" for c in WEATHER_AXIS_COLUMNS}
 
 
 def rows_from_checkpoint(data, job):
@@ -291,6 +312,7 @@ def harvest(jobs, dataset_dir):
             row["weather"] = job.get("weather", row["weather"])
             row["job_status"] = job.get("status")
             row["job_id"] = job.get("id")
+            row.update(_weather_cols(row["weather"]))
 
             key = (row["agent"], str(row["weather"]), str(row["town"]),
                    row["route_file"], row["route_id"])
@@ -434,6 +456,20 @@ def print_summary(rows, counters, out_paths):
     # Context: the queue records only ONE file-level aggregate per WHOLE file,
     # and only when it finishes — so the per-route harvest yields many metrics
     # where the queue would have yielded at most a handful.
+    print("-" * 74)
+
+    # ---- illumination coverage (the axis hardest-first tends to collapse) ----
+    tod = {}
+    for r in rows:
+        t = r.get("time_of_day") or "?"
+        tod[t] = tod.get(t, 0) + 1
+    print("\nIllumination coverage (time-of-day of harvested route-evals):")
+    for t in ("noon", "sunset", "night", "?"):
+        if t in tod:
+            print(f"  {t:8s}: {tod[t]}")
+    if len([t for t in tod if t != "?"]) <= 1:
+        print("  -> a SINGLE illumination bin: the illumination axis is UNSAMPLED, so"
+              "\n     its per-model sensitivity is unidentifiable (see tools/sensitivity_matrix.py).")
     print("-" * 74)
 
     print(f"\nWrote {out_paths[0]}")

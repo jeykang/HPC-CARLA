@@ -764,16 +764,31 @@ Each job entry in `job_queue.json`:
 
 ### Scheduling priority
 
-Jobs are sorted by this 4-tuple key (ascending):
+`_reserve_next` sorts pending jobs by this key (ascending) and the worker takes the first:
 
 ```
-(attempts, agent_priority, −difficulty_score, −estimated_runtime_s)
+(attempts, coverage_deficit, coverage_count, −difficulty_score, agent, −estimated_runtime_s)
 ```
 
-1. **Fewest attempts first** — retries are deprioritised relative to fresh jobs
-2. **Agent priority** — currently `{interfuser:0, tcp:1, lav:2}` for validation ordering
-3. **Highest difficulty first** — ensures most informative combinations run early
-4. **Longest estimated runtime as tiebreak** — fills GPU time efficiently
+1. **Fewest attempts first** — retries deprioritised relative to fresh jobs.
+2. **Illumination coverage first** — `0` while the job's `(agent, illumination-bin)` is below
+   `COVERAGE_QUOTA` finished jobs, else `1` (see *Illumination-stratified coverage* below).
+3. **Least-covered bin first** (coverage phase only) — interleaves noon/sunset/night.
+4. **Highest difficulty first** — hardest `(route+scenario+weather)` early, so `prune` can drop
+   the easier same-route variants as redundant.
+5. **Agent** (tiebreak) — interleaves agents within a difficulty tier so none monopolises the
+   fleet (replaced the old hard-coded `{interfuser:0,…}` priority that starved the newer agents).
+6. **Longest estimated runtime** (tiebreak) — fills GPU time efficiently.
+
+**Illumination-stratified coverage.** Pure hardest-first marches down the `_WEATHER_DIFF`
+ranking; on the tiny/short suites (small route+scenario difficulty) it effectively sorts by
+weather alone, so the completed sample collapses onto the darkest+rainiest presets. On the A100
+run **100% of the first completions were night** (weathers 17–20), leaving illumination
+unsampled and its per-model sensitivity unidentifiable (see *Multi-axis difficulty*).
+`COVERAGE_QUOTA` (env, default 3) guarantees that many finished jobs per `(agent,
+illumination-bin ∈ {noon, sunset, night})` before reverting to pure hardest-first;
+`COVERAGE_QUOTA=0` restores the original sort exactly. Bright bins are front-loaded and are the
+faster / less-crash-prone jobs, so they yield data sooner.
 
 ### Difficulty scoring
 
@@ -836,6 +851,39 @@ scores down — the property that justifies hardest-first scheduling and redunda
 (dropping an easy variant is safe because an agent that clears the hard variant clears the
 easy one). Per-*file* aggregation (n = 13) is too coarse to reach significance, so the
 per-route harvest is what makes the validation possible.
+
+### Multi-axis difficulty and per-model sensitivity
+
+A single scalar difficulty is **not sufficient** to validate against performance — a lesson
+from a sister project (illumination-difficulty for AV scene scoring): different architectures
+fail on different axes, so one scalar that fuses them washes out. Here the roster splits by
+sensor modality — **camera-only** (CILRS, NEAT, Roach, TCP) vs **LiDAR-aided** (InterFuser,
+LAV) — which predicts, e.g., that darkness should hurt the camera-only agents far more. Pooling
+all agents, the scalar difficulty's Spearman is only **+0.036** (and per-model signs differ); a
+synthetic check confirms this is a **coverage/variance** artifact, not proof the sum is broken
+(with well-sampled axes even the naive sum correlates strongly).
+
+The reworked approach keeps difficulty as a **vector**, not a sum:
+
+- **Physical axis decomposition** (`tools/weather_axes.py`): the 0–20 weather ordinal (which
+  fuses time-of-day, rain and fog) is split into normalised axes
+  `illum_dark / precip / road_water / cloud / fog` — Night-variant params exact from
+  `consolidated_agent.py`, day presets from CARLA 0.9.10. `tools/harvest_results.py` emits these
+  per route-eval.
+- **Per-model sensitivity fit** (`tools/sensitivity_matrix.py`): a per-agent noisy-OR /
+  competing-hazards model `P(fail) = 1 − exp(−Σ λ_j·x_j)` over the axes (route geometry,
+  scenario density, weather axes). Each `λ_j(agent) ≥ 0` is that axis's hazard weight for that
+  agent (Newton MLE + inverse-Hessian CIs). **Validated on synthetic ground truth**
+  (`tools/noisy_or_sanity.py`): it recovers per-model axis sensitivity and cleanly separates
+  illumination-sensitive camera models from insensitive LiDAR models given ~100
+  illumination-varied evals/model — a separation a scalar cannot express. Robust to link
+  misspecification.
+
+**Current identifiability (the binding constraint).** On the night-only sample the tool reports
+honestly what the data supports: `geom`/`scen` are (weakly) identified; `illum_dark` is
+**unidentifiable** (constant — every eval at night); `precip/road_water/cloud/fog` are
+**confounded** (|r| > 0.95 — only heavy-rain-night presets ran). This is a *coverage* limit, not
+a method limit, and is exactly what the illumination-stratified scheduler removes.
 
 ### Runtime estimation
 
