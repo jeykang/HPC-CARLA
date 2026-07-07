@@ -220,6 +220,10 @@ def analyze_agent(rows, min_n):
                  "ci": (lam[idx] - 1.96 * se[idx], lam[idx] + 1.96 * se[idx]),
                  "max_r": mxr, "partner": partner}
         entry["status"] = "confounded" if mxr > CONFOUND_R else "ok"
+        # Significant only if the whole 95% CI is positive (λ>=0, so ci_lo>0 means
+        # the axis provably raises this agent's failure hazard). Confounded weights
+        # are a joint effect, so they don't count as an individual-axis result.
+        entry["significant"] = (entry["status"] == "ok" and entry["ci"][0] > 0.0)
         out["axes"][a] = entry
     return out
 
@@ -257,24 +261,29 @@ def render(results, out_path=None):
         cells = [_cell(r["axes"][a]) for a in FIT_AXES]
         P(f"| {ag} | {r['n']} | {r['fail_rate']*100:.0f} | " + " | ".join(cells) + " |")
 
-    # identifiability summary
-    P("\n## Identifiability in this sample\n")
-    any_ok = False
+    # identifiability + significance summary
+    P("\n## Identifiability & significance in this sample\n")
+    fitted = [(ag, a) for ag in agents if not results[ag].get("skip")
+              for a in FIT_AXES if results[ag]["axes"][a].get("status") in ("ok", "confounded")]
+    n_sig_total = sum(1 for ag, a in fitted if results[ag]["axes"][a].get("significant"))
+    P(f"**{n_sig_total} of {len(fitted)} (agent × axis) fits are statistically significant** "
+      f"(95% CI excludes 0). `identified` below means *estimable*, not precise — a wide CIs that "
+      f"straddles 0 is directional only, and tightens with more per-agent coverage.\n")
+    any_sig = n_sig_total > 0
     for a in FIT_AXES:
-        states = [results[ag]["axes"][a].get("status") for ag in agents
-                  if not results[ag].get("skip")]
-        n_ok = states.count("ok"); n_conf = states.count("confounded")
-        n_uni = states.count("unident")
+        entries = [results[ag]["axes"][a] for ag in agents if not results[ag].get("skip")]
+        n_ok = sum(1 for e in entries if e.get("status") == "ok")
+        n_conf = sum(1 for e in entries if e.get("status") == "confounded")
+        n_uni = sum(1 for e in entries if e.get("status") == "unident")
+        n_sig = sum(1 for e in entries if e.get("significant"))
         tag = ("**identified**" if n_ok else
                ("confounded" if n_conf else "unidentified"))
-        if n_ok:
-            any_ok = True
-        P(f"- `{a}`: {tag} — ok={n_ok}, confounded={n_conf}, unident={n_uni}")
-    if not any_ok:
-        P("\n> No axis is cleanly identified yet. This is a **coverage** limit, not a "
-          "method limit (the fit is validated on synthetic data): the sampled routes "
-          "vary too little per axis, and the weather presets that ran are collinear. "
-          "Illumination-stratified scheduling is the fix.")
+        P(f"- `{a}`: {tag} — ok={n_ok} (**significant={n_sig}**), confounded={n_conf}, unident={n_uni}")
+    if not any_sig:
+        P("\n> **No axis is significant for any agent yet.** The axes are now estimable "
+          "(illumination-stratified coverage broke the night-only collinearity), but the "
+          "per-agent samples are still too small — CIs straddle 0. More coverage, especially "
+          "for the thinly-sampled LiDAR agent(s), is needed before any per-model claim.")
 
     # per-agent CIs (detail)
     P("\n## λ with 95% CIs (identified/confounded axes)\n")
