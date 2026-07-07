@@ -1,250 +1,177 @@
 # HPC-CARLA Persistent
 
-Scalable autonomous-driving data collection on an HPC cluster. Runs persistent CARLA servers
-per GPU and continuously schedules agent–route–weather combinations as SLURM jobs, collecting
-sensor data and leaderboard metrics across all agents.
+Distributed verification of autonomous-driving agents on a **SLURM + Singularity** cluster. A
+persistent CARLA server per GPU continuously drains a queue of **agent × route × weather** jobs,
+collecting per-route CARLA-Leaderboard driving scores (and, optionally, raw sensor data) across a
+roster of driving agents.
+
+The current focus is a **cross-hardware comparison (A100 ↔ L40S).** The A100 is a compute GPU with
+a weak real-time rasteriser, so CARLA renders slowly and segfaults intermittently at GL-context
+creation; the pipeline is hardened to *recover* from that rather than crash. A portable launcher
+under [`examples/`](examples/) lets a contributor reproduce the same run on RTX-class hardware to
+quantify the difference.
+
+> **Deep reference:** [`PAPER_REFERENCE.md`](PAPER_REFERENCE.md) is the living technical reference —
+> architecture, every agent, the difficulty model, and cluster reliability. **This README is the
+> entry point; that file is the detail.**
 
 ---
 
-## Overview
+## Agent roster
 
-Three imitation-learning agents from the CARLA Leaderboard are reimplemented as modular
-inference pipelines and run across every combination of:
+Every agent is a CARLA-Leaderboard method re-implemented as a **modular inference pipeline** — a
+YAML list of composable [`pipeline_modules.py`](leaderboard/team_code/pipeline_modules.py) stages
+driven by [`consolidated_agent.py`](leaderboard/team_code/consolidated_agent.py), not a monolithic
+class. Sensors, model, and control are independently configurable without touching agent code, and a
+generic `TorchModelRunner` loads any checkpointed model from `{module, class_name, args}`.
 
-- **Agents**: TCP, LAV, InterFuser
-- **Routes**: all training routes (town01–07, town10; long/short/tiny variants; 22 route files)
-- **Weather**: 21 CARLA weather presets (ClearNoon → HardRainNight, including night variants 14–20)
+| Agent | Method | Sensors | Status |
+|-------|--------|---------|--------|
+| **TCP** | Trajectory-guided Control + PID (NeurIPS'22) | 1 camera | productive |
+| **InterFuser** | Interpretable multi-sensor fusion transformer (CoRL'22) | 3 cameras + LiDAR | productive |
+| **CILRS** | Conditional Imitation Learning + ResNet (ICCV'19) | 1 camera | productive — a deliberately weak baseline ([§5.4](PAPER_REFERENCE.md)) |
+| **NEAT** | Neural Attention Fields (ICCV'21) | 3 cameras | productive |
+| **Roach** | RL-Coached imitation (ICCV'21) | 1 camera | productive |
+| **LAV** | Learning from All Vehicles (CVPR'22) | 4 cameras + LiDAR | **server-blocked on A100** — crashes CARLA at `load_world`; may run on L40S |
 
-This yields 3 × 22 × 21 = **1,386 jobs per collection cycle** (462 per agent).
-
-Each agent has been ported from its original monolithic class into a YAML-driven pipeline of
-composable `pipeline_modules.py` stages. This decoupling makes sensor wiring, model parameters,
-and control logic independently configurable without touching agent code.
+Four of the five productive agents are camera-only; **only InterFuser (and LAV) use LiDAR.** That
+modality split drives the difficulty analysis below. Agent weights are gitignored and fetched on
+demand by each agent's `fetch_weights.sh`.
 
 ---
 
-## Repository Structure
+## Repository layout
 
 ```
 .
-├── manage_continuous.py          # Job queue, scheduling, worker orchestration
-├── continuous_cli.py             # CLI front-end (reset / start / monitor)
-├── leaderboard/
-│   ├── team_code/
-│   │   ├── consolidated_agent.py # Universal agent wrapper (pipeline + legacy modes)
-│   │   ├── pipeline_engine.py    # Runs the pipeline list each tick
-│   │   ├── pipeline_modules.py   # All reusable pipeline stage classes (~2500 lines)
-│   │   ├── configs/
-│   │   │   ├── tcp.yaml          # TCP pipeline config
-│   │   │   ├── lav.yaml          # LAV pipeline config
-│   │   │   └── interfuser.yaml   # InterFuser pipeline config
-│   │   ├── tcp/                  # TCP model code + checkpoint
-│   │   ├── lav/                  # LAV model code + checkpoints
-│   │   └── interfuser/           # InterFuser model code + checkpoints
-│   └── data/
-│       ├── training_routes/      # Route XML files
-│       └── scenarios/            # Scenario JSON files (adversarial event configs)
-├── collection_state/             # Live job queue, runtime estimates, metrics
-├── dataset/                      # Collected sensor data (per agent/weather/map/route)
-└── logs/                         # Per-GPU worker logs (worker_<node>_gpu<N>.log)
+├── continuous_cli.py                 # single entry point: reset / start / monitor / summary / export
+├── manage_continuous.py              # job queue + scheduler (difficulty + illumination coverage)
+├── carla_server_manager.py           # per-GPU persistent CARLA server + segfault resilience
+├── carla_health_manager.py           # out-of-band server health monitoring
+├── continuous_collection_persistent.sh   # SLURM coordinator (one per allocation)
+├── persistent_carla_worker.sh        # per-GPU worker (server + agent)
+├── leaderboard/team_code/
+│   ├── consolidated_agent.py         # universal agent: runs a YAML pipeline each tick
+│   ├── pipeline_modules.py           # reusable pipeline stage classes (~2500 lines)
+│   ├── configs/{tcp,interfuser,cilrs,neat,roach,lav}.yaml
+│   └── {tcp,interfuser,cilrs,neat,roach,lav}/   # per-agent model code + fetch_weights.sh
+├── tools/                            # analysis (see below): harvest_results, difficulty_validation,
+│                                     #   sensitivity_matrix, weather_axes, verification_report, ...
+├── examples/                         # portable cross-cluster launcher + CLUSTER_SETUP.md
+├── collection_state/                 # live job queue, completed_jobs.json, metrics
+├── dataset/                          # per-route results.json (+ optional per-frame sensor data)
+├── PAPER_REFERENCE.md                # the deep technical reference
+└── genfig.py                         # figure generation
 ```
 
 ---
 
-## Agent Implementation Status
+## How it works
 
-### TCP — Trajectory-guided Control with PID
-**Status: confirmed working.**
+### Persistent servers + segfault resilience
+Each GPU runs one long-lived CARLA server that workers connect to, eliminating the ~60 s per-job
+startup. On the A100, GL-context creation segfaults intermittently (a host driver/rasteriser issue,
+not a code bug); `carla_server_manager.py` makes this **recoverable**: it kills the stale server,
+health-checks the reboot (port open *and* process still alive), retries, and **parks** a GPU that
+cannot boot (so it stops burning the queue) while periodically re-attempting. Per-GPU `HOME`
+isolation prevents shader-cache contention. See [`PAPER_REFERENCE.md` §9](PAPER_REFERENCE.md).
 
-Implements the dual-path control strategy from [TCP (Wu et al., NeurIPS 2022)](https://github.com/OpenDriveLab/TCP):
-a Beta-distribution policy head and a PID waypoint tracker are blended based on whether the
-vehicle is turning.
+### The metric is *per route*, not per file
+Each route *file* is a **suite** of many short routes (a `_tiny` file holds 300–450), run in
+sequence and **checkpointed per route** into `results.json`. On unstable hardware a server often
+crashes mid-suite, so whole *files* rarely finish — but every route completed beforehand is saved,
+even in jobs the queue marks `failed`. [`tools/harvest_results.py`](tools/harvest_results.py)
+recovers those per-route scores from every job's checkpoint; on the current run **~89% of harvested
+route-evals come from `failed` jobs.** The reportable unit is the **route-eval**, and
+`per_route_results.csv` is the primary artifact.
 
-**Key implementation notes:**
-- `mu_branches` and `sigma_branches` from the model are Softplus outputs — they are the α and β
-  Beta distribution parameters directly, not mean/sigma. `TCPBetaControl` implements
-  `_get_action_beta` (mode formula) correctly.
-- `TCPPIDControl` includes the three-angle outlier-rejection logic from `TCP.control_pid()`:
-  the GPS-derived angle overrides the waypoint angle when waypoints are noisy on straight roads.
-- Blend weights: straight = 30% Beta + 70% PID; turning = 70% Beta + 30% PID.
+### Scheduling — job-first, hardest-first, coverage-aware
+`manage_continuous.py` sorts pending jobs by
+`(attempts, coverage_deficit, coverage_count, −difficulty, agent, −est)`:
 
-Config: `leaderboard/team_code/configs/tcp.yaml`
+- **Job-first / agent-interleaved.** Difficulty is *agent-independent* (`route + scenario +
+  weather`), so all agents' jobs for a `(route, weather)` tie and the `agent` field interleaves them
+  — the queue drains as `[all agents × condition 1], [all agents × condition 2], …`, so an early
+  cutoff leaves **every agent with balanced coverage on the same conditions**. (This replaced an old
+  hard-coded agent priority that drained one agent first and starved the others.)
+- **Hardest-first.** Within a tier the hardest `(route+scenario+weather)` runs first, so `prune` can
+  drop the easier same-route variants as redundant.
+- **Illumination-stratified coverage.** Pure hardest-first collapses the completed sample onto the
+  darkest+rainiest presets (night). `COVERAGE_QUOTA` (env, default 3) guarantees that many finished
+  jobs per `(agent, illumination-bin ∈ {noon, sunset, night})` before reverting to hardest-first;
+  `COVERAGE_QUOTA=0` restores the original sort exactly.
 
----
+### Difficulty and per-model sensitivity
+Each job gets a scalar difficulty (route geometry + scenario density + weather) used for scheduling
+and pruning. But a *single scalar* washes out against performance because different architectures
+fail on different axes. So difficulty is also analysed as a **vector**:
 
-### LAV — Learning from All Vehicles
-**Status: confirmed working end-to-end; runs show motion without crashes. Collection queued.**
-
-Implements the full LAV perception and planning pipeline from
-[LAV (Chen et al., 2022)](https://github.com/dotchen/LAV). The pipeline is:
-
-```
-RGB cameras → ERFNet segmentation
-LiDAR → ego-body filter → point painting → temporal stacking (3 frames)
-                                         ↓
-                             PointPillarNet BEV detection
-                                         ↓
-                          UniPlanner trajectory (GRU, 6 commands)
-                                         ↓
-                         collision check → PID control → brake override
-```
-
-**Implementation bugs fixed during development:**
-
-| Bug | Symptom | Fix |
-|-----|---------|-----|
-| `torch_scatter` missing from container | crash at import | replaced `scatter_max`/`scatter_mean` with pure PyTorch |
-| `num_input: 11` in YAML | `state_dict` size mismatch | set to 16 (`raw(11) + decorate(5)`) |
-| `ExtractLidarXYZ` dropped intensity column | `(N,15)×(16,64)` matmul crash | added `num_cols=4` to keep XYZI |
-| `PointPillarNet.nx/ny` stored as float | `torch.zeros` TypeError | cast to `int` in `__init__` |
-| `BEVHeatmapNMS` height filter operator precedence | silent false-positive vehicle detections | matched reference `and`/`or` precedence |
-
-Config: `leaderboard/team_code/configs/lav.yaml`
-
----
-
-### InterFuser — Interpretable Multi-sensor Fusion Transformer
-**Status: validated (faithful to reference, no code bugs found); collection in progress.**
-
-Implements the transformer-based multi-sensor fusion model from
-[InterFuser (Shao et al., CoRL 2022)](https://github.com/opendilab/InterFuser). Takes multi-camera
-RGB, LiDAR histogram, route target point, and speed as input; outputs waypoints, junction flag,
-traffic light state, stop sign detection, and traffic object metadata.
-
-The `InterfuserControllerModule` wraps the original safety-aware PID controller with traffic light
-and stop-sign override logic.
-
-**Known model-inherent behaviour** (verified identical to the reference `InterfuserAgent`): on
-stop-sign-dense routes the controller's 3-cycle brake sequence and speed-proportional clearance
-logic cause long stationary episodes, broken by 12 forced frames each time the 1,200-frame
-anti-deadlock counter fires. This is a property of the agent, not an integration bug.
-
-Config: `leaderboard/team_code/configs/interfuser.yaml`
-
----
-
-## Infrastructure
-
-### Job Scheduling
-
-`manage_continuous.py` maintains a JSON job queue and dispatches jobs across available GPU slots.
-Jobs are sorted by:
-
-1. **Fewest attempts first** — failed jobs are retried but not prioritised over fresh ones.
-2. **Agent priority** — currently InterFuser first, then TCP, then LAV (validation ordering).
-3. **Difficulty score** — harder scenarios run before easier ones (see below).
-4. **Estimated runtime** — longer routes run first within the same difficulty tier.
-
-### Difficulty-aware Scheduling
-
-Each job is scored before scheduling:
-
-- **Route geometry**: `sharp_turns×2 + path_length/500 + total_heading_change/180`
-  — counts 45°+ waypoint-to-waypoint heading jumps as intersection proxies, rewards path length
-  and overall road complexity.
-- **Scenario density**: counts unique 20 m grid cells containing adversarial scenario triggers
-  (vehicle and pedestrian events) within 25 m of the route, weighted by mean scenario-type
-  difficulty. All scenario types share identical spawn locations per town; the weight reflects
-  type severity (Scenario9 "sudden appearance" = 4.5 vs Scenario1 "slow vehicle" = 1.0).
-- **Weather difficulty**: additive offset 0.0 (ClearNoon) to 5.5 (HardRainNight) based on the
-  `_WEATHER_IDS` table in `consolidated_agent.py`.
-
-This ensures that the most failure-revealing combinations run early, giving useful signal before
-the cluster exhausts easier jobs.
-
-### Persistent CARLA Servers
-
-Each GPU runs a persistent CARLA server managed by `carla_server_manager.py`. Workers connect
-to existing servers rather than starting new ones per job, eliminating the ~60 s startup overhead
-per job. Server health is monitored separately by `carla_health_manager.py`.
-
-### Data Collection
-
-`ConsolidatedAgent` can operate in collection mode (`COLLECT_DATA=1`) alongside inference. When
-enabled, it saves raw sensor data per-frame before running the agent, structured as:
-
-```
-dataset/<agent>/weather_<N>/map_<NN>/<route_name>/<sensor_id>/<frame>.npy
-```
-
-Run summaries (`run_summary.json`) record frames-saved-per-sensor and `global_steps` for each
-completed run. A `global_steps: 0` result with exactly 1 frame per sensor indicates a pipeline
-crash on the first inference step.
-
-### Metrics
-
-- Per-job summary: `collection_state/completed_jobs.json`
-- Job lifecycle events: `collection_state/metrics/events.jsonl`
-- CARLA server timing: `collection_state/metrics/servers/<node>/carla_pool.jsonl`
-- GPU/system utilisation: `collection_state/metrics/node/<node>/gpu.jsonl`
-
-Figure generation: `python3 genfig.py --state-root collection_state --dataset-root dataset --outdir paper_figures`
+- [`tools/weather_axes.py`](tools/weather_axes.py) decomposes the 0–20 weather ordinal into physical
+  axes (`illum_dark / precip / road_water / cloud / fog`).
+- [`tools/sensitivity_matrix.py`](tools/sensitivity_matrix.py) fits a **per-agent noisy-OR** failure
+  model `P(fail)=1−exp(−Σ λⱼ·xⱼ)`, reporting each axis's hazard weight per agent with CIs — and
+  flagging axes the current sample can't identify. Validated on synthetic ground truth
+  ([`tools/noisy_or_sanity.py`](tools/noisy_or_sanity.py)): it recovers, e.g., that camera-only
+  agents are illumination-sensitive while LiDAR agents are not.
+- [`tools/difficulty_validation.py`](tools/difficulty_validation.py) correlates difficulty against
+  per-route driving score.
 
 ---
 
 ## Usage
 
-### Initial setup
+From the **login node** — the CLI generates and submits the SLURM job (do not `sbatch` by hand):
 
 ```bash
-# Generate job queue for all agent/route/weather combinations
-python3 continuous_cli.py reset
+# 1. Build the queue (agent × route × weather). --smoke = tiny ~1h validation queue.
+python3 continuous_cli.py reset            # or: reset --smoke
 
-# Optional: target specific agents, routes, or weather indices
-python3 continuous_cli.py reset --agents tcp lav --weather 0 1 2 5 10 14
-```
+# 2. Launch persistent workers on SLURM (one CARLA server + one agent per GPU).
+python3 continuous_cli.py --persistent start --slurm \
+    --slurm-nodes 1 --slurm-gpus 8 --slurm-time 48:00:00 \
+    --slurm-nodelist hpc-pr-a-pod17
 
-### Starting workers (SLURM)
-
-```bash
-python3 continuous_cli.py --persistent start \
-  --slurm \
-  --slurm-gpus 8 \
-  --slurm-time 96:00:00 \
-  --slurm-nodes 2 \
-  --slurm-nodelist hpc-pr-a-pod09,hpc-pr-a-pod17
-```
-
-### Monitoring
-
-```bash
+# 3. Watch it (the run keeps going if you stop watching).
 python3 continuous_cli.py --persistent monitor
 ```
 
-### Adding jobs without resetting the queue
+The run is **resumable** (rerun `start` to reuse completed work) and self-balances across agents.
 
+**After / during a run — read the results:**
 ```bash
-python3 continuous_cli.py add --agent tcp --weather 14 15 16
+python3 tools/harvest_results.py        # per-route scores (the real metric) + illumination coverage
+python3 tools/verification_report.py    # per-agent pass-rate / score, by town/weather
+python3 tools/classify_outcomes.py      # agent-result vs infra-failure taxonomy
+python3 tools/sensitivity_matrix.py     # per-axis × per-agent difficulty sensitivity
 ```
 
----
-
-## Current Collection Status (as of 2026-06-05)
-
-| Agent | Routes completed | Weather conditions | Towns | Frames |
-|-------|------------------|--------------------|-------|--------|
-| InterFuser | 16 | 12 | Town03, Town04 | ~179,520 |
-| TCP | 0 (queued) | — | — | — |
-| LAV | 0 (queued) | — | — | — |
-
-Queue: 1,386 total jobs (462 per agent), 16 running, 1,370 pending.
-Total sensor files on disk: **3,413,973** (InterFuser data only).
-InterFuser runs on `routes_town04_long` (5 sub-routes) yield 11,150–11,342 frames per run
-(mean ≈ 11,220) across 7 sensor streams.
+**Running on a different cluster (L40S)?** See [`examples/CLUSTER_SETUP.md`](examples/CLUSTER_SETUP.md)
+and the one-file launcher [`examples/run_cluster.sh`](examples/run_cluster.sh) — edit one config
+block, then `setup → smoke → run → export`.
 
 ---
 
-## What Remains
+## Current status (snapshot, 2026-07-07 — live; use `harvest_results.py` for current numbers)
 
-| Item | Status | Notes |
-|------|--------|-------|
-| TCP + LAV data collection | Pending | Queued behind InterFuser sweep |
-| Data quality audit | Pending | Verify collected frames are free from silent pipeline bugs across all three agents |
+Active run on A100 (`pod17`): **1,680-job** queue (5 productive agents × short/tiny routes × 21
+weathers), draining continuously. Per-route harvest so far:
+
+| Agent | route-evals | mean driving score |
+|-------|------------:|-------------------:|
+| roach | 78 | 86.2 |
+| tcp | 48 | 83.8 |
+| neat | 37 | 81.2 |
+| interfuser | 16 | 67.3 |
+| cilrs | 94 | 32.4 |
+
+CILRS is low **by design** — audited end-to-end and confirmed genuine weak-baseline behaviour, not
+an integration bug ([`PAPER_REFERENCE.md` §5.4](PAPER_REFERENCE.md)). Illumination coverage is being
+backfilled by the coverage-aware scheduler so the per-model sensitivity axis becomes identifiable.
 
 ---
 
-## Module Reference
+## Documentation map
 
-See [`leaderboard/team_code/PIPELINE_MODULES.md`](leaderboard/team_code/PIPELINE_MODULES.md) for
-a full reference of all pipeline stage classes, their arguments, and the context keys they
-read/write.
+- [`PAPER_REFERENCE.md`](PAPER_REFERENCE.md) — full architecture, per-agent detail, difficulty model, reliability.
+- [`examples/CLUSTER_SETUP.md`](examples/CLUSTER_SETUP.md) — reproduce on your cluster (A100 ↔ L40S).
+- [`leaderboard/team_code/PIPELINE_MODULES.md`](leaderboard/team_code/PIPELINE_MODULES.md) — pipeline stage catalogue + context-key contract (to add/modify an agent).
