@@ -1,0 +1,9 @@
+{
+  "id": "sem_3_4_5_2_2",
+  "device": "cuda",
+  "epochs": 100,
+  "val_every": 1,
+  "batch_size": 16,
+  "workers": 8,
+  "logdir": "log/sem_3_4_5_2_2"
+}

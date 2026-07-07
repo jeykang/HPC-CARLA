@@ -1,0 +1,181 @@
+# CILRS — modular pipeline implementation
+#
+# Faithful port of the CILRS baseline from autonomousvision/transfuser (cvpr2021
+# branch): leaderboard/team_code/cilrs_agent.py + cilrs/model.py + cilrs/config.py
+# + cilrs/data.py. CILRS = Conditional Imitation Learning with ResNet + Speed
+# (https://arxiv.org/pdf/1904.08980.pdf).
+#
+# Data flow (mirrors CILRSAgent.run_step, shipped config seq_len=1,
+# ignore_sides=ignore_rear=True):
+#   front RGB (400x300, fov100) -> centre-crop 256 -> resnet18 encoder
+#   speed (m/s) -> velocity branch ; next_command (RoadOption, 1-based) selects
+#   one of 6 control branches -> (steer, throttle, brake).
+#   steer = 2*sigmoid-1 ; throttle = sigmoid*max_throttle(0.75) ; brake = sigmoid.
+#
+# FIDELITY NOTES (see cilrs/model.py + configs review):
+#  * Image is NOT divided by 255 and NOT externally normalized. The reference
+#    feeds the raw [0,255] float crop; ImageNet normalization happens INSIDE the
+#    encoder (ImageCNN(normalize=True) -> normalize_imagenet). Reproduced here by
+#    ImageHWCToTorchCHW(divide_by_255=false, mean=null, std=null). Verified against
+#    cilrs/data.py::scale_and_crop_image (returns uint8 CHW) + train.py:70 (cast to
+#    float32 only, no /255).
+#  * center_crop=256 reproduces scale_and_crop_image(scale=1, crop=256): for the
+#    400x300 front image both crop rows[22:278], cols[72:328] -> 256x256.
+#  * The reference declares 4 RGB cameras but consumes only the front `rgb`
+#    (ignore_sides=ignore_rear=True). The 3 unused side/rear cameras are DROPPED
+#    here: on this cluster extra camera rendering raises CARLA server-crash
+#    exposure for zero behavioural change. To restore them, re-add the sensors,
+#    flip the CILRSInterface ignore_* flags, and add extract+ImageHWCToTorchCHW
+#    steps feeding left/right/rear tensors into the model inputs.
+#  * command is passed as the raw 1-based RoadOption value; the Controller selects
+#    branch (command-1). The reference does NOT remap negative/VOID commands
+#    (unlike TCP), so we don't either.
+
+sensors:
+  # Front camera — the only one consumed by the model (cilrs_agent.py:72-78).
+  - type: sensor.camera.rgb
+    x: 1.3
+    y: 0.0
+    z: 2.3
+    roll: 0.0
+    pitch: 0.0
+    yaw: 0.0
+    width: 400
+    height: 300
+    fov: 100
+    id: rgb
+
+  # (Reference also declares rgb_left/right/rear for rig fidelity, but the model
+  # consumes only the front camera — dropped here to cut render/crash exposure.)
+
+  - type: sensor.other.imu
+    x: 0.0
+    y: 0.0
+    z: 0.0
+    roll: 0.0
+    pitch: 0.0
+    yaw: 0.0
+    sensor_tick: 0.05
+    id: imu
+
+  - type: sensor.other.gnss
+    x: 0.0
+    y: 0.0
+    z: 0.0
+    roll: 0.0
+    pitch: 0.0
+    yaw: 0.0
+    sensor_tick: 0.01
+    id: gps
+
+  - type: sensor.speedometer
+    reading_frequency: 20
+    id: speed
+
+pipeline:
+
+  # ── Warmup ─────────────────────────────────────────────────────────────────
+  # Reference returns zero control while step < seq_len (cilrs_agent.py:155-175).
+  # With seq_len=1 that is exactly step 0; the warmup frame is never used for a
+  # later inference (seq_len=1 buffer is fully replaced next tick), so skipping
+  # all processing at step 0 is behaviourally identical.
+
+  - module: team_code.pipeline_modules
+    class: WarmupAndFrameSkip
+    args:
+      warmup_steps: 1
+      warmup_control: {steer: 0.0, throttle: 0.0, brake: 0.0}
+
+  # ── Sensor extraction ──────────────────────────────────────────────────────
+
+  - module: team_code.pipeline_modules
+    class: ExtractCameraRGB
+    args:
+      sensor_id: rgb
+      out_key: rgb_raw
+      bgr_to_rgb: true          # matches cv2.COLOR_BGR2RGB (cilrs_agent.py:124)
+
+  - module: team_code.pipeline_modules
+    class: ExtractSpeed
+    args:
+      sensor_id: speed
+      out_key: speed
+
+  - module: team_code.pipeline_modules
+    class: ExtractGNSS
+    args:
+      sensor_id: gps
+      out_key: gps_raw
+      take: 2
+
+  # ── Route planning → next high-level command ───────────────────────────────
+  # Reference: RoutePlanner(4.0, 50.0).run_step(pos) -> next_cmd.value
+  # (cilrs_agent.py:59, 143-144). Only next_command is used by CILRS; pos/wp are
+  # written but unused (no target_point / compass in the CILRS path).
+
+  - module: team_code.pipeline_modules
+    class: RoutePlannerNextCommand
+    args:
+      gps_key: gps_raw
+      out_pos_key: pos
+      out_wp_key: next_waypoint
+      out_cmd_key: next_command
+      min_distance: 4.0
+      max_distance: 50.0
+      gps_in_degrees: true
+
+  # ── Image transform ────────────────────────────────────────────────────────
+  # scale_and_crop_image(scale=1, crop=256) equivalent: centre-crop 256, CHW,
+  # float32 in [0,255] (NO /255, NO normalize — done inside the encoder).
+
+  - module: team_code.pipeline_modules
+    class: ImageHWCToTorchCHW
+    args:
+      in_key: rgb_raw
+      out_key: rgb_t
+      resize_wh: null
+      center_crop: 256
+      divide_by_255: false
+      mean: null
+      std: null
+      device: cuda
+      add_batch_dim: true
+
+  # ── Model inference (generic runner + vendored CILRS adapter) ───────────────
+  # CILRSInterface subclasses the vendored CILRS (zero extra params) and exposes a
+  # dict-in/dict-out forward so TorchModelRunner can drive it. best_model.pth is a
+  # bare OrderedDict state_dict; strict=true (reference loaded strictly and keys
+  # match exactly).
+
+  - module: team_code.pipeline_modules
+    class: TorchModelRunner
+    args:
+      model:
+        module: team_code.cilrs.model
+        class_name: CILRSInterface
+        args:
+          max_throttle: 0.75
+          device: cuda
+          seq_len: 1
+          ignore_sides: true
+          ignore_rear: true
+      checkpoint_path: /workspace/leaderboard/team_code/cilrs/best_model.pth
+      device: cuda
+      eval_mode: true
+      strict: true
+      no_grad: true
+      inputs:
+        front: rgb_t
+        velocity: speed
+        command: next_command
+      output_key: cilrs_pred
+
+  # ── Control mapping ────────────────────────────────────────────────────────
+  # {steer, throttle, brake} tensors -> control dict with reference brake gating.
+
+  - module: team_code.cilrs.modules
+    class: CILRSControl
+    args:
+      pred_key: cilrs_pred
+      out_key: control
+      brake_threshold: 0.05

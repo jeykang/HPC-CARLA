@@ -1,0 +1,210 @@
+# Roach — CILRS camera IL agent — modular pipeline implementation
+#
+# This is the CAMERA-BASED IMITATION-LEARNING agent from zhejz/carla-roach
+# (agents/cilrs, the "CoILICRA" policy distilled from the RL coach), NOT the
+# privileged birdview RL coach (agents/rl_birdview), which needs a rendered BEV
+# we cannot provide.
+#
+# Mirrors the released L_K LeaderBoard checkpoint (W&B run iccv21-roach/
+# trained-models/12uzu2lu, ckpt_24.pth). Its config_agent.yaml + the checkpoint's
+# policy_init_kwargs pin the architecture EXACTLY:
+#   - Single front RGB camera 900x256 fov=100 at (x=-1.5, z=2.0)  [ToTensor+ImageNet norm]
+#   - Measurement state = [forward_speed/12, loc_in_ev.x, loc_in_ev.y]  (input_states=[speed,vec], S=3)
+#   - Backbone resnet34 (perception 1000) + measurement MLP -> join[512,512,256]
+#   - action_distribution = beta_shared: 6 command branches, each Softplus (alpha,beta)
+#     over (acc, steer); deterministic Beta-mode -> [-1,1]; command selects the branch
+#   - acc_as_action: acc>=0 -> throttle, acc<0 -> brake; steer clipped to [-1,1]
+#
+# Data flow: camera+speed+gps+imu -> Roach route target (vec + branch command) ->
+# image tensor + state tensor -> RoachILPolicy (TorchModelRunner) -> Beta branch decode
+# -> ControlFromAccSteer -> ClampControl -> context['control'].
+
+sensors:
+  - type: sensor.camera.rgb
+    x: -1.5
+    y: 0.0
+    z: 2.0
+    roll: 0.0
+    pitch: 0.0
+    yaw: 0.0
+    width: 900
+    height: 256
+    fov: 100
+    id: central_rgb
+
+  - type: sensor.other.imu
+    x: 0.0
+    y: 0.0
+    z: 0.0
+    roll: 0.0
+    pitch: 0.0
+    yaw: 0.0
+    sensor_tick: 0.05
+    id: imu
+
+  - type: sensor.other.gnss
+    x: 0.0
+    y: 0.0
+    z: 0.0
+    roll: 0.0
+    pitch: 0.0
+    yaw: 0.0
+    sensor_tick: 0.01
+    id: gps
+
+  - type: sensor.speedometer
+    reading_frequency: 20
+    id: speed
+
+pipeline:
+
+  # ── Sensor extraction ──────────────────────────────────────────────────────
+  # Roach's camera obs manager already returns RGB (rgb.py:112-113 does [...,::-1]);
+  # ExtractCameraRGB with bgr_to_rgb converts CARLA BGRA to the same RGB.
+
+  - module: team_code.pipeline_modules
+    class: ExtractCameraRGB
+    args:
+      sensor_id: central_rgb
+      out_key: rgb_raw
+      bgr_to_rgb: true
+
+  - module: team_code.pipeline_modules
+    class: ExtractSpeed
+    args:
+      sensor_id: speed
+      out_key: speed
+
+  - module: team_code.pipeline_modules
+    class: ExtractGNSS
+    args:
+      sensor_id: gps
+      out_key: gps_raw
+      take: 2
+
+  - module: team_code.pipeline_modules
+    class: ExtractCompass
+    args:
+      sensor_id: imu
+      out_key: compass
+
+  # ── Roach route target (vec) + high-level command (branch selector) ─────────
+  # Reproduces carla_gym .../navigation/gnss.py + cilrs_wrapper loc_in_ev exactly.
+
+  - module: team_code.roach.modules
+    class: RoachRouteTarget
+    args:
+      gps_key: gps_raw
+      compass_key: compass
+      out_vec_key: roach_vec
+      out_cmd_key: roach_command_idx
+      reach_threshold: 12.0
+
+  # ── Image transform ────────────────────────────────────────────────────────
+  # T.ToTensor() + T.Normalize(ImageNet); full 900x256, no resize/crop.
+
+  - module: team_code.pipeline_modules
+    class: ImageHWCToTorchCHW
+    args:
+      in_key: rgb_raw
+      out_key: roach_im
+      resize_wh: null
+      center_crop: null
+      divide_by_255: true
+      mean: [0.485, 0.456, 0.406]
+      std:  [0.229, 0.224, 0.225]
+      device: cuda
+      add_batch_dim: true
+
+  # ── Measurement state vector [speed/12, vec_x, vec_y] -> (1, 3) tensor ───────
+
+  - module: team_code.roach.modules
+    class: CilrsStateVector
+    args:
+      speed_key: speed
+      vec_key: roach_vec
+      cmd_key: roach_command_idx
+      input_states: ["speed", "vec"]
+      out_key: roach_state
+      speed_factor: 12.0
+      num_cmds: 6
+      device: cuda
+
+  # ── Network (vendored CoILICRA via RoachILPolicy wrapper) ───────────────────
+  # Checkpoint is Roach's {policy_init_kwargs, policy_state_dict} format; we load
+  # policy_state_dict and the wrapper re-prefixes keys onto its `net.` submodule.
+  # model.args mirror ckpt_24.pth's policy_init_kwargs (resnet_pretrain forced off).
+
+  - module: team_code.pipeline_modules
+    class: TorchModelRunner
+    args:
+      model:
+        module: team_code.roach.cilrs_model
+        class_name: RoachILPolicy
+        args:
+          im_shape: [3, 1, 256, 900]
+          input_states: ["speed", "vec"]
+          acc_as_action: true
+          value_as_supervision: false
+          action_distribution: beta_shared
+          dim_features_supervision: 0
+          rl_ckpt: null
+          resnet_pretrain: false
+          perception_output_neurons: 1000
+          measurements_neurons: [128, 128]
+          measurements_dropouts: [0.0, 0.0]
+          join_neurons: [512, 512, 256]
+          join_dropouts: [0.0, 0.0, 0.0]
+          speed_branch_neurons: [256, 256]
+          speed_branch_dropouts: [0.0, 0.5]
+          value_branch_neurons: [256, 256]
+          value_branch_dropouts: [0.0, 0.5]
+          number_of_branches: 6
+          branches_neurons: [256, 256]
+          branches_dropouts: [0.0, 0.5]
+          squash_outputs: false
+          perception_net: resnet34
+      checkpoint_path: /workspace/leaderboard/team_code/roach/cilrs_ckpt_lk_12uzu2lu.pth
+      checkpoint_state_dict_key: policy_state_dict
+      device: cuda
+      eval_mode: true
+      strict: false
+      inputs:
+        im: roach_im
+        state: roach_state
+      output_map:
+        mu_branches: roach_mu
+        sigma_branches: roach_sigma
+        pred_speed: roach_pred_speed
+
+  # ── Beta branch decode -> (acc, steer) ──────────────────────────────────────
+
+  - module: team_code.roach.modules
+    class: CilrsActionFromBranches
+    args:
+      mu_key: roach_mu
+      sigma_key: roach_sigma
+      cmd_key: roach_command_idx
+      action_distribution: beta_shared
+      number_of_branches: 6
+      acc_out_key: roach_acc
+      steer_out_key: roach_steer
+
+  # ── acc/steer -> control, then clamp ────────────────────────────────────────
+
+  - module: team_code.pipeline_modules
+    class: ControlFromAccSteer
+    args:
+      acc_key: roach_acc
+      steer_key: roach_steer
+      out_key: control
+      throttle_clip: 1.0
+      brake_clip: 1.0
+
+  - module: team_code.pipeline_modules
+    class: ClampControl
+    args:
+      control_key: control
+      steer_clip: 1.0
+      throttle_clip: 1.0
+      brake_clip: 1.0
