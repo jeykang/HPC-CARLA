@@ -1174,19 +1174,26 @@ class ContinuousManager:
             with open(self.queue_file, 'r') as f:
                 q = json.load(f)
 
-            # choose among PENDING: fewest attempts first, then agent priority (lav first for
-            # debugging), then hardest scenario first (route geometry + weather), then longest
-            # estimated time as tiebreak.
-            _agent_priority = {"interfuser": 0, "tcp": 1, "lav": 2}
+            # Choose among PENDING for BALANCED, non-redundant collection:
+            #   1. fewest attempts first (fair retries)
+            #   2. HARDEST scenario first (route geometry + scenario + weather) — BY DESIGN:
+            #      a hard completion lets `prune` drop the easier same-route variants as
+            #      redundant (an agent that clears the hard condition clears the easy one),
+            #      so we don't waste GPU-hours on superseded easy jobs.
+            #   3. difficulty is agent-independent (route×weather), so sorting by it groups all
+            #      agents' same-(route,weather) jobs together; the agent tiebreak then
+            #      interleaves them, so concurrent workers spread evenly across agents instead
+            #      of one agent monopolising the fleet (the old interfuser-priority=0 hogged
+            #      all GPUs and starved cilrs/neat/roach, which defaulted to 99).
             pending = [j for j in q['jobs'] if j.get('status') == 'pending']
             if not pending:
                 return None
 
             pending.sort(key=lambda j: (
                 j.get('attempts', 0),
-                _agent_priority.get(j.get('agent', ''), 99),
-                -_job_difficulty(j),
-                -_estimate_sec(j),
+                -_job_difficulty(j),       # hardest first (so easy same-route variants become prunable)
+                j.get('agent', ''),        # interleave agents within a (route,weather) tier
+                -_estimate_sec(j),         # longest first (tiebreak)
             ))
 
             job = pending[0]
