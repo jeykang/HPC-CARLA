@@ -39,6 +39,7 @@ Usage:
 # =============================================================================
 """
 import argparse
+import csv
 import json
 import math
 import os
@@ -303,6 +304,57 @@ def load_completed(state_root):
             elif not _has_score(by_id[key]) and _has_score(job):
                 by_id[key] = job
     return list(by_id.values())
+
+
+def _to_float(x):
+    """Parse a CSV cell to float, or None (empty / non-numeric)."""
+    try:
+        if x is None or x == "":
+            return None
+        return float(x)
+    except (TypeError, ValueError):
+        return None
+
+
+def load_per_route(csv_path):
+    """Load a harvested per-route CSV (tools/harvest_results.py output) as
+    job-like dicts, so build_records() computes difficulty-vs-performance at
+    PER-ROUTE granularity — one data point per route eval — instead of one
+    point per completed FILE. This yields far more points: on the current data
+    the harvester recovers ~200 route-evals (most from queue-'failed' jobs)
+    versus only a handful of completed file-level jobs.
+
+    The harvested CSV has one row per route eval; we map its columns onto the
+    same shape build_records() consumes. Crucially 'route_file' -> 'route',
+    because the DifficultyModel keys route/scenario difficulty off the route XML
+    filename — so every route eval within a file shares that file's difficulty,
+    paired here with its own per-route score_composed. Rows without a numeric
+    score_composed are dropped downstream by _has_score(). Returns [] on any
+    read problem (mirrors load_completed's graceful failure).
+    """
+    jobs = []
+    try:
+        with open(csv_path, newline="") as f:
+            for row in csv.DictReader(f):
+                weather = row.get("weather")
+                try:
+                    weather = int(weather)
+                except (TypeError, ValueError):
+                    pass
+                jobs.append({
+                    # composite id keeps each route eval distinct in the appendix
+                    "id": f"{row.get('agent', '')}|{row.get('route_file', '')}"
+                          f"|w{row.get('weather', '')}|{row.get('route_id', '')}",
+                    "agent": row.get("agent", "unknown"),
+                    "route": row.get("route_file", ""),
+                    "town": row.get("town", ""),
+                    "weather": weather,
+                    "score_composed": _to_float(row.get("score_composed")),
+                    "score_route": _to_float(row.get("score_route")),
+                })
+    except Exception:
+        return []
+    return jobs
 
 
 # =============================================================================
@@ -574,7 +626,8 @@ def _corr_row(label, n, sp, pe, note):
             f"{_fmt_r(pe[0])} | {_fmt_p(pe[1])} | {note} |")
 
 
-def render_markdown(recs, result, backend_note, plot_path):
+def render_markdown(recs, result, backend_note, plot_path,
+                    granularity="completed file-level job"):
     L = []
     A = L.append
     A("# Difficulty vs. Performance Validation")
@@ -585,7 +638,8 @@ def render_markdown(recs, result, backend_note, plot_path):
       "with `score_composed` (the 0-100 leaderboard driving score). "
       "**Expected sign: NEGATIVE** (harder -> lower score).")
     A("")
-    A(f"- Scored completed jobs analysed: **{result['n_scored']}**")
+    A(f"- Analysis unit: **{granularity}**")
+    A(f"- Scored records analysed: **{result['n_scored']}**")
     A(f"- Stats backend: **{backend_note}**")
     A(f"- p-values: two-sided, Student-t approximation (df=n-2); reliable only "
       f"for n larger than ~10.")
@@ -751,6 +805,11 @@ def main(argv):
                          "<project-root>/leaderboard/data/scenarios)")
     ap.add_argument("--outdir", default="paper_artifacts",
                     help="where to write the .md report / .png (default paper_artifacts)")
+    ap.add_argument("--per-route", default=None, metavar="CSV",
+                    help="harvested per-route CSV (tools/harvest_results.py output). "
+                         "When given, compute difficulty-vs-performance at PER-ROUTE "
+                         "granularity (one point per route eval, far more data) from "
+                         "this file instead of the default per-file completed jobs.")
     ap.add_argument("--no-write", action="store_true",
                     help="print the report only; do not write files")
     args = ap.parse_args(argv)
@@ -761,7 +820,14 @@ def main(argv):
     scenarios_dir = args.scenarios_dir or str(proj / "leaderboard/data/scenarios")
 
     model = DifficultyModel(routes_dir, scenarios_dir)
-    jobs = load_completed(state_root)
+    # Default: one point per completed FILE-level job. With --per-route: one
+    # point per harvested route eval (far more data, incl. queue-'failed' jobs).
+    if args.per_route:
+        jobs = load_per_route(args.per_route)
+        granularity = "per-route eval (harvested)"
+    else:
+        jobs = load_completed(state_root)
+        granularity = "completed file-level job"
     recs = build_records(jobs, model)
     result = analyze(recs)
 
@@ -772,7 +838,7 @@ def main(argv):
     if not args.no_write and recs:
         plot_path = make_scatter(recs, result, os.path.join(args.outdir, "difficulty_vs_score.png"))
 
-    md = render_markdown(recs, result, backend, plot_path)
+    md = render_markdown(recs, result, backend, plot_path, granularity)
     print(md)
 
     if not args.no_write:

@@ -809,6 +809,21 @@ difficulty = geo_score + scen_score + weather_diff
 for the same `(agent, route)` pair has already completed. "Harder" is defined by the same
 difficulty scoring formula. Invocable via `python3 manage_continuous.py prune [--dry-run]`.
 
+### Difficulty validation
+
+The difficulty score is only useful if it predicts agent performance — a harder-scored
+route should yield a *lower* driving score. `tools/difficulty_validation.py` tests this by
+correlating per-job difficulty against `score_composed`; `tools/harvest_results.py` supplies
+the fine-grained sample (§9).
+
+At **per-route** granularity (`--per-route`, n = 204 route-evals from the active run) the
+sign is correct and, for the agents with enough score spread, significant: InterFuser
+Spearman ρ = **−0.642** (p = 0.0099), TCP ρ = **−0.311** (p = 0.0316). Harder routes drive
+scores down — the property that justifies hardest-first scheduling and redundant pruning
+(dropping an easy variant is safe because an agent that clears the hard variant clears the
+easy one). Per-*file* aggregation (n = 13) is too coarse to reach significance, so the
+per-route harvest is what makes the validation possible.
+
 ### Runtime estimation
 
 `collection_state/runtime_estimates.json` stores empirical runtimes:
@@ -848,6 +863,11 @@ Total `.npy` files on disk from that run: **3,413,973** (InterFuser data only).
 **Validation (2026-07 smokes, post-resilience):** interfuser 8/8 and tcp 8/8 routes; the three new
 agents (CILRS, NEAT, Roach) 4/4 each — all with zero agent-code errors and zero GPUs parked. LAV 0/4
 (server crash at `load_world`).
+
+**Per-route harvest (active run):** `tools/harvest_results.py` recovered **204 route-evals** across
+the 5 agents — 85.8% of them from queue-`failed` jobs whose servers crashed mid-suite (§9). Per-agent
+mean `score_composed`: roach 90.4, neat 84.5, tcp 83.8, interfuser 71.8, cilrs 38.7. These are
+validated against the difficulty score at per-route granularity (§7).
 
 ### Queue coverage (active run — job 166707)
 
@@ -1045,6 +1065,14 @@ crash precedes UE4's own logging, so `-stdout` capture shows only the crash hand
 new (camera-lighter) agents 4/4 each, with 0 GPUs parked and no queue-burn. **LAV** is the
 exception: it triggers a server crash during `load_world` ("failed to connect to newly created
 map") that recovery cannot pre-empt, so LAV stays server-limited.
+
+**Per-route data recovery.** Because `results.json` is checkpointed *per route* within a
+route-file *suite* (§6), a server that segfaults mid-suite still leaves every route it
+finished on disk — even though the job is marked `failed`. `tools/harvest_results.py` unions
+`job_queue.json` with `completed_jobs.json` and reads each expected `results.json`, recovering
+those per-route evals. On the active run this recovered **175 of 204 route-evals (85.8%) from
+jobs the queue calls "failed"** — data the file-level completion count discards entirely. The
+reportable unit is therefore the **route-eval**, not the completed job/file.
 
 ### Cross-cutting: stale container bytecode silently ignored source edits
 
