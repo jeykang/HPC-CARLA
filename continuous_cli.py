@@ -337,6 +337,8 @@ class ContinuousCLI:
         _passthrough = [
             'JOB_TIMEOUT_SEC', 'AGENT_GPU_PIN', 'AGENT_GPU_OFFSET',
             'DEAD_SERVER_BACKOFF_SEC', 'CARLA_SIF', 'RUN_SEED',
+            # CARLA server render/quality/logging knobs (segfault debugging).
+            'CARLA_RENDER_FLAG', 'CARLA_QUALITY', 'CARLA_UE4_STDOUT',
         ]
         _fwd = [f'export {k}="{os.environ[k]}"' for k in _passthrough if os.environ.get(k)]
         if _fwd:

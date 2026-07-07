@@ -159,15 +159,33 @@ def _build_run_args(rpc: int, tm: int) -> List[str]:
     EXTRA_MAPS = PROJECT_ROOT / "carla_maps"
     if EXTRA_MAPS.is_dir():
         args += ["-B", f"{EXTRA_MAPS}:/home/carla/CarlaUE4/Content/Carla/Maps"]
-    args += [
+    # Renderer and quality are env-configurable so we can A/B them without code
+    # edits while chasing the uniform Signal-11 segfaults. Defaults preserve the
+    # historical launch (-opengl, Epic). Set CARLA_RENDER_FLAG="-vulkan" or ""
+    # (empty => UE4's Vulkan default) and CARLA_QUALITY=Low to experiment.
+    render_flag = os.environ.get("CARLA_RENDER_FLAG", "-opengl")
+    quality     = os.environ.get("CARLA_QUALITY", "Epic")
+    carla_args = [
         SIF_PATH,
-        "-opengl",
+        render_flag,
         "-RenderOffScreen",
-        "-quality-level=Epic",
+        f"-quality-level={quality}",
+    ]
+    # Force UE4 to stream its FULL log (LogRHI/LogInit + the crash callstack) to
+    # stdout, which we capture in carla_<node>_gpu<id>.log. Without this, UE4
+    # logs only to the container's ephemeral Saved/Logs/CarlaUE4.log, which is
+    # lost when the process segfaults -- so our capture showed only the crash
+    # handler with zero fault context, making the crashes undiagnosable. Gated by
+    # an env flag so it can be silenced once the segfaults are understood.
+    if os.environ.get("CARLA_UE4_STDOUT", "1") == "1":
+        carla_args += ["-stdout", "-FullStdOutLogOutput"]
+    carla_args += [
         f"-carla-rpc-port={rpc}",
         f"-trafficManagerPort={tm}",
         "-carla-server",
     ]
+    # Drop an empty render_flag token (CARLA_RENDER_FLAG="" => Vulkan default).
+    args += [a for a in carla_args if a]
     return args
 
 def start_one(gpu_id: int, rpc: int, tm: int) -> Optional[int]:
