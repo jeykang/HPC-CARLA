@@ -2,6 +2,11 @@
 
 New here? This is the shortest path to a working run.
 
+> **Running on a _different_ cluster (e.g. L40S, for the A100-vs-L40S comparison)?**
+> Use the portable one-file launcher **[`run_cluster.sh`](run_cluster.sh)** with the
+> **[cross-cluster setup guide](CLUSTER_SETUP.md)** — edit one config block, then
+> `setup` → `smoke` → `run` → `export`. The rest of this page assumes our A100 nodes.
+
 ## The model in one paragraph
 You don't write a job per agent/route. You build a **queue** of jobs
 (agent × route × weather) once, then launch **persistent workers** — one CARLA
