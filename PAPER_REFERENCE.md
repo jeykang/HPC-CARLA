@@ -3,6 +3,13 @@
 *Comprehensive reference for paper writing. Contains exact parameter values,
 architecture specifications, implementation details, and engineering decisions.*
 
+*Last updated: 2026-07-07. Recent changes: agent roster expanded to six (added
+**CILRS**, **NEAT**, **Roach** — §5.4–5.6); the intermittent CARLA GL-segfault
+root cause + resilience mitigation is documented (§9 "Cluster reliability");
+**LAV** re-classified as server-limited (≈0 yield on the current cluster); a
+cross-cutting stale-bytecode bug is documented (§9). Active run: 5 productive
+agents on 2 nodes / 16 GPUs (§8).*
+
 ---
 
 ## Table of Contents
@@ -15,6 +22,9 @@ architecture specifications, implementation details, and engineering decisions.*
    - 5.1 [TCP](#51-tcp---trajectory-guided-control-with-pid)
    - 5.2 [LAV](#52-lav---learning-from-all-vehicles)
    - 5.3 [InterFuser](#53-interfuser---interpretable-multi-sensor-fusion-transformer)
+   - 5.4 [CILRS](#54-cilrs--conditional-imitation-learning)
+   - 5.5 [NEAT](#55-neat--neural-attention-fields)
+   - 5.6 [Roach](#56-roach--rl-coached-imitation-learning)
 6. [Data Collection Pipeline](#6-data-collection-pipeline)
 7. [Job Scheduling and Difficulty Estimation](#7-job-scheduling-and-difficulty-estimation)
 8. [Dataset Structure and Statistics](#8-dataset-structure-and-statistics)
@@ -28,14 +38,27 @@ architecture specifications, implementation details, and engineering decisions.*
 
 ## 1. System Overview
 
-The system performs scalable autonomous-driving data collection by running three published
-imitation-learning agents — **TCP**, **LAV**, and **InterFuser** — across the full combinatorial
-space of CARLA towns, routes, and weather conditions on an HPC GPU cluster. Each agent has been
-re-implemented as a declarative YAML pipeline of composable stages, enabling sensor wiring, model
-parameters, and control logic to be reconfigured independently of agent code.
+The system performs scalable autonomous-driving data collection by running published
+imitation-learning agents across the full combinatorial space of CARLA towns, routes, and weather
+conditions on an HPC GPU cluster. Each agent is re-implemented as a declarative YAML pipeline of
+composable stages, enabling sensor wiring, model parameters, and control logic to be reconfigured
+independently of agent code.
 
-**Scope of collection:**
-- 3 agents × 22 routes × 21 weather conditions = 1,386 total jobs per run cycle
+**Agent roster (6 agents, spanning several learning paradigms):**
+- **TCP** (§5.1) — trajectory + control imitation learning
+- **LAV** (§5.2) — camera+LiDAR IL from all vehicles *(server-limited on the current cluster — §9)*
+- **InterFuser** (§5.3) — sensor-fusion transformer IL
+- **CILRS** (§5.4) — conditional imitation learning (baseline)
+- **NEAT** (§5.5) — neural attention fields
+- **Roach** (§5.6) — RL-coached imitation learning
+
+**Reliability note (current cluster):** the host GL stack segfaults intermittently (§9), which the
+pipeline now *recovers* from. **Five** agents (TCP, InterFuser, CILRS, NEAT, Roach) collect
+reliably; **LAV** triggers a server crash during `load_world` and yields ≈0 metrics, so it is
+excluded from throughput-sensitive runs (its code/config remain in the repo).
+
+**Scope of a full collection cycle:**
+- 6 agents × 22 routes × 21 weather = 2,772 jobs (a 5-agent productive run = 2,310)
 - 8 CARLA towns (Town01–Town07, Town10HD)
 - Route types: long (~30 waypoints, ~1–2 km), short (~8 waypoints, ~300 m), tiny (~4 waypoints)
 - 21 CARLA weather presets from ClearNoon (index 0) to HardRainNight (index 20)
@@ -43,6 +66,8 @@ parameters, and control logic to be reconfigured independently of agent code.
 **Core design decisions:**
 - Persistent CARLA servers (one per GPU) eliminate the ~60 s startup overhead per job
 - All agents share a single `ConsolidatedAgent` wrapper; agent identity is a YAML config
+- Server resilience: a crashed CARLA is killed, health-checked, and relaunched; after repeated
+  boot failures the GPU is *parked* so it stops burning the queue (§9)
 - A difficulty-aware scheduler prioritises hard combinations (complex routes + harsh weather +
   dense adversarial scenarios) to maximise signal from early runs
 - Leaderboard scores from `results.json` are parsed into `completed_jobs.json` after each run
@@ -568,6 +593,77 @@ This is model-inherent — the reference `InterfuserAgent` exhibits identical be
 
 ---
 
+### 5.4 CILRS — Conditional Imitation Learning
+
+**Paradigm:** conditional imitation learning (the classic CARLA baseline).
+**Source:** `autonomousvision/transfuser` @ `cvpr2021` branch.
+**Vendored:** `leaderboard/team_code/cilrs/` — `model.py` (`ImageCNN`/`Controller`/`CILRS` verbatim
++ a `CILRSInterface` dict-in/dict-out adapter), `modules.py` (`CILRSControl`), `config.py`.
+**Checkpoint:** `best_model.pth` (48 MB, ResNet-18 encoder; bare `OrderedDict`, `strict=True`);
+`fetch_weights.sh` pulls it from the transfuser model-zoo S3 bundle.
+**Config:** `configs/cilrs.yaml` (8 steps).
+
+**Sensors:** front RGB 400×300 fov100 at (x=1.3, z=2.3). *(The reference's 3 side/rear cameras are
+dropped — the model consumes only the front camera, so they add render/crash exposure for nothing.)*
+
+**Pipeline:** `ExtractCameraRGB → ExtractSpeed → ExtractGNSS → RoutePlannerNextCommand →
+ImageHWCToTorchCHW → TorchModelRunner(CILRSInterface) → CILRSControl`.
+
+**Load-bearing detail:** the image is fed as float32 in **[0,255] with NO `/255`** — ImageNet
+normalization happens *inside* the encoder (`ImageCNN(normalize=True)`). `command` is the raw
+1-based RoadOption value; the `Controller` selects branch `command−1`. Control:
+`steer = 2σ−1`, `throttle = σ·0.75`, `brake = σ`, then reference brake gating
+(`brake<0.05→0`; `throttle>brake→brake=0`).
+
+### 5.5 NEAT — Neural Attention Fields
+
+**Paradigm:** implicit BEV attention fields → waypoints (camera-only).
+**Source:** `autonomousvision/neat` (`MultiTaskAgent`).
+**Vendored:** `leaderboard/team_code/neat/` — `architectures/` (`AttentionField`, `encoder.py`,
+`decoder.py`, `controller.py`), `modules.py` (`NEATImagePreprocess`, `NEATModelRunner`,
+`NEATControlPID`), `config.py`.
+**Checkpoints:** `best_encoder.pth` (113 MB) + `best_decoder.pth` (13 MB); fetched from the AVG S3
+bundle.
+**Config:** `configs/neat.yaml` (13 steps).
+
+**Sensors:** 3 RGB cameras (yaw 0/−60/+60), 400×300 fov100 at (x=1.3, z=2.3) — **all
+model-consumed** (this is the heaviest of the new agents' sensor rigs). *(The save-only `rgb_front`
+800×600 and `bev` cameras are omitted.)*
+
+**Architecture:** encoder = ResNet-34 + AdaptiveAvgPool(8,8) + velocity embed + learnable pos-emb
++ 2-layer transformer (n_embd=512, n_head=4). Decoder = iterative attention field
+(`attention_iters=2`, `onet_blocks=5`, `num_class=5`). `plan()` samples a plan grid and iteratively
+re-weights attention, accumulating waypoint offsets **in place across ticks** (deliberate — mirrors
+the released agent). Waypoints → `control_pid` (aim_dist=4, turn/speed PID). Uses
+`resnet34(pretrained=False)` (weights come from the checkpoint; avoids a fragile runtime torch-hub
+download).
+
+### 5.6 Roach — RL-Coached Imitation Learning
+
+**Paradigm:** camera IL policy distilled from a privileged RL coach — the **sensorimotor** agent,
+**not** the BEV coach (which needs rendered birdview input we don't provide).
+**Source:** `zhejz/carla-roach` (`agents/cilrs`, `CoILICRA`).
+**Vendored:** `leaderboard/team_code/roach/` — `cilrs_model.py` (`CoILICRA` verbatim + a
+`RoachILPolicy` adapter), `networks/` (`resnet`/`fc`/`join`/`branching`), `modules.py`
+(`RoachRouteTarget`, `CilrsStateVector`, `CilrsActionFromBranches`).
+**Checkpoint:** `cilrs_ckpt_lk_12uzu2lu.pth` (287 MB, L_K LeaderBoard run;
+`{policy_init_kwargs, policy_state_dict}` format); fetched from Weights & Biases (public API).
+**Config:** `configs/roach.yaml` (11 steps).
+
+**Sensors:** front RGB 900×256 fov100 at (x=−1.5, z=2.0) + imu/gnss/speedometer.
+
+**Measurements:** state = `[forward_speed/12, loc_in_ev.x, loc_in_ev.y]` (S=3), where `loc_in_ev`
+is the ego-frame vector to the next route GPS target (Mercator `gps_to_location` +
+`vec_global_to_ref`, yaw=`compass−90°`). *Verified 0.0 m error against Roach's own carla transform;
+deliberately does **not** reuse `RoutePlannerNextCommand`, whose planar frame differs.*
+
+**Architecture:** ResNet-34 perception + measurement MLP → join → 6 command branches,
+`action_distribution=beta_shared`. Command clamps + selects a branch; Beta **mode** → action via
+`_get_action_beta` (`[-1,1]`); `process_act` maps `acc≥0→throttle`, `acc<0→brake`. Control via
+`ControlFromAccSteer` + `ClampControl`.
+
+---
+
 ## 6. Data Collection Pipeline
 
 ### Per-frame sensor saving
@@ -739,25 +835,33 @@ dataset/
           run_summary.json
 ```
 
-### Current collection status (as of 2026-06-05)
+### Current collection status (as of 2026-07-07)
+
+**Historical (earlier partial single-agent run):**
 
 | Agent | Routes completed | Weather conditions | Towns | Frames |
 |-------|------------------|--------------------|-------|--------|
 | InterFuser | 16 | 12 | Town03, Town04 | ~179,520 |
-| TCP | 0 | — | — | 0 |
-| LAV | 0 | — | — | 0 |
 
-Total `.npy` files on disk: **3,413,973** (InterFuser data only).
+Total `.npy` files on disk from that run: **3,413,973** (InterFuser data only).
 
-### Queue coverage
+**Validation (2026-07 smokes, post-resilience):** interfuser 8/8 and tcp 8/8 routes; the three new
+agents (CILRS, NEAT, Roach) 4/4 each — all with zero agent-code errors and zero GPUs parked. LAV 0/4
+(server crash at `load_world`).
+
+### Queue coverage (active run — job 166707)
 
 | Metric | Value |
 |--------|-------|
-| Total jobs | 1,386 |
-| Running | 16 |
-| Pending | 1,370 |
-| Jobs per agent | 462 |
+| Total jobs | 2,310 |
+| Agents | 5 productive (TCP, InterFuser, CILRS, NEAT, Roach); LAV excluded (§9) |
+| Jobs per agent | 462 (22 routes × 21 weather) |
+| Nodes × GPUs | 2 × 8 = 16 |
 | Weather conditions queued | 21 (0–20) |
+
+Metrics accumulate **interleaved across agents** (balanced comparison) and are harvested as jobs
+complete; at this cluster's throughput a full 2,310-job cycle does not drain quickly, so the run is
+treated as a continuous harvest rather than a fixed batch.
 
 ### InterFuser detailed frame statistics
 
@@ -889,6 +993,20 @@ pedestrians only.
 
 **Fix:** `(i == 1 and w < 0.1 × ppm) or h < 0.2 × ppm`.
 
+#### Bug 6: `LAVCollisionCheck` trajectory shape
+
+**Symptom:** `ValueError: The truth value of an array with more than one element is ambiguous`
+whenever another vehicle was present (long masked by the server crashes; surfaced once the
+resilience work let LAV reach the collision check).
+
+**Root cause:** `LAVCollisionCheck` assumed `trajs` was `(T, 2)` and did
+`init_x, init_y = trajs[0,0], trajs[0,1]`; the real shape is `(num_cmds, T, 2)`, so `init_y` became
+a `(2,)` array and `if init_y > threshold` raised.
+
+**Fix:** `init_x, init_y = trajs[0, 0]` (unpack the `(x,y)` of cmd-0/step-0), matching
+`lav_agent.plan_collide`. *(This fix was itself initially masked by stale container bytecode — see
+"Cluster reliability" below — so it only took effect after `PYTHONDONTWRITEBYTECODE` was enabled.)*
+
 ### InterFuser
 
 #### No code bugs found
@@ -896,6 +1014,50 @@ pedestrians only.
 The reimplementation is faithful to the reference. The observed "stuck for thousands of frames
 then moves briefly" behaviour is model-inherent — identical to running the original
 `InterfuserAgent`. See §5.3 for the full controller analysis.
+
+### Cluster reliability — intermittent CARLA GL segfault (host issue) + resilience
+
+**Symptom:** Persistent CARLA servers segfault (`Signal 11`) intermittently at **GL/EGL context
+creation**, uniformly across all GPUs (each server crashes 4–17× per multi-hour run). Before
+mitigation this collapsed full runs (e.g. 2 completed of 45).
+
+**Root cause (host, not project code):** a UE4-4.24 / NVIDIA-driver-575 GL-init instability on
+these A100 nodes. Ruled out with direct probes (`tools/gl_probe.sh`, `tools/gl_version_probe.sh`):
+the NVIDIA GL/EGL stack **is** present and version-consistent (575) inside the container — it is
+*not* a missing-lib / Mesa-software-fallback / driver-version-mismatch / render-on-GPU-0 problem.
+Per-process `nvidia-smi` confirms each server renders `C+G` on its **own** GPU (so
+`CUDA_VISIBLE_DEVICES` + the C+G coupling already pins EGL here — no `-graphicsadapter` needed). The
+crash precedes UE4's own logging, so `-stdout` capture shows only the crash handler.
+
+**Mitigation — makes it recoverable, not fatal** (`carla_server_manager.py`,
+`persistent_carla_worker.sh`):
+- **Clean restart:** before relaunch, kill any lingering/segfaulted server bound to the GPU's RPC
+  port (its own process group), and wait for the port/process to free.
+- **Boot health-check:** a server counts as up only if the port opens **and** the process is still
+  alive a few seconds later (catches segfault-right-after-bind).
+- **Retry + park:** retry `CARLA_BOOT_ATTEMPTS` (default 3); if every boot segfaults, **park** the
+  GPU — the worker stops pulling jobs (which would fast-fail `rc=3` and burn the queue) and
+  periodically re-attempts recovery.
+- **Per-GPU HOME isolation** (`/carla_home`): the UE4 instances no longer share `~/.cache` shader
+  cache / lock files; first-render is staggered by GPU index.
+
+**Result:** servers still crash but recover — 2-GPU smokes: interfuser 8/8, tcp 8/8, and the three
+new (camera-lighter) agents 4/4 each, with 0 GPUs parked and no queue-burn. **LAV** is the
+exception: it triggers a server crash during `load_world` ("failed to connect to newly created
+map") that recovery cannot pre-empt, so LAV stays server-limited.
+
+### Cross-cutting: stale container bytecode silently ignored source edits
+
+**Symptom:** A correct agent-code edit (the LAV collision fix) kept producing the *old* error, and
+the traceback pointed at a **comment line** — the tell-tale of stale compiled bytecode running
+against newer source.
+
+**Root cause:** the container's Python did not reliably invalidate `__pycache__` across the
+bind-mounted `/workspace`, so edits under `leaderboard/team_code/*` could execute an old `.pyc`.
+
+**Fix (`continuous_cli.py`):** set `PYTHONDONTWRITEBYTECODE=1` in the eval command (container never
+writes `.pyc`) + a one-time `__pycache__` purge at run start. **Implication:** any earlier
+agent-side fix that "seemed ineffective" may have been masked the same way.
 
 ---
 
