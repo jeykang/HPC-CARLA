@@ -79,15 +79,24 @@ CARLA server + one agent per GPU. It's **resumable**: if the allocation ends, ju
 
 ## 4. Export & compare
 
-When you've collected enough (it self-balances across agents; harvest whenever):
+**What you're actually collecting.** Each route *file* is a **suite** of many short
+routes (a `_tiny` file can hold 300–450), run in sequence and **checkpointed per
+route**. On unstable hardware a server may crash after a handful of routes, so whole
+*files* rarely finish — but every route completed before that is saved. **The metric
+is per-route, not per-file.** `tools/harvest_results.py` pulls those per-route scores
+out of every job's `results.json` (including crashed/timed-out files), so your real
+yield is the **route-eval count** — far higher than the queue's "completed jobs"
+number. Track that, not file-completions.
 
 ```bash
-./examples/run_cluster.sh summary   # quick look at this cluster's numbers
+./examples/run_cluster.sh summary   # this cluster's numbers (route-evals first)
 ./examples/run_cluster.sh export    # writes results/<CLUSTER_NAME>/ — share this dir
 ```
 
-The bundle contains `collection_results.json` (per-job driving scores),
-per-agent/outcome/sim-ratio reports, the difficulty-vs-performance validation, and
+The bundle's **primary artifact is `per_route_results.csv`** (one row per route-eval:
+agent, route, weather, driving score, infractions). It also includes
+`collection_results.json`, per-agent / outcome / sim-ratio reports, the
+difficulty-vs-performance validation (computed at per-route granularity), and
 `cluster_meta.txt` (GPU model, node count, config). Send that directory back for the
 A100-vs-your-cluster comparison.
 
@@ -98,7 +107,8 @@ A100-vs-your-cluster comparison.
 | Dimension | A100 (baseline) | L40S (expected) |
 |---|---|---|
 | **CARLA server stability** | intermittent `Signal 11` at GL init; the resilience layer (kill/health-check/park) fires often | RTX rasteriser → should boot & render cleanly; parks/restarts rarely if ever |
-| **Throughput** | sim ~8–12× slower than real-time; low jobs/GPU-hr | should be markedly faster |
+| **Throughput** | sim ~8–12× slower than real-time; low route-evals/GPU-hr | should be markedly faster |
+| **Routes completed per file** | a few before a server crash → whole files rarely finish; the harvester recovers the per-route data | a stable server can run whole suites → many more route-evals, and actual full-file completions |
 | **`LAV`** | crashes the server on `load_world` → excluded | may run — add `lav` to `AGENTS` to test (a real comparison finding) |
 | **Agent driving scores** | the baseline `score_composed` per agent/route/weather | should be *similar* (agent skill is hardware-independent); large divergence would flag a rendering-timing artifact worth investigating |
 

@@ -27,7 +27,9 @@ SLURM_ACCOUNT="${SLURM_ACCOUNT:-}"             # e.g. "myproj" ("" = not require
 SLURM_QOS="${SLURM_QOS:-}"                     # e.g. "normal" ("" = skip)
 SLURM_NODELIST="${SLURM_NODELIST:-}"           # pin nodes e.g. "gpu[01-02]" ("" = SLURM picks)
 CARLA_SIF="${CARLA_SIF:-$PWD/carla_official.sif}"  # path to the ~6 GB CARLA image
-JOB_TIMEOUT_SEC="${JOB_TIMEOUT_SEC:-1800}"     # per-job wall-clock cap (kills a hung route)
+JOB_TIMEOUT_SEC="${JOB_TIMEOUT_SEC:-3600}"     # per-job cap. NOTE: a route FILE is a SUITE of many
+                                               # routes run in sequence (checkpointed per route); a
+                                               # stable GPU banks routes until this cap, then cycles.
 
 # What to collect. KEEP THESE EQUAL ACROSS CLUSTERS for a fair comparison.
 AGENTS=(tcp interfuser cilrs neat roach)       # A100 baseline set (LAV excluded — see note below)
@@ -107,6 +109,8 @@ case "${1:-help}" in
   summary)
     echo "== '$CLUSTER_NAME' comparison metrics =="
     python3 continuous_cli.py summary --persistent 2>/dev/null || true
+    echo "-- per-ROUTE evals harvested (the real metric: routes done, incl. from crashed/timed-out files) --"
+    python3 tools/harvest_results.py 2>/dev/null || echo "   (tools/harvest_results.py not present)"
     echo "-- per-agent score & pass-rate --";      python3 tools/verification_report.py 2>/dev/null || true
     echo "-- outcome taxonomy (agent-result vs infra) --"; python3 tools/classify_outcomes.py 2>/dev/null || true
     echo "-- sim-vs-realtime speed --";             python3 tools/parse_sim_ratio.py 2>/dev/null || true
@@ -117,10 +121,13 @@ case "${1:-help}" in
     OUT="results/${CLUSTER_NAME}"; mkdir -p "$OUT"
     echo "== exporting labeled bundle to $OUT/ =="
     python3 continuous_cli.py export --output "$OUT/collection_results.json" 2>/dev/null || true
+    # per-ROUTE harvest is the primary comparison artifact (-> $OUT/per_route_results.csv)
+    python3 tools/harvest_results.py --out-dir "$OUT" > "$OUT/harvest_summary.txt" 2>&1 || true
     python3 tools/verification_report.py   > "$OUT/verification_report.txt"   2>&1 || true
     python3 tools/classify_outcomes.py     > "$OUT/outcomes.txt"              2>&1 || true
     python3 tools/parse_sim_ratio.py       > "$OUT/sim_ratio.txt"             2>&1 || true
-    python3 tools/difficulty_validation.py > "$OUT/difficulty_validation.md"  2>&1 || true
+    python3 tools/difficulty_validation.py --per-route "$OUT/per_route_results.csv" > "$OUT/difficulty_validation.md" 2>&1 \
+      || python3 tools/difficulty_validation.py > "$OUT/difficulty_validation.md" 2>&1 || true
     # hardware/run metadata for the comparison
     { echo "cluster_name: $CLUSTER_NAME"
       echo "nodes: $SLURM_NODES   gpus_per_node: $SLURM_GPUS_PER_NODE"
