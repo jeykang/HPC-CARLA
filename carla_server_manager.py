@@ -86,6 +86,33 @@ def _pids_on_port(rpc: int) -> List[int]:
             pass
     return pids
 
+def _proc_state(pid: int) -> str:
+    """Process state char from /proc/<pid>/stat: 'D' = uninterruptible sleep (stuck
+    in a GPU-driver / IO syscall — SIGKILL cannot touch it), 'Z' = zombie, else
+    running/sleeping. '' if the process is gone. Skips comm (may contain spaces)."""
+    try:
+        with open(f"/proc/{pid}/stat") as f:
+            data = f.read()
+        return data[data.rfind(")") + 1:].split()[0]
+    except Exception:
+        return ""
+
+def _wedged_pid_on_port(rpc: int) -> Optional[int]:
+    """A server pid PERSISTENTLY in uninterruptible (D) / zombie (Z) state — a
+    genuinely wedged GPU, not a healthy server momentarily inside a driver call.
+    Fast path: if nothing looks stuck at first glance, return immediately; only a
+    suspect gets the ~1.5s persistence confirmation (healthy servers leave D within
+    milliseconds, a wedged one never does)."""
+    suspects = [pid for pid in _pids_on_port(rpc) if _proc_state(pid) in ("D", "Z")]
+    if not suspects:
+        return None
+    for _ in range(4):
+        time.sleep(0.4)
+        suspects = [pid for pid in suspects if _proc_state(pid) in ("D", "Z")]
+        if not suspects:
+            return None
+    return suspects[0]
+
 def _kill_gpu_server(gpu_id: int, rpc: int, grace: float = 6.0) -> None:
     """Kill any server bound to this GPU's RPC port and wait for the port to
     free. A segfaulted CARLA can leave a child holding GPU memory or the socket;
@@ -109,6 +136,15 @@ def _kill_gpu_server(gpu_id: int, rpc: int, grace: float = 6.0) -> None:
     t = time.time() + 5
     while time.time() < t and is_port_open("127.0.0.1", rpc):
         time.sleep(0.3)
+    # Park-on-unkillable: a process still alive after SIGKILL is wedged in
+    # uninterruptible (D) state on the GPU driver — it will never die, and left
+    # running it drags the whole node to a "Kill task failed" drain at teardown.
+    # Park the GPU so the worker stops assigning jobs; a later clean boot clears it.
+    survivors = _pids_on_port(rpc)
+    if survivors:
+        _park_gpu(gpu_id, f"unkillable CARLA on rpc {rpc}: pids {survivors} survived SIGKILL")
+        print(f"[server_manager] gpu{gpu_id}: PARKED — pids {survivors} on rpc {rpc} survived "
+              f"SIGKILL (wedged GPU driver); not assigning further jobs", file=sys.stderr, flush=True)
 
 def _wait_healthy(rpc: int, pid: Optional[int], timeout: int) -> bool:
     """Healthy = the RPC port opens AND the process is still alive a few seconds
@@ -357,10 +393,20 @@ def health() -> int:
 
 def ensure(gpu_id: int, base: int, spacing: int, tm_off: int) -> int:
     rpc, tm = _derive_ports(gpu_id, base, spacing, tm_off)
-    # Trust an existing listener -- never kill a server that's happily serving.
+    # Trust an existing listener -- UNLESS the process behind it is wedged
+    # (uninterruptible D-state / zombie). An open socket does not mean the GPU is
+    # alive: a wedged server keeps its port open while the next job hangs on it, and
+    # reusing it is exactly what accumulates into a "Kill task failed" node drain.
     if is_port_open("127.0.0.1", rpc):
-        _clear_park(gpu_id)
-        return 0
+        wedged = _wedged_pid_on_port(rpc)
+        if wedged is None:
+            _clear_park(gpu_id)
+            return 0
+        print(f"[server_manager] gpu{gpu_id}: listener on rpc {rpc} is WEDGED "
+              f"(pid {wedged} D/Z-state) — recycling", file=sys.stderr, flush=True)
+        _kill_gpu_server(gpu_id, rpc)      # parks the GPU if it cannot be killed
+        if _park_path(gpu_id).exists():
+            return 3                        # wedged + unkillable -> parked; stop here
     attempts = int(os.environ.get("CARLA_BOOT_ATTEMPTS", "3"))
     timeout  = int(os.environ.get("CARLA_BOOT_TIMEOUT_SEC", "120"))
     for attempt in range(1, attempts + 1):
