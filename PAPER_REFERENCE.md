@@ -854,36 +854,42 @@ per-route harvest is what makes the validation possible.
 
 ### Multi-axis difficulty and per-model sensitivity
 
-A single scalar difficulty is **not sufficient** to validate against performance — a lesson
-from a sister project (illumination-difficulty for AV scene scoring): different architectures
-fail on different axes, so one scalar that fuses them washes out. Here the roster splits by
-sensor modality — **camera-only** (CILRS, NEAT, Roach, TCP) vs **LiDAR-aided** (InterFuser,
-LAV) — which predicts, e.g., that darkness should hurt the camera-only agents far more. Pooling
-all agents, the scalar difficulty's Spearman is only **+0.036** (and per-model signs differ); a
-synthetic check confirms this is a **coverage/variance** artifact, not proof the sum is broken
-(with well-sampled axes even the naive sum correlates strongly).
+A single scalar difficulty **washes out** against performance (pooled Spearman **+0.036**), a
+lesson echoing a sister project (illumination-difficulty for AV scene scoring). Two independent
+causes, both since diagnosed.
 
-The reworked approach keeps difficulty as a **vector**, not a sum:
+**1 — Illumination dominates, against a low ceiling.** Decomposing the 0–20 weather ordinal into
+physical axes (`tools/weather_axes.py`: `illum_dark / precip / road_water / cloud / fog`; Night
+params exact from `consolidated_agent.py`) and fitting a per-agent noisy-OR
+`P(fail)=1−exp(−Σ λ_j x_j)` (`tools/sensitivity_matrix.py`, Newton MLE + Hessian CIs; validated on
+synthetic ground truth in `tools/noisy_or_sanity.py`) shows the recoverable signal is
+**illumination** — "dark = hard." A cross-validated head-to-head
+(`tools/difficulty_model_comparison.py`) puts the old scalar at AUC ≈ **0.53** and a parsimonious
+`illumination + geometry` model at ≈ **0.62**, near the **~0.65 ceiling** the sister project found
+robust even to reasoning foundation models; the extra weather axes are noise. An independent
+second-domain replication.
 
-- **Physical axis decomposition** (`tools/weather_axes.py`): the 0–20 weather ordinal (which
-  fuses time-of-day, rain and fog) is split into normalised axes
-  `illum_dark / precip / road_water / cloud / fog` — Night-variant params exact from
-  `consolidated_agent.py`, day presets from CARLA 0.9.10. `tools/harvest_results.py` emits these
-  per route-eval.
-- **Per-model sensitivity fit** (`tools/sensitivity_matrix.py`): a per-agent noisy-OR /
-  competing-hazards model `P(fail) = 1 − exp(−Σ λ_j·x_j)` over the axes (route geometry,
-  scenario density, weather axes). Each `λ_j(agent) ≥ 0` is that axis's hazard weight for that
-  agent (Newton MLE + inverse-Hessian CIs). **Validated on synthetic ground truth**
-  (`tools/noisy_or_sanity.py`): it recovers per-model axis sensitivity and cleanly separates
-  illumination-sensitive camera models from insensitive LiDAR models given ~100
-  illumination-varied evals/model — a separation a scalar cannot express. Robust to link
-  misspecification.
+**2 — The geometry & scenario terms are degenerate.** The `_tiny`/`_short` route files (the entire
+current sweep) store each route as **2 waypoints — endpoints only**; the driven path is
+interpolated at runtime by `GlobalRoutePlanner`. So `route_difficulty`/`scenario_difficulty`, which
+parse those XMLs, measure only endpoint displacement — near-noise. Two of the scalar's three inputs
+are thus uninformative for the routes being collected. (Only `_long` routes carry real geometry,
+16–75 waypoints.)
 
-**Current identifiability (the binding constraint).** On the night-only sample the tool reports
-honestly what the data supports: `geom`/`scen` are (weakly) identified; `illum_dark` is
-**unidentifiable** (constant — every eval at night); `precip/road_water/cloud/fog` are
-**confounded** (|r| > 0.95 — only heavy-rain-night presets ran). This is a *coverage* limit, not
-a method limit, and is exactly what the illumination-stratified scheduler removes.
+**Map is a dominant, missed factor.** Fail rates split hard by town — Town02 (dense grid) 72–100%
+vs Town05 (open) 10–19% — yet the model scores all towns ~identically. The fix is a map-intrinsic
+**urban-density axis** (`tools/map_density.py`): junctions per km of road / per km², mean segment
+length, curvature — read from **OpenDRIVE**, offline from a `.xodr` or in-sim via
+`carla.Map.to_opendrive()`, so **custom user maps score by the same logic with no hardcoding**.
+Validated on the collected towns: `junctions_per_road_km` ranks Town02 (4.00) > Town01 (2.85) >
+Town05 (2.27), matching observed difficulty. A per-*route* version (junctions along the interpolated
+path) needs the sim; the offline endpoint approximation is too coarse (2-waypoint straight line).
+
+**Per-agent nuance.** Difficulty predicts failure for the condition-dependent agents (InterFuser /
+NEAT / Roach, near the ceiling) but **not** CILRS (fails near-uniformly) or TCP (failures run
+*opposite* to route geometry — its cautious control times out in dense Town02, which the geometry
+proxy rates easy). Net: the real difficulty signal is **illumination + map urban-density**, not the
+geometry/scenario terms the model was built around.
 
 ### Runtime estimation
 
