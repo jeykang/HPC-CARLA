@@ -259,3 +259,5 @@ leaderboard/data/training_routes/*_smoke.xml
 
 # generated paper data tables (regenerable)
 /paper_artifacts/
+paper_figures_data/
+paper_figures_data_*.tar.gz
