@@ -1267,9 +1267,21 @@ kernel-level "Not responding" crash, which needs an admin reboot and a SLURM `Un
 to clean up the D-state step. As of this writing the run is **paused** on that admin dependency
 (§8).
 
-**Storage-maintenance red herring.** A cluster storage-maintenance notice arrived during the outage
-window and was considered as a cause; it was ruled out — the node drains **predated** the
-maintenance window, and the failure signature is GL/D-state, not I/O.
+**Root cause of the whole-node crashes — confirmed: WekaFS storage fencing (not memory, not the GL
+segfault).** Diagnosed 2026-07-15 from login-node evidence (`NODE_FAILURE_EVIDENCE_2026-07-15.md`).
+`/scratch` is **WekaFS**, a network filesystem, and pod09/pod17 are *converged* Weka-backend +
+compute nodes. `weka events` show each node's Weka process going `NodeUnreachable → FENCING →
+Rejoined` at the **exact** SLURM `NODE_FAIL` timestamps (job 167116: pod17 19:10 / pod09 20:22 ↔
+NODE_FAIL 19:13–20:23), bracketed by CRITICAL `HangingDriverFrontendIos` alerts. When Weka fences a
+node's storage client, `/scratch` I/O dies and every writer wedges in uninterruptible **D-state**
+(I/O-wait — which is why SIGKILL cannot reap it, and why `park-on-unkillable` can contain the *drain*
+but never the *fence*). The likely trigger is heavy CARLA GL/CPU load on a converged node starving
+the Weka process until it misses its cluster heartbeat, with metadata-heavy small-`.npy` writes
+adding file-lease pressure. **Memory is excluded**: ~1 TB RAM/node at <5% use, zero `OUT_OF_MEMORY`
+states, no OOM traces. This retro-explains the earlier storage-maintenance suspicion — right
+subsystem (Weka), even though that specific maintenance window didn't line up. Our-side mitigation:
+shard/stage the per-frame writes to cut Weka metadata pressure; the rest is admin-side (weka client
+isolation, `UnkillableStepProgram`).
 
 ### Cross-cutting: stale container bytecode silently ignored source edits
 
