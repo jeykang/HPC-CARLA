@@ -996,15 +996,24 @@ accounting would report only the ~14% from cleanly-finished jobs; the per-route 
 turns crash-truncated suites into usable data. **The route-eval is the reportable unit**, not the
 completed job.
 
-Per-agent mean `score_composed` separates the roster cleanly and stably:
+Per-agent mean `score_composed` from the canonical harvest (`tools/harvest_results.py` over the live
+`completed_jobs.json` + `job_queue.json`, n = 1,648):
 
-| Agent | Mean score_composed | Character |
-|-------|--------------------:|-----------|
-| Roach | ~90 | strongest; RL-coached |
-| NEAT | ~85 | strong |
-| TCP | ~84 | strong; but fails by *timeout* in dense towns (§7) |
-| InterFuser | ~72 | mid; condition-dependent, near the difficulty ceiling |
-| CILRS | ~39 | genuine weak baseline (audited — not an integration bug, §5.4) |
+| Agent | n (route-evals) | Mean score_composed | Mean route completion | Character |
+|-------|----------------:|--------------------:|----------------------:|-----------|
+| InterFuser | 140 | **88.7** | 88.7 | highest mean; camera+LiDAR fusion (smallest n — see below) |
+| NEAT | 223 | 86.5 | 90.3 | strong; neural attention fields |
+| TCP | 269 | 86.3 | 87.1 | strong; but fails by *timeout* in dense towns (§7) |
+| Roach | 539 | 86.2 | 93.4 | strong; RL-coached |
+| CILRS | 477 | 41.4 | 55.4 | genuine weak baseline (audited — not an integration bug, §5.4) |
+
+The four non-CILRS agents cluster tightly at **86–89**; CILRS sits far below as the intended weak
+baseline. **Caution on ranking within the top cluster:** the ordering is not robust — InterFuser
+leads on the *smallest* sample (n = 140) and the top four are within ~2.5 points. An earlier n ≈ 204
+harvest had InterFuser *last* of the five (71.8) and Roach top (90.4); those figures were themselves
+small-sample artifacts that reshuffled at scale — the same lesson §7 draws for the difficulty
+correlations. Cite the n = 1,648 means with their `n`, and treat the CILRS-vs-rest gap (not the
+intra-cluster order) as the load-bearing separation.
 
 **Validation smokes (post-resilience):** interfuser 8/8 and tcp 8/8 routes; CILRS/NEAT/Roach 4/4
 each — zero agent-code errors, zero GPUs parked. LAV 0/4 (server crash at `load_world`). These
