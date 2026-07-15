@@ -129,7 +129,7 @@ python3 continuous_cli.py reset            # or: reset --smoke
 # 2. Launch persistent workers on SLURM (one CARLA server + one agent per GPU).
 python3 continuous_cli.py --persistent start --slurm \
     --slurm-nodes 1 --slurm-gpus 8 --slurm-time 48:00:00 \
-    --slurm-nodelist hpc-pr-a-pod17
+    --slurm-nodelist hpc-pr-a-pod20
 
 # 3. Watch it (the run keeps going if you stop watching).
 python3 continuous_cli.py --persistent monitor
@@ -153,7 +153,7 @@ block, then `setup → smoke → run → export`.
 
 ## Current status (snapshot, 2026-07-07 — live; use `harvest_results.py` for current numbers)
 
-Active run on A100 (`pod17`): **1,680-job** queue (5 productive agents × short/tiny routes × 21
+Active run on A100 (`pod20`): **1,680-job** queue (5 productive agents × short/tiny routes × 21
 weathers), draining continuously. Per-route harvest so far:
 
 | Agent | route-evals | mean driving score |

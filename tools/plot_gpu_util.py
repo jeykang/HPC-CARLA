@@ -196,7 +196,7 @@ def plot(per_gpu, out_png, title=None, downsample=None):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--input', '-i', required=False,
-                    default='collection_state/metrics/node/hpc-pr-a-pod09/gpu.jsonl',
+                    default='collection_state/metrics/node/hpc-pr-a-pod19/gpu.jsonl',
                     help='Path to gpu.jsonl (can be large)')
     ap.add_argument('--out', '-o', required=False, default='plots/gpu_util.png')
     ap.add_argument('--csv', required=False, default='plots/gpu_util.csv')

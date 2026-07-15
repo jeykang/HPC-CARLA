@@ -5,7 +5,7 @@
 # ================================================================
 
 #SBATCH --job-name=continuous_collection
-#SBATCH --nodelist=hpc-pr-a-pod09,hpc-pr-a-pod17
+#SBATCH --nodelist=hpc-pr-a-pod19,hpc-pr-a-pod20
 #SBATCH --gres=gpu:16
 #SBATCH --nodes=2
 #SBATCH --time=168:00:00

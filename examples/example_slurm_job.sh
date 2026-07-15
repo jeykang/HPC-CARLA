@@ -21,7 +21,7 @@
 #           python3 continuous_cli.py reset --smoke
 #           python3 continuous_cli.py --persistent start --slurm \
 #               --slurm-nodes 2 --slurm-gpus 8 --slurm-time 96:00:00 \
-#               --slurm-nodelist hpc-pr-a-pod09,hpc-pr-a-pod17
+#               --slurm-nodelist hpc-pr-a-pod19,hpc-pr-a-pod20
 #       (do NOT sbatch that — `start --slurm` submits the job itself.)
 #
 #   (B) THIS SCRIPT — a hand-written, single-node job you submit directly with
@@ -43,7 +43,7 @@
 #SBATCH --time=08:00:00              # walltime; raise for the full sweep
 #SBATCH --output=logs/slurm_%j.out
 #SBATCH --error=logs/slurm_%j.err
-# #SBATCH --nodelist=hpc-pr-a-pod09  # uncomment to pin a specific node
+# #SBATCH --nodelist=hpc-pr-a-pod19  # uncomment to pin a specific node
 # #SBATCH --partition=<your-partition>
 
 set -euo pipefail

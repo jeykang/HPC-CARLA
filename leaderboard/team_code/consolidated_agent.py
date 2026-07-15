@@ -85,6 +85,17 @@ except Exception:  # pragma: no cover
     except Exception:
         PipelineEngine = None  # type: ignore
 
+try:
+    from .sensor_stager import SensorStager  # type: ignore
+except Exception:  # pragma: no cover
+    try:
+        from sensor_stager import SensorStager  # type: ignore
+    except Exception:
+        try:
+            from team_code.sensor_stager import SensorStager  # type: ignore
+        except Exception:
+            SensorStager = None  # type: ignore
+
 
 # -------------------------------------------------------------------------
 # Helper utilities
@@ -223,6 +234,10 @@ class ConsolidatedAgent(AutonomousAgent):
         # Per-run collection counters (used for coverage plots)
         self._frames_saved_by_sensor: Dict[str, int] = {}
         self._data_collection_started_at: Optional[str] = None
+
+        # WekaFS-friendly sensor writer (node-local staging + tar shards).
+        # Created in _initialize_data_collection once save_path is known.
+        self._stager = None
 
         # Cached sensor list built in Stage 1
         self._sensor_list: Optional[List[Dict[str, Any]]] = None
@@ -393,9 +408,20 @@ class ConsolidatedAgent(AutonomousAgent):
         for sensor in sensors:
             sensor_id = sensor["id"]
             folder_name = self._get_sensor_folder_name(sensor["type"], sensor_id)
-            sensor_path = os.path.join(self.save_path, folder_name)
-            os.makedirs(sensor_path, exist_ok=True)
-            self.sensor_data_paths[sensor_id] = sensor_path
+            self.sensor_data_paths[sensor_id] = self._sensor_dir(folder_name)
+
+    def _sensor_dir(self, folder_name: str) -> str:
+        """Directory a per-frame sensor file is written to.
+
+        When the WekaFS-friendly stager is active this is a NODE-LOCAL staging
+        dir (frames are later rolled into tar shards on /scratch); otherwise it
+        is the legacy per-sensor subdir directly under save_path on /scratch.
+        """
+        if self._stager is not None and getattr(self._stager, "enabled", False):
+            return self._stager.dir_for(folder_name)
+        sensor_path = os.path.join(self.save_path, folder_name)
+        os.makedirs(sensor_path, exist_ok=True)
+        return sensor_path
 
     @staticmethod
     def _get_sensor_folder_name(sensor_type: str, sensor_id: str) -> str:
@@ -539,6 +565,15 @@ class ConsolidatedAgent(AutonomousAgent):
     def destroy(self) -> None:
         """Write a small run summary (best-effort) and forward destroy()."""
         try:
+            # Flush the final partial shard + write the shard manifest to /scratch
+            # before anything else, so staged sensor data is persisted even if the
+            # inner agent's destroy() raises.
+            if self._stager is not None:
+                try:
+                    self._stager.finalize()
+                except Exception:
+                    pass
+
             # Best-effort run summary for plotting / joining dataset to job logs.
             if self.collect_data and self.save_path is not None:
                 try:
@@ -754,6 +789,31 @@ class ConsolidatedAgent(AutonomousAgent):
         with open(meta_path, "w") as f:
             json.dump(meta, f, indent=2)
 
+        # WekaFS-friendly sensor writer: stage per-frame files node-locally and
+        # roll them into tar shards on /scratch, instead of writing tens of
+        # thousands of tiny files (which drives Weka file-lease/metadata hangs —
+        # see NODE_FAILURE_EVIDENCE_2026-07-15.md). Opt-out with
+        # HPC_CARLA_SHARD_SENSORS=0; tune with HPC_CARLA_SHARD_SIZE /
+        # HPC_CARLA_STAGE_ROOT. Fails safe to legacy direct writes.
+        self._stager = None
+        shard_enabled = os.environ.get("HPC_CARLA_SHARD_SENSORS", "1").strip().lower() \
+            not in ("0", "false", "no", "off")
+        if self.collect_data and shard_enabled and SensorStager is not None:
+            try:
+                stage_root = os.environ.get("HPC_CARLA_STAGE_ROOT") or "/dev/shm/hpc_carla_stage"
+                try:
+                    shard_size = int(os.environ.get("HPC_CARLA_SHARD_SIZE", "64"))
+                except (TypeError, ValueError):
+                    shard_size = 64
+                stager = SensorStager(
+                    self.save_path, stage_root=stage_root,
+                    shard_size=shard_size, logger=print,
+                )
+                self._stager = stager if getattr(stager, "enabled", False) else None
+            except Exception as exc:  # never let staging break collection
+                print("[consolidated_agent] sensor staging disabled (%s)" % exc)
+                self._stager = None
+
     def _save_sensor_data(self, input_data: Dict[str, Tuple[int, Any]], timestamp: float) -> None:
         """
         Save all sensor streams for the current step.
@@ -775,9 +835,7 @@ class ConsolidatedAgent(AutonomousAgent):
                 # agent; in that case, we lazily create a directory.
                 sensor_type = self._sensor_type_by_id.get(sensor_id, "")
                 folder_name = self._get_sensor_folder_name(sensor_type, sensor_id)
-                sensor_path = os.path.join(self.save_path, folder_name)
-                os.makedirs(sensor_path, exist_ok=True)
-                self.sensor_data_paths[sensor_id] = sensor_path
+                self.sensor_data_paths[sensor_id] = self._sensor_dir(folder_name)
 
             sensor_dir = self.sensor_data_paths[sensor_id]
             self._save_single_sensor(sensor_id, sensor_dir, frame, raw, timestamp)
@@ -790,6 +848,12 @@ class ConsolidatedAgent(AutonomousAgent):
 
             # Optional: extensions can save additional representations.
             self._call_extension_hook("on_save_sensor", sensor_id, sensor_dir, frame, raw, timestamp)
+
+        # One tick complete: let the stager roll a tar shard to /scratch every
+        # shard_size ticks (turns the per-frame small-file storm into a few large
+        # sequential writes — WekaFS-friendly; see sensor_stager.py).
+        if self._stager is not None:
+            self._stager.after_tick()
 
     def _save_single_sensor(
         self,

@@ -117,21 +117,22 @@ cannot yet contrast camera-only vs LiDAR illumination sensitivity from the LAV s
 | Parameter | Value |
 |-----------|-------|
 | Scheduler | SLURM |
-| Nodes assigned to this project | `hpc-pr-a-pod09`, `hpc-pr-a-pod17` (8 A100 each) |
+| Nodes assigned to this project | `hpc-pr-a-pod19`, `hpc-pr-a-pod20` (8 A100 each; reassigned 2026-07-15 from pod09/pod17) |
 | GPUs per node | 8 × NVIDIA A100 (driver 575.57.08) |
 | Max parallelism | 16 concurrent CARLA evaluations (1 per GPU) when both nodes are up |
 | Job time limit | 336 h (14 days) |
 | Per-route wall-clock (`JOB_TIMEOUT`) | 3600 s — a route exceeding it is killed and re-queued |
 | Node allocation | Exclusive |
 
-**Effective capacity is well below 16 GPUs.** pod09 is shared with another project (pinned there),
-so this project defaults to **pod17** and uses pod09 only when idle. More importantly, under
-sustained multi-day load these A100 nodes crash (§9): over the recent runs pod09 went fully
-"Not responding" and pod17 repeatedly drained ("Kill task failed"), so the run has spent
-significant time on a **single node or paused entirely** rather than the nominal 16-way. Throughput
-figures in this document are single-node-realistic, not 16-GPU-ideal. The simulation itself runs
-**~8–12× slower than real time** with no per-*sweep* wall-clock cap, so a full sweep does not drain
-quickly — the run is treated as a continuous harvest, not a fixed batch (§7, §8).
+**Effective capacity is well below 16 GPUs.** Under sustained multi-day load these A100 nodes crash
+(§9). On the previously-assigned pair (pod09/pod17), over the recent runs **pod09 went fully "Not
+responding"** and **pod17 repeatedly drained** ("Kill task failed"), so the run has spent significant
+time on a **single node or paused entirely** rather than the nominal 16-way. (As of 2026-07-15 the
+project was reassigned to **pod19/pod20**; the historical crash analysis in §8–§9 refers to the
+pod09/pod17 nodes on which those failures were actually recorded.) Throughput figures in this
+document are single-node-realistic, not 16-GPU-ideal. The simulation itself runs **~8–12× slower
+than real time** with no per-*sweep* wall-clock cap, so a full sweep does not drain quickly — the run
+is treated as a continuous harvest, not a fixed batch (§7, §8).
 
 ### Container runtime
 
@@ -751,6 +752,29 @@ $DATASET_DIR/{agent}/{weather_N}/map_{NN}/{route_stem}/
 ```
 
 Sensor types saved by default: all sensors in the agent's `sensors()` list.
+
+### WekaFS-friendly sharded writes (default since 2026-07-15)
+
+The naïve layout above writes ~7 tiny files per tick (one per sensor) — tens of thousands of
+small files per route. On the cluster's **WekaFS** `/scratch` each create is a metadata op + file
+lease; that small-file storm is a direct contributor to the Weka `HangingIos`/node-fencing that
+crashed the nodes (§9). To avoid it, `ConsolidatedAgent` now writes sensor frames to a **node-local
+staging dir** (`/dev/shm`, never Weka) and rolls them into a few large **tar shards** on `/scratch`
+(`leaderboard/team_code/sensor_stager.py`):
+```
+$DATASET_DIR/{agent}/{weather_N}/map_{NN}/{route_stem}/
+  shards/shard_00000.tar        # each holds {sensor_id}/{frame}.{ext}
+  shards/shard_00001.tar        # rolled every HPC_CARLA_SHARD_SIZE ticks (default 64)
+  shard_manifest.json
+  metadata.json / run_summary.json / results.json   ← still direct small writes to /scratch
+```
+This turns ~77k small-file/lease ops per route into a few dozen large sequential writes (the access
+pattern Weka handles well). Knobs: `HPC_CARLA_SHARD_SENSORS=0` disables it (legacy direct writes),
+`HPC_CARLA_SHARD_SIZE`, `HPC_CARLA_STAGE_ROOT`. It **fails safe** — if node-local staging isn't
+writable it reverts to direct `/scratch` writes. Bounded loss on a mid-route crash = only the
+current partial shard (< shard_size ticks). Crucially, **`results.json` stays a live file on
+`/scratch`** so the per-route harvester (§9) is unaffected. Reconstruct the classic per-frame layout
+with `tools/unpack_shards.py`.
 
 ### run_summary.json
 

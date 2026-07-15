@@ -342,6 +342,8 @@ class ContinuousCLI:
             # Server boot-hardening: retry/park + parked-worker backoff + stagger.
             'CARLA_BOOT_ATTEMPTS', 'CARLA_BOOT_TIMEOUT_SEC', 'PARK_RETRY_SEC',
             'SERVER_STAGGER_SEC',
+            # WekaFS-friendly sensor sharding (node-local staging + tar shards).
+            'HPC_CARLA_SHARD_SENSORS', 'HPC_CARLA_SHARD_SIZE', 'HPC_CARLA_STAGE_ROOT',
         ]
         _fwd = [f'export {k}="{os.environ[k]}"' for k in _passthrough if os.environ.get(k)]
         if _fwd:
@@ -482,6 +484,11 @@ class ContinuousCLI:
         for prefix in ('SINGULARITYENV_', 'APPTAINERENV_'):
             os.environ[prefix + 'PROJECT_ROOT'] = str(self.project_root)
             os.environ[prefix + 'CARLA_SIF'] = sif
+            # Forward WekaFS sharding overrides INTO the container (the agent
+            # reads them). Default-on needs no forwarding — only pass what's set.
+            for _k in ('HPC_CARLA_SHARD_SENSORS', 'HPC_CARLA_SHARD_SIZE', 'HPC_CARLA_STAGE_ROOT'):
+                if os.environ.get(_k):
+                    os.environ[prefix + _k] = os.environ[_k]
 
         # The {{...}} are escaped braces (literal shell ${...}); {NAME} are
         # str.format placeholders filled per-job by manage_continuous.run_next_job

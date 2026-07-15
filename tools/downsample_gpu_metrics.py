@@ -6,7 +6,7 @@ and outputs a small CSV with columns: gpu, ts, util_sm, power_W, mem_used_MiB
 
 Usage:
   python3 tools/downsample_gpu_metrics.py \
-      -i collection_state/metrics/node/hpc-pr-a-pod09/gpu.jsonl \
+      -i collection_state/metrics/node/hpc-pr-a-pod19/gpu.jsonl \
       -o plots/gpu_util_small.csv
 """
 import argparse
