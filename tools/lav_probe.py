@@ -8,10 +8,10 @@ empty results.json (rc=245 / SIGSEGV, no Python traceback), which is consistent
 with a crash in this load/init path. `faulthandler` prints the Python frame even
 on a hard fault.
 
-Run inside the SIF on a GPU node (e.g. pod20 per the node-sharing rule):
+Run inside the SIF on a GPU node (e.g. pod17 per the node-sharing rule):
 
   cd /scratch/autodr_test/HPC-CARLA-persistent
-  srun -w hpc-pr-a-pod20 --gres=gpu:1 singularity exec --nv \
+  srun -w hpc-pr-a-pod17 --gres=gpu:1 singularity exec --nv \
       -B "$PWD":/workspace carla_official.sif \
       python3 /workspace/tools/lav_probe.py
 

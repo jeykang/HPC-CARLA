@@ -117,22 +117,23 @@ cannot yet contrast camera-only vs LiDAR illumination sensitivity from the LAV s
 | Parameter | Value |
 |-----------|-------|
 | Scheduler | SLURM |
-| Nodes assigned to this project | `hpc-pr-a-pod19`, `hpc-pr-a-pod20` (8 A100 each; reassigned 2026-07-15 from pod09/pod17) |
+| Nodes assigned to this project | `hpc-pr-a-pod09`, `hpc-pr-a-pod17` (8 A100 each) |
 | GPUs per node | 8 × NVIDIA A100 (driver 575.57.08) |
 | Max parallelism | 16 concurrent CARLA evaluations (1 per GPU) when both nodes are up |
 | Job time limit | 336 h (14 days) |
 | Per-route wall-clock (`JOB_TIMEOUT`) | 3600 s — a route exceeding it is killed and re-queued |
 | Node allocation | Exclusive |
 
-**Effective capacity is well below 16 GPUs.** Under sustained multi-day load these A100 nodes crash
-(§9). On the previously-assigned pair (pod09/pod17), over the recent runs **pod09 went fully "Not
-responding"** and **pod17 repeatedly drained** ("Kill task failed"), so the run has spent significant
-time on a **single node or paused entirely** rather than the nominal 16-way. (As of 2026-07-15 the
-project was reassigned to **pod19/pod20**; the historical crash analysis in §8–§9 refers to the
-pod09/pod17 nodes on which those failures were actually recorded.) Throughput figures in this
-document are single-node-realistic, not 16-GPU-ideal. The simulation itself runs **~8–12× slower
-than real time** with no per-*sweep* wall-clock cap, so a full sweep does not drain quickly — the run
-is treated as a continuous harvest, not a fixed batch (§7, §8).
+**Effective capacity is well below 16 GPUs.** Under sustained multi-day load these A100 nodes crashed
+(§9): over the recent runs **pod09 went fully "Not responding"** and **pod17 repeatedly drained**
+("Kill task failed"), traced to WekaFS storage fencing (§9). After an admin reboot (2026-07-15) that
+cleared the fence and re-attached the WekaFS clients, both nodes were re-validated end-to-end (a
+persistent-mode smoke completed cleanly with no drain/fence/park recurrence) and returned to service.
+Even so, the run has historically spent significant time on a **single node or paused entirely**
+rather than the nominal 16-way. Throughput figures in this document are single-node-realistic, not
+16-GPU-ideal. The simulation itself runs **~8–12× slower than real time** with no per-*sweep*
+wall-clock cap, so a full sweep does not drain quickly — the run is treated as a continuous harvest,
+not a fixed batch (§7, §8).
 
 ### Container runtime
 

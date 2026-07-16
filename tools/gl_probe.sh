@@ -8,7 +8,7 @@
 # explain both the slowdown and the crashes).
 #
 # Run on a compute node:
-#   srun --nodes=1 --nodelist=hpc-pr-a-pod20 --gres=gpu:1 --time=00:05:00 bash tools/gl_probe.sh
+#   srun --nodes=1 --nodelist=hpc-pr-a-pod17 --gres=gpu:1 --time=00:05:00 bash tools/gl_probe.sh
 set +e
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 SIF="${CARLA_SIF:-$HERE/carla_official.sif}"

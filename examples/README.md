@@ -19,7 +19,7 @@ From the **login node** — the CLI generates and submits the SLURM job for you:
 python3 continuous_cli.py reset --smoke            # tiny ~1h validation queue
 python3 continuous_cli.py --persistent start --slurm \
     --slurm-nodes 1 --slurm-gpus 8 --slurm-time 08:00:00 \
-    --slurm-nodelist hpc-pr-a-pod19
+    --slurm-nodelist hpc-pr-a-pod09
 python3 continuous_cli.py monitor                  # watch progress
 ```
 Drop `--smoke` (use a plain `reset`) for the full agent × route × weather sweep,

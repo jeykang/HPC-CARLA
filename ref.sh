@@ -6,5 +6,5 @@ rm -r logs && rm -r dataset
 python3 continuous_cli.py stop && python3 continuous_cli.py reset
 
 python3 continuous_cli.py --persistent start --slurm \
-  --slurm-nodelist=hpc-pr-a-pod19,hpc-pr-a-pod20 \
+  --slurm-nodelist=hpc-pr-a-pod09,hpc-pr-a-pod17 \
   --slurm-nodes=2 --slurm-gpus=8 --slurm-time=336:00:00
