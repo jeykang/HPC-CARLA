@@ -1287,6 +1287,15 @@ new (camera-lighter) agents 4/4 each, with 0 GPUs parked and no queue-burn. **LA
 exception: it triggers a server crash during `load_world` ("failed to connect to newly created
 map") that recovery cannot pre-empt, so LAV stays server-limited.
 
+**Confirmed not node-specific (2026-07-16 probe).** A dedicated LAV-only run on the freshly-rebooted
+pod09 reproduced the failure identically — a crash-retry loop of **Signal 11 + "failed to connect to
+newly created map"** at `load_world`; the restart-hardening does eventually force a boot through, but
+throughput is ≈0 and the few routes that ran failed ("agent deviated" / "timed out"). So LAV's
+server-limitation is an intrinsic LAV↔A100/host-GL interaction, **not** a property of the crashed
+nodes — a clean node/reboot does not fix it. LAV therefore remains excluded pending an L40S (or a
+CARLA build that survives its `load_world`); the camera-vs-LiDAR illumination contrast (§7, P1b) is
+carried by InterFuser's LiDAR fusion, not LAV.
+
 **Per-route data recovery.** Because `results.json` is checkpointed *per route* within a
 route-file *suite* (§6), a server that segfaults mid-suite still leaves every route it
 finished on disk — even though the job is marked `failed`. `tools/harvest_results.py` unions
