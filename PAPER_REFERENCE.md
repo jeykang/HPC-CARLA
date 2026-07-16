@@ -964,6 +964,33 @@ synthetic ground truth in `tools/noisy_or_sanity.py`) shows the recoverable sign
 robust even to reasoning foundation models; the extra weather axes are noise. An independent
 second-domain replication.
 
+*Controlled confirmation (illumination triads).* Beyond the conditioned fit, a controlled experiment
+(`routes_town0{2,5}_illum.xml`; fixed agent+route, vary **only** illumination on matched clear
+presets ClearNoon/ClearSunset/ClearNight — weather 0/1/14, no precip confound; n=4 routes/cell) shows
+the effect is **real but agent-specific**, not universal: mean `score_composed` noon→night falls
+**−27.0 for NEAT** (camera-only) and **−6.4 for InterFuser** (camera+**LiDAR** fusion — less
+affected, consistent with the sister project's "LiDAR is not illumination-biased"), while **Roach is
+flat (−0.5)** and **TCP slightly inverts (+2.1)**. So "dark = hard" is a strong effect for
+camera-only imitation but attenuates with LiDAR and does not generalise across all agents —
+reinforcing that difficulty is agent-relative. (Small per-cell n; suggestive, not a significance
+claim.)
+
+*Why the ceiling is a ceiling — irreducible closed-loop variance (repeat-eval study).* The
+0–20 weather ordinal and all scene features are fixed per condition, so if repeating an identical
+`(agent, route, weather)` triple under **different traffic-manager / scenario seeds** yields
+different outcomes, that variance is unpredictable *by construction* and bounds any classifier. We
+tested this directly (`manage_continuous.py` per-job `seed`+`repeat`; 2 agents × 3 routes ×
+MidRainyNoon × **12 seeds**). Result: variance is concentrated **at the competence boundary**. For
+NEAT on a mid-difficulty Town05 route the 12 seeds gave a **bimodal** `score_composed`
+`[9.5, 11.8, 100×10]` (**std 33**) — 10 clean successes and 2 catastrophic seed-triggered failures
+under *identical* conditions; away from the boundary the outcome is deterministic (easy Town03: 100
+every seed, std 0; hard dense Town02: 22/24 genuine "agent deviated" failures every seed). No
+condition feature can predict which seed collides, because the collision is set by closed-loop RNG
+(NPC spawn/behaviour). So a real fraction of outcomes are seed coin-flips: **the ~0.65 AUC ceiling
+is partly irreducible closed-loop stochasticity, not merely missing features** — a mechanism for the
+sister project's "robust even to reasoning world models" ceiling. (Run was infra-clean: 0 parked
+GPUs, no drain/fence.)
+
 **2 — The geometry & scenario terms are degenerate.** The `_tiny`/`_short` route files (the entire
 current sweep) store each route as **2 waypoints — endpoints only**; the driven path is
 interpolated at runtime by `GlobalRoutePlanner`. So `route_difficulty`/`scenario_difficulty`, which
