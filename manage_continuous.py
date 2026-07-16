@@ -1330,6 +1330,11 @@ class ContinuousManager:
 
         # Construct the per-job SAVE_PATH and CHECKPOINT_ENDPOINT (where LB writes results.json)
         save_path = os.path.join(env['DATASET_DIR'], env['AGENT_NAME'], weather_label, map_label, env['ROUTE_NAME'])
+        # P2 repeat-variance: keep each repeat's results.json distinct so different
+        # seeds of the same (agent,route,weather) triple don't overwrite one another.
+        # Normal jobs carry no 'repeat' -> path unchanged.
+        if job.get('repeat') is not None:
+            save_path = '%s_rep%02d' % (save_path, int(job['repeat']))
         env.update({
             'SAVE_PATH':            save_path,
             'CHECKPOINT_ENDPOINT':  os.path.join(save_path, 'results.json'),
@@ -1351,6 +1356,12 @@ class ContinuousManager:
         # (CarlaDataProvider) and the traffic-manager device seed, so every agent
         # faces identical scenarios (fair comparison) and any run is reproducible.
         seed = int(os.environ.get('RUN_SEED', '2000'))
+        # P2 repeat-variance: a per-job 'seed' overrides the run-global RUN_SEED so
+        # identical (agent,route,weather) triples can be re-evaluated under different
+        # closed-loop RNG (traffic-manager + scenario spawns). Normal jobs carry no
+        # 'seed' -> the fixed reproducible seed is used exactly as before.
+        if job.get('seed') is not None:
+            seed = int(job['seed'])
 
         # Provenance manifest next to results.json: exactly what produced this run.
         self._write_manifest(save_path, job, agent_cfg, routes_file, scenarios_file,
