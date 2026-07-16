@@ -77,16 +77,36 @@ is infraction-free (times out rather than risk). Render the grouped bars on your
 
 ## Item #2 — Fig 4 re-scoped: persistence + scaling (§7.2)
 
-**Persistence (measured-overhead framing, not an A/B ablation):**
-- Jobs executed N = **1694**; server boots M = **24**; measured boot budget **~120 s/start**.
-- Boot overhead **avoided by persistence = 55.8 GPU-hours** (**98.6%** of per-job boots eliminated).
-- Per-job walltime: mean 3030 s, median 3600 s (= the 1 h `JOB_TIMEOUT`; boot ≈ 4% of a mean job).
-- *Caveat for caption:* 120 s is the boot-ready **budget**; some boots hit that ceiling. Frame as an
-  upper-bound overhead-savings estimate.
+> **CORRECTED 2026-07-17 — the earlier numbers here conflated three "job" units and don't survive
+> the arithmetic a reviewer does (1694×3030 s ≈ 1,425 GPU-h vs the 1,006 elsewhere). Ground truth
+> recomputed from the campaign backup (`collection_state/*.prezerowsmoke_20260715.json`):**
 
-**Scaling:** 40 active collection-hours; **42.4 jobs/hour mean** (median 48, max 48). Effective GPU
-count varied 8 (1-node) / 16 (2-node) minus parked GPUs — use that as the x-axis (data in
-`events.jsonl` job_end timestamps + parked markers).
+**Definitions (keep explicit in the caption — this is exactly the multiplication a reviewer runs):**
+- *Job* = one `(agent, weather, route-file)` evaluation execution, walltime capped at the 1 h
+  `JOB_TIMEOUT`.
+- The queue held **1,680 jobs**; the node outages meant only **135 ran to a terminal state**
+  (44 completed + 91 failed) + 8 running; **1,553 stayed pending and never executed.** Report **135
+  jobs executed**, not the queue size. (The old "N = 1694" was ≈ the queue size, mislabeled.)
+
+**Compute actually consumed:**
+- **≈100 GPU-hours** = Σ per-job walltime, each capped at 1 h (mean **0.74 h/job** over the 135
+  executed; physical ceiling 135 GPU-h). This is the honest "GPU-hours of job compute" — report this.
+- The **mean 3,030 s / median 3,600 s** walltime is the `duration` field, which exists on the **91
+  failed jobs only** (they run to the timeout); completed jobs have `duration: null`. **Do not
+  multiply 3,030 s by the queue size** — that is the 1,425 GPU-h error.
+- The **1,006 GPU-h** figure = Σ of the 135 jobs' `(start→end)` wall-clock spans (mean 7.4 h but
+  **median 1.0 h**); the long tail is node-crash/requeue idle inside the span, so it overcounts
+  compute while missing non-terminal jobs. Occupancy proxy, not compute — don't equate it to job time.
+
+**Persistence (measured, campaign-as-run):**
+- **24 server boots served the 135 executed jobs → ~83% of per-job boots eliminated (~3.7 GPU-h
+  saved).** Boot budget ~120 s/start (some boots hit that ceiling — upper bound).
+- The **98.6% / 55.8 GPU-h** figure is `(1680−24)/1680` — a **full-sweep projection** that credits
+  the 1,553 never-run jobs; use only if explicitly labelled "projected."
+
+**Scaling:** campaign wall-clock 2026-07-07 → 07-15 (**183 h**), mostly outage/idle; ~135 jobs at
+~100 GPU-compute-h. x-axis = effective GPU count (8 single-node / 16 two-node, minus parked/drained),
+from job start/end timestamps + parked markers.
 
 ---
 
@@ -104,7 +124,8 @@ count varied 8 (1-node) / 16 (2-node) minus parked GPUs — use that as the x-ax
 
 - **5** driving agents (TCP, InterFuser, CILRS, NEAT, Roach); LAV pending (collaborator/L40S).
 - **1,648** per-route evaluations, **86%** recovered from failed jobs, over **37** town×weather cells.
-- Persistence: **98.6%** of server boots eliminated (~56 GPU-h of boot overhead avoided).
+- Persistence: **~83%** of per-job server boots eliminated as measured (24 boots / 135 executed jobs;
+  ~100 GPU-h of compute); 98.6% only as a full-sweep projection.
 - Difficulty: a single scalar washes out (pooled ρ≈0.00); motivates per-model, map-aware scoring.
 
 ---

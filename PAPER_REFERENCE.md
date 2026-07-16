@@ -93,8 +93,9 @@ cannot yet contrast camera-only vs LiDAR illumination sensitivity from the LAV s
 - 21 CARLA weather presets, ClearNoon (0) → HardRainNight (20)
 
 **Core design decisions:**
-- **Persistent CARLA servers** (one per GPU) eliminate the ~60 s boot per job — ≈98.6% of boots
-  removed at steady state (§10).
+- **Persistent CARLA servers** (one per GPU) amortise the ~120 s boot across many jobs — **~83% of
+  per-job boots eliminated as measured** over the 135 executed jobs (up to 98.6% projected over a
+  full sweep; §10).
 - **One wrapper, many agents:** agent identity is a YAML config over a shared runner (§4).
 - **Job-first scheduling:** each agent advances through the queue in lockstep, so metrics
   accumulate *interleaved across agents* — if the run is cut short, no agent is left un-sampled
@@ -1405,13 +1406,29 @@ Recorded continuously into `collection_state/metrics/`:
 
 ### Persistence savings
 
-Each job would otherwise boot a fresh CARLA server (~60 s of UE4 startup) before evaluating. With
+Each job would otherwise boot a fresh CARLA server (~120 s of UE4 startup) before evaluating. With
 one **persistent** server per GPU, a boot is incurred only on first launch and after a crash/park,
-not per job — at steady state this eliminates **≈98.6%** of server boots across a run (measured from
-`metrics/servers/<node>/carla_pool.jsonl` boot events vs jobs dispatched). This is what makes a
-slower-than-real-time sweep (§2) tractable at all, and it compounds with the per-route harvest (§6):
-the machinery that keeps servers alive is the same machinery that leaves finished routes on disk
-when one finally crashes.
+not per job. **Measured on the original campaign** (`metrics/servers/<node>/carla_pool.jsonl`): **24
+server boots served the 135 jobs that actually executed** → **~83% of the per-job boots a
+restart-per-job design would incur were eliminated (~3.7 GPU-h saved on ~100 GPU-h of compute).** The
+often-quoted **98.6%** is the *full-sweep projection* — `(1680−24)/1680`, treating every queued job
+as if it ran — and must be labelled as such, because the outages left **1,553 of the 1,680 queued
+jobs pending/never-executed** (see §10 "Accounting note"). Either way the mechanism is what makes a
+slower-than-real-time sweep (§2) tractable, and it compounds with the per-route harvest (§6): the
+machinery that keeps servers alive is the same machinery that leaves finished routes on disk when one
+crashes.
+
+**Accounting note (GPU-hours — a cross-caption trap).** Three different "job" units are easy to
+conflate:
+- **Jobs executed = 135** (44 completed + 91 failed), *not* the queue size 1,680 — 1,553 never ran.
+- **Actual GPU-compute ≈ 100 GPU-h** = Σ per-job walltime, each capped at the 1 h `JOB_TIMEOUT`
+  (mean 0.74 h/job; physical ceiling 135 GPU-h).
+- **`duration` mean 3,030 s / median 3,600 s** describes only the **91 failed** jobs (they run to the
+  timeout); completed jobs have `duration: null`. Do **not** multiply 3,030 s by the queue size.
+- A **1,006 GPU-h** figure = Σ of the 135 jobs' `(start→end)` wall-clock spans; those spans absorb
+  node-crash/requeue idle (mean 7.4 h, **median 1.0 h**), so it overcounts compute *and* misses
+  non-terminal jobs — an occupancy proxy, not compute. **Report ~100 GPU-h of compute over 135
+  executed jobs**, not 1,006 or 1,425.
 
 ### Figure generation
 
@@ -1470,8 +1487,9 @@ via the timeout mechanism). A per-agent multi-axis model, not one global scalar,
 object.
 
 **F7 — Persistent servers + resilience are what make the throughput real.** One persistent CARLA per
-GPU eliminates ≈98.6% of process boots (§10); the restart-hardening + park-on-unkillable machinery
-(§9) is what let the 1,648 route-evals survive intermittent GL segfaults and node drains. The
+GPU eliminated ~83% of per-job boots as measured (24 boots served 135 executed jobs; up to 98.6%
+projected over a full sweep — §10); the restart-hardening + park-on-unkillable machinery (§9) is what
+let the 1,648 route-evals survive intermittent GL segfaults and node drains. The
 unresolved ceiling is host-side: whole-node "Not responding" crashes under sustained A100 load,
 which no user-space fix reaches. (§9)
 
