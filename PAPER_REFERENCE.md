@@ -977,8 +977,20 @@ vs Town05 (open) 10–19% — yet the model scores all towns ~identically. The f
 length, curvature — read from **OpenDRIVE**, offline from a `.xodr` or in-sim via
 `carla.Map.to_opendrive()`, so **custom user maps score by the same logic with no hardcoding**.
 Validated on the collected towns: `junctions_per_road_km` ranks Town02 (4.00) > Town01 (2.85) >
-Town05 (2.27), matching observed difficulty. A per-*route* version (junctions along the interpolated
-path) needs the sim; the offline endpoint approximation is too coarse (2-waypoint straight line).
+Town05 (2.27), matching observed difficulty.
+
+**Per-route map density is now computed (not blocked).** `tools/route_map_density.py` reproduces the
+leaderboard's runtime interpolation (`GlobalRoutePlanner` over the map topology) **offline** — it
+builds `carla.Map(name, xodr)` from the town `.xodr` with **no server and no GL** (so it sidesteps
+the segfault entirely) — and measures, along the true driven path of all 2,345 routes: interpolated
+length, junction waypoints, distinct junctions traversed, and curvature. Joined to the 1,648
+route-evals (100% match), the useful feature is the **count of distinct intersections driven
+through**, `n_distinct_junctions` (pooled Spearman **−0.295** vs `score_composed`) — a real per-route
+difficulty axis and stronger than the old scalar (~0). Note the *rate* form washes out
+(`junctions_per_km` +0.022); it is the absolute intersection **count** that predicts, with curvature
+`heading_deg_per_km` a weaker second (−0.186). This supersedes the earlier "needs the sim / endpoint
+approximation too coarse" limitation and gives the noisy-OR model a geometry input that survives at
+n=1648.
 
 **Per-agent nuance.** Difficulty predicts failure for the condition-dependent agents (InterFuser /
 NEAT / Roach, near the ceiling) but **not** CILRS (fails near-uniformly) or TCP (failures run
