@@ -3,19 +3,24 @@
 *Comprehensive reference for paper writing. Contains exact parameter values,
 architecture specifications, implementation details, and engineering decisions.*
 
-*Last updated: **2026-07-15**. State of the project: five productive agents
+*Last updated: **2026-07-21**. State of the project: five productive agents
 (TCP, InterFuser, CILRS, NEAT, Roach; **LAV** server-limited) evaluated as modular
-pipelines. **1,648 per-route evaluations** harvested, **86% recovered from crashed
-/ "failed" jobs** — the recovery-and-accounting thesis in action (§6, §8). The
-difficulty model was substantially reworked and honestly **re-validated at n=1648**:
-the single scalar **washes out**, its geometry/scenario terms are **degenerate** for
-the routes actually collected (2-waypoint endpoints), and the recoverable signal is
-**illumination + map urban-density** (§7, §11). Cluster reliability degraded from
-intermittent GL segfaults to **recurrent whole-node crashes** under sustained A100
-load; a **park-on-unkillable** mitigation was added and the run is **currently paused**
-pending admin node stabilization (§9). Sections **4–5** (agent internals), **10**, and
-the **appendices** are stable reference; **§1–3, 6–9, 11** carry the current-state
-narrative and were rewritten this pass.*
+pipelines. The full stratified sweep **completed** on the rebooted pod09/pod17:
+**13,059 per-route evaluations** harvested, **94% recovered from crashed / "failed"
+jobs**, with **balanced illumination coverage** (noon/sunset/night ≈ equal) — the
+recovery-and-accounting thesis at full scale (§6, §8). On this balanced 13k set the
+per-agent means dropped ~30 pts and **re-ranked** (TCP top, InterFuser mid) versus the
+earlier coverage-collapsed 1,648-eval slice (§8). The difficulty model was reworked and
+**re-validated at n=1648** (analyses §7 pre-date the full sweep): the single scalar
+**washes out**, its geometry/scenario terms are **degenerate** (2-waypoint endpoints),
+and the recoverable signal is **illumination + map urban-density**, with per-route
+`n_distinct_junctions` a real axis and the ~0.65 AUC ceiling shown partly **irreducible
+closed-loop noise** (§7, §11). Cluster reliability: WekaFS storage fencing was the
+whole-node-crash root cause; an admin reboot + **sensor-sharding** cleared it, validated
+by the 4.5-day sweep completing with **no fencing** (§9). Sections **4–5** (agent
+internals), **10**, and the **appendices** are stable reference; **§1–3, 6–9, 11** carry
+the current-state narrative. NB: §7 correlations still cite the n=1648 harvest —
+re-running them on the 13k balanced set is a pending follow-up.*
 
 ---
 
@@ -1052,33 +1057,46 @@ dataset/
           run_summary.json
 ```
 
-### Current collection status (as of 2026-07-15)
+### Current collection status (as of 2026-07-21 — full sweep complete)
 
-**Headline: 1,648 per-route evaluations across the 5 productive agents, ≈86% recovered from
+**Headline: 13,059 per-route evaluations across the 5 productive agents, 94.3% recovered from
 "failed" jobs** by `tools/harvest_results.py` (which unions `job_queue.json` with
 `completed_jobs.json` and reads every expected `results.json`, §6/§9). File-level completion
-accounting would report only the ~14% from cleanly-finished jobs; the per-route harvest is what
-turns crash-truncated suites into usable data. **The route-eval is the reportable unit**, not the
-completed job.
+accounting would report only the ~6% from cleanly-finished jobs; the per-route harvest is what turns
+crash-truncated suites into usable data. **The route-eval is the reportable unit**, not the completed
+job. The full 2,835-job stratified sweep ran to a clean SLURM `COMPLETED` over 4.5 days on
+pod09/pod17 with **no WekaFS fencing** — validating the reboot + sensor-sharding fix at full scale
+(§9).
 
-Per-agent mean `score_composed` from the canonical harvest (`tools/harvest_results.py` over the live
-`completed_jobs.json` + `job_queue.json`, n = 1,648):
+**Illumination coverage is now balanced** — noon 4,130 / sunset 4,483 / night 4,446 — a direct result
+of the `COVERAGE_QUOTA` stratified scheduler (§7). This is the key qualitative change from the earlier
+1,648-eval harvest, whose coverage had collapsed onto the darkest/rainiest presets.
+
+Per-agent mean `score_composed` from the canonical harvest (n = 13,059):
 
 | Agent | n (route-evals) | Mean score_composed | Mean route completion | Character |
 |-------|----------------:|--------------------:|----------------------:|-----------|
-| InterFuser | 140 | **88.7** | 88.7 | highest mean; camera+LiDAR fusion (smallest n — see below) |
-| NEAT | 223 | 86.5 | 90.3 | strong; neural attention fields |
-| TCP | 269 | 86.3 | 87.1 | strong; but fails by *timeout* in dense towns (§7) |
-| Roach | 539 | 86.2 | 93.4 | strong; RL-coached |
-| CILRS | 477 | 41.4 | 55.4 | genuine weak baseline (audited — not an integration bug, §5.4) |
+| TCP | 2,515 | **66.8** | 80.8 | most robust across the full condition space |
+| Roach | 3,304 | 61.8 | 87.5 | strong; RL-coached |
+| InterFuser | 1,238 | 56.6 | 71.8 | camera+LiDAR fusion (fewest evals — slow, times out more) |
+| NEAT | 1,860 | 55.1 | 79.4 | neural attention fields |
+| CILRS | 4,142 | 24.6 | 54.1 | genuine weak baseline (audited — not an integration bug, §5.4) |
 
-The four non-CILRS agents cluster tightly at **86–89**; CILRS sits far below as the intended weak
-baseline. **Caution on ranking within the top cluster:** the ordering is not robust — InterFuser
-leads on the *smallest* sample (n = 140) and the top four are within ~2.5 points. An earlier n ≈ 204
-harvest had InterFuser *last* of the five (71.8) and Roach top (90.4); those figures were themselves
-small-sample artifacts that reshuffled at scale — the same lesson §7 draws for the difficulty
-correlations. Cite the n = 1,648 means with their `n`, and treat the CILRS-vs-rest gap (not the
-intra-cluster order) as the load-bearing separation.
+**The numbers dropped ~30 points and re-ranked versus the 1,648-eval harvest** (which had InterFuser
+top at 88.7, all four non-CILRS clustered 86–89). This is not a regression — it is the balanced,
+full-coverage dataset: the earlier means were measured on a coverage-collapsed slice dominated by
+easier conditions, so adding the full night/rain/long-route space lowers every mean and spreads them
+out. **TCP rises to the top and InterFuser falls to mid** — TCP's cautious control pays off across the
+harder conditions, exactly the robustness §7 attributes to it, while InterFuser's earlier lead was an
+easy-condition artifact. This is the third and largest confirmation of the standing caution that the
+intra-agent ranking is not robust to sample/coverage (cf. the n≈204→1648 reshuffle) — **now settled
+on 13k balanced evals.**
+
+**One comparability caveat for Table 2:** per-agent `n` differs 3× (CILRS 4,142 vs InterFuser 1,238)
+because faster agents complete more routes per timeout-capped job, so the *conditions actually scored*
+are not identically distributed across agents. The means are informative and the CILRS-vs-rest gap is
+unambiguous, but a fully rigorous cross-agent comparison should be condition-matched (per weather×town
+cell) — worth a paragraph if the ranking is load-bearing in the paper.
 
 **Validation smokes (post-resilience):** interfuser 8/8 and tcp 8/8 routes; CILRS/NEAT/Roach 4/4
 each — zero agent-code errors, zero GPUs parked. LAV 0/4 (server crash at `load_world`). These
