@@ -146,21 +146,21 @@ significant; `geom`/`scen` confounded (r≈0.96), `precip`/`fog` n.s.
 Illumination sensitivity is ordered weak-baseline-first: CILRS ≫ InterFuser ≈ NEAT > TCP ≈
 Roach. Full table written to `paper_artifacts/sensitivity_matrix.md`.
 
-**B3 · difficulty_model_comparison (AUC)** (§6.3 / abstract): the tool doesn't scale to 13k (the
-per-eval scalar re-parse × 5-fold CV times out); run on a **representative 3,265-eval subsample**
-(every 4th row):
+**B3 · difficulty_model_comparison (AUC)** (§6.3 / abstract): **run at FULL n = 13,059** (the tool was
+vectorized — route-difficulty parse memoized by route file; now 4m56s vs previously non-terminating,
+verify #27). 5-fold CV, predicting failure:
 
-| model | AUC (13k subsample) | AUC (old 1.6k) |
-|---|---:|---:|
-| scalar difficulty | **0.464** | 0.53 |
-| illumination + geometry (multi-axis) | **0.527** | 0.62 |
+| model | AUC @ full 13,059 | (3.3k subsample) | AUC @ old 1.6k |
+|---|---:|---:|---:|
+| scalar difficulty | **0.456** | 0.464 | 0.53 |
+| illumination + geometry (multi-axis) | **0.523** | 0.527 | 0.62 |
 
 Multi-axis beats scalar on held-out **log-loss 6/6 agents**, AUC 5/6. Two readings: (a) the scalar
-AUC fell **below 0.5** — confirming B1's "backwards" (its correlation is positive); (b) the
-multi-axis AUC also dropped (0.62→0.53) because the balanced set is harder and, per P2, a real slice
-of outcomes are seed-noise — so **the ceiling not only holds but the achievable AUC is lower on the
-full-difficulty set**, strengthening the irreducible-stochasticity reading. *(Caveat: subsample, not
-full 13k — the tool needs vectorizing to run at full n; direction and margin are stable.)*
+AUC is **below 0.5** — confirming B1's "backwards" (its correlation is positive); (b) the multi-axis
+AUC also dropped (0.62→0.52) because the balanced set is harder and, per P2, a real slice of outcomes
+are seed-noise — so **the ceiling holds and the achievable AUC is lower on the full-difficulty set**,
+strengthening the irreducible-stochasticity reading. The full-n numbers confirm the subsample (Δ ≤
+0.01), so **the §6.3 subsample caveat can be dropped**.
 
 **B4 · per-route density vs score** (Spearman, n=12,343 matched):
 

@@ -33,14 +33,24 @@ def _num(x):
 
 def load(csv_path, model):
     rows = []
+    # Memoize the route/scenario difficulty (parses route XML) by route file and the
+    # weather axes by index — both are O(distinct) not O(rows). Without this the parse
+    # ran once per route-eval (13k×) and the tool timed out at full n; with ~27 route
+    # files and 21 weathers it now runs in seconds. (verify #27: vectorize to full 13k)
+    _rd_cache = {}
+    _ax_cache = {}
     with open(csv_path, newline="") as f:
         for r in csv.DictReader(f):
             route = r.get("route_file", "")
             try: w = int(r.get("weather"))
             except (TypeError, ValueError): continue
-            geom = model.route_difficulty(route); scen = model.scenario_difficulty(route)
+            if route not in _rd_cache:
+                _rd_cache[route] = (model.route_difficulty(route), model.scenario_difficulty(route))
+            geom, scen = _rd_cache[route]
             wd = _WEATHER_DIFF[w] if 0 <= w < len(_WEATHER_DIFF) else 2.5
-            ax = weather_axes.axes(w)
+            if w not in _ax_cache:
+                _ax_cache[w] = weather_axes.axes(w)
+            ax = _ax_cache[w]
             feat = {"geom": geom, "scen": scen,
                     "scalar": geom + scen + wd,               # the OLD difficulty
                     "illum_dark": ax["illum_dark"], "precip": ax["precip"],
