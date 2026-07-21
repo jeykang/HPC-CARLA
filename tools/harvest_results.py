@@ -183,7 +183,7 @@ FIELDS = [
     "route_id",
     "score_composed", "score_route", "score_penalty", "status",
 ] + [col for _, col in INFRACTION_COLUMNS] + [
-    "route_length", "job_status", "job_id",
+    "route_length", "job_status", "job_id", "seed",
 ]
 
 
@@ -247,6 +247,9 @@ def rows_from_checkpoint(data, job):
             "route_length": _num(meta.get("route_length")),
             "job_status": job.get("status"),
             "job_id": job.get("id"),
+            # Per-job seed if present (P2 repeat-variance jobs), else the campaign
+            # RUN_SEED default (2000) — lets the paper split pre/post-P2 evals (§E).
+            "seed": job.get("seed", 2000),
         }
         for key, col in INFRACTION_COLUMNS:
             row[col] = _infraction_count(infr.get(key))
@@ -312,6 +315,7 @@ def harvest(jobs, dataset_dir):
             row["weather"] = job.get("weather", row["weather"])
             row["job_status"] = job.get("status")
             row["job_id"] = job.get("id")
+            row["seed"] = job.get("seed", 2000)
             row.update(_weather_cols(row["weather"]))
 
             key = (row["agent"], str(row["weather"]), str(row["town"]),
