@@ -33,6 +33,29 @@ bundle **plus the new `seed` column** on `per_route_results.csv`. Regenerate wit
 
 ---
 
+## Bundle-file corrections (Fig 7 un-scoping — verify items #26)
+
+Two bundle files were re-exported after the first pass; **both are corrected in the shipped
+bundle and in `tools/figure_data_export.py`:**
+
+- **`figL4_server_boots_current.csv`** — was NOT stale, but its schema invited a misread: the boot
+  count lives in the (former) `healthy`/`launch_attempts` columns (Σ=**2,363**), while
+  `relaunch_triggers` (Σ=52) is only the no-listener sub-path. **Fixed schema:** primary column
+  renamed **`server_boots`** (= 2,363; P4-clean 2,322), with `relaunch_triggers_nolistener` kept
+  clearly secondary. Fig 7b plots `server_boots`. → **unscoped to the full sweep.**
+- **`figL5_exceptions_from_logs.csv`** — the worker logs **accumulate across runs** (no per-line
+  timestamps), so the raw tally mixed the original campaign (AgentError 100 / ValueError 50 /
+  Timeout 5 are pre-P4 residue) with P4 (only RuntimeError grew, 37→565). **Fixed:** the exporter
+  now subtracts a prior-run baseline (`EXC_BASELINE` env). Full-sweep-attributable exceptions:
+  **RuntimeError 528, AttributeError 1, all others 0** — i.e. the sweep's failures are
+  CARLA/infra (timeouts, GL), **not agent-code** (0 new AgentErrors over 13k evals — a clean Fig 7a
+  story). The CSV now carries `count_full_sweep`, `count_cumulative`, and a `note`. → **unscoped.**
+
+*(The cleaner Fig 7a source remains the outcome taxonomy `figL5_outcome_taxonomy.csv`, which is
+built from the 13k harvest and was full-sweep all along.)*
+
+---
+
 ## §C — Campaign-level counts (stated explicitly)
 
 - **Total valid route-evals n = 13,059** (was 1,648). **94.3% recovered from queue-`failed`
@@ -45,8 +68,12 @@ bundle **plus the new `seed` column** on `per_route_results.csv`. Regenerate wit
   - **Occupancy ≈ 1,716 GPU-h** = Σ terminal-job (start→end) spans (mean 0.61 h, median 0.52 h
     — spans ≈ compute this run because there were **no outages**, unlike the original where
     spans were idle-contaminated). ≈ 16 GPUs × 108.6 h wall-clock (1,738) → ~85% duty cycle.
-- **Server boots = 2,363** over the run (Σ per-GPU, 133–168/GPU) — dominated by GL-segfault
-  recoveries. 1.20 jobs/boot; 16.6% of per-job boots eliminated vs restart-per-job.
+- **Server boots = 2,363** (worker-log, per node/gpu, 133–168/GPU) — **2,322 P4-clean** from the
+  job-scoped SLURM `.out` (the ~41 difference is pre-P4 residue in the accumulated worker logs).
+  Dominated by GL-segfault recoveries. 1.20 jobs/boot; 16.6% of per-job boots eliminated vs
+  restart-per-job. **In `figL4_server_boots_current.csv` this is the `server_boots` column — NOT
+  `relaunch_triggers_nolistener` (Σ=52), which is only the no-listener sub-path and undercounts ~45×
+  (most boots follow a segfault). See "Bundle-file corrections" below.**
 - **Coverage: 168 distinct town×weather cells (8 towns × 21 weathers), FULLY covered by every
   one of the 5 agents** (was 37 cells). Full factorial.
 

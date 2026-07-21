@@ -189,12 +189,24 @@ def build_L5(outcome, by_agent, log_glob, out_dir):
                         exc[m] += 1
         except OSError:
             pass
+    # Worker logs ACCUMULATE across runs (no per-line timestamps), so the raw tally
+    # mixes campaigns. Subtract a prior-run baseline (env EXC_BASELINE as JSON, e.g.
+    # the 2026-07-15 counts) to attribute exceptions to the current sweep. Without a
+    # baseline, count_full_sweep == count_cumulative.
+    baseline = {}
+    _b = os.environ.get("EXC_BASELINE", "")
+    if _b:
+        try:
+            baseline = {k: int(v) for k, v in json.loads(_b).items()}
+        except Exception:
+            baseline = {}
     ep = os.path.join(out_dir, "figL5_exceptions_from_logs.csv")
     with open(ep, "w", newline="") as f:
         w = csv.writer(f)
-        w.writerow(["exception_type", "count"])
-        for s, n in exc.most_common():
-            w.writerow([s, n])
+        w.writerow(["exception_type", "count_full_sweep", "count_cumulative", "note"])
+        note = "delta vs baseline (logs accumulate)" if baseline else "cumulative (no baseline)"
+        for s, n in sorted(exc.items(), key=lambda kv: -kv[1]):
+            w.writerow([s, max(0, n - baseline.get(s, 0)), n, note])
     return total, dict(exc)
 
 
@@ -227,9 +239,13 @@ def build_L4(log_glob, state_dir, out_dir):
     cp = os.path.join(out_dir, "figL4_server_boots_current.csv")
     with open(cp, "w", newline="") as f:
         w = csv.writer(f)
-        w.writerow(["node", "gpu", "relaunch_triggers", "launch_attempts", "healthy"])
+        # server_boots (= 'healthy' events) is THE boot count and the primary column;
+        # relaunch_triggers_nolistener is only the no-listener sub-path (most boots
+        # follow a segfault, not a no-listener) — kept secondary so it can't be
+        # misread as the boot total (it undercounts ~45x).
+        w.writerow(["node", "gpu", "server_boots", "relaunch_triggers_nolistener"])
         for (node, gpu), c in sorted(boots.items()):
-            w.writerow([node, gpu, c["relaunch_triggers"], c["launch_attempts"], c["healthy"]])
+            w.writerow([node, gpu, c["healthy"], c["relaunch_triggers"]])
 
     # (b) historical run: rich carla_pool.jsonl (ready_seconds + events over time)
     hist_rows = []
