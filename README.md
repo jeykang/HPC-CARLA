@@ -5,6 +5,10 @@ persistent CARLA server per GPU continuously drains a queue of **agent × route 
 collecting per-route CARLA-Leaderboard driving scores (and, optionally, raw sensor data) across a
 roster of driving agents.
 
+**Paper:** *HPC-CARLA: Closed-Loop Evaluation of Autonomous Driving Agents as a Resilient,
+Schedulable HPC Workload* — accepted at WORKS 2026 (SC26 Workshops). J. Kang, S. Jung, K. Kim,
+C. Gardner, J.-S. Yeom, T.-H. Ahn, J.-W. Kim.
+
 The current focus is a **cross-hardware comparison (A100 ↔ L40S).** The A100 is a compute GPU with
 a weak real-time rasteriser, so CARLA renders slowly and segfaults intermittently at GL-context
 creation; the pipeline is hardened to *recover* from that rather than crash. A portable launcher
@@ -29,10 +33,10 @@ generic `TorchModelRunner` loads any checkpointed model from `{module, class_nam
 |-------|--------|---------|--------|
 | **TCP** | Trajectory-guided Control + PID (NeurIPS'22) | 1 camera | productive |
 | **InterFuser** | Interpretable multi-sensor fusion transformer (CoRL'22) | 3 cameras + LiDAR | productive |
-| **CILRS** | Conditional Imitation Learning + ResNet (ICCV'19) | 1 camera | productive — a deliberately weak baseline ([§5.4](PAPER_REFERENCE.md)) |
+| **CILRS** | Conditional Imitation Learning + ResNet (ICCV'19) | 1 camera | productive ([integration audit, §5.4](PAPER_REFERENCE.md)) |
 | **NEAT** | Neural Attention Fields (ICCV'21) | 3 cameras | productive |
 | **Roach** | RL-Coached imitation (ICCV'21) | 1 camera | productive |
-| **LAV** | Learning from All Vehicles (CVPR'22) | 4 cameras + LiDAR | **server-blocked on A100** — crashes CARLA at `load_world`; may run on L40S |
+| **LAV** | Learning from All Vehicles (CVPR'22) | 4 cameras + LiDAR | **server-blocked on A100** — crashes CARLA at `load_world`; runs on L40S ([L40S run](#l40s-cross-hardware-run)) |
 
 Four of the five productive agents are camera-only; **only InterFuser (and LAV) use LiDAR.** That
 modality split drives the difficulty analysis below. Agent weights are gitignored and fetched on
@@ -76,14 +80,15 @@ health-checks the reboot (port open *and* process still alive), retries, and **p
 cannot boot (so it stops burning the queue) while periodically re-attempting. Per-GPU `HOME`
 isolation prevents shader-cache contention. See [`PAPER_REFERENCE.md` §9](PAPER_REFERENCE.md).
 
-### The metric is *per route*, not per file
-Each route *file* is a **suite** of many short routes (a `_tiny` file holds 300–450), run in
-sequence and **checkpointed per route** into `results.json`. On unstable hardware a server often
-crashes mid-suite, so whole *files* rarely finish — but every route completed beforehand is saved,
-even in jobs the queue marks `failed`. [`tools/harvest_results.py`](tools/harvest_results.py)
-recovers those per-route scores from every job's checkpoint; on the current run **~89% of harvested
-route-evals come from `failed` jobs.** The reportable unit is the **route-eval**, and
-`per_route_results.csv` is the primary artifact.
+### How route evaluations are saved
+A job runs one agent through one route file in one weather preset. The routes run in sequence.
+For example, the eight `_tiny` files contain 117–442 routes each. The evaluator checkpoints each
+route's outcome and scores in `results.json`. If the job stops partway through the file, whether
+because of a time limit or an error, the records already written can still be harvested.
+
+[`tools/harvest_results.py`](tools/harvest_results.py) collects these records in
+`per_route_results.csv`, one row per saved route evaluation. A row can describe a completed drive,
+a driving failure, or a simulator crash. The queue records the outcome of the enclosing job separately.
 
 ### Scheduling — job-first, hardest-first, coverage-aware
 `manage_continuous.py` sorts pending jobs by
@@ -151,22 +156,71 @@ block, then `setup → smoke → run → export`.
 
 ---
 
-## Current status (snapshot, 2026-07-07 — live; use `harvest_results.py` for current numbers)
+## Final campaign (paper numbers)
 
-Active run on A100 (`pod17`): **1,680-job** queue (5 productive agents × short/tiny routes × 21
-weathers), draining continuously. Per-route harvest so far:
+The GIST campaign ran on two nodes with eight A100 GPUs each. All 2,835 evaluation jobs
+(5 agents × 27 route files × 21 weather presets) reached a terminal state in 108.6 hours.
+The queue marked 511 jobs `completed` and 2,324 `failed`. **Of the 13,059 saved route evaluations,
+12,316 (94%) came from jobs marked `failed`.** Each job can contribute several records, including records of unsuccessful drives.
 
-| Agent | route-evals | mean driving score |
-|-------|------------:|-------------------:|
-| roach | 78 | 86.2 |
-| tcp | 48 | 83.8 |
-| neat | 37 | 81.2 |
-| interfuser | 16 | 67.3 |
-| cilrs | 94 | 32.4 |
+Each agent had a saved record in all 168 town × weather combinations and a non-crash record in
+126. In the 42 combinations from Town06 and Town10, all 525 records were simulator crashes.
 
-CILRS is low **by design** — audited end-to-end and confirmed genuine weak-baseline behaviour, not
-an integration bug ([`PAPER_REFERENCE.md` §5.4](PAPER_REFERENCE.md)). Illumination coverage is being
-backfilled by the coverage-aware scheduler so the per-model sensitivity axis becomes identifiable.
+| Agent | route-evals | mean driving score | mean route completion |
+|-------|------------:|-------------------:|----------------------:|
+| TCP | 2,515 | 66.8 | 80.8 |
+| Roach | 3,304 | 61.8 | 87.5 |
+| InterFuser | 1,238 | 56.6 | 71.8 |
+| NEAT | 1,860 | 55.1 | 79.4 |
+| CILRS | 4,142 | 24.6 | 54.1 |
+
+Both means include the 105 Town06 and Town10 crash records per agent. Each of those records
+contributes zero to both columns. Every agent was assigned the same 567 jobs, but the jobs
+produced different sets of episode records, so the means cover different episodes.
+
+CILRS had the lowest mean driving score. We checked channel order, normalization, command mapping,
+brake gating, and checkpoint loading and found no integration error that explained its low score.
+See the [CILRS audit in §5.4](PAPER_REFERENCE.md) for the implementation checks.
+
+Full figures and tables: [`METRICS_REFRESH_RESULTS_2026-07-21.md`](METRICS_REFRESH_RESULTS_2026-07-21.md).
+
+## L40S cross-hardware run
+
+TCP, NEAT, and LAV also ran on SLU's Libra cluster. For TCP and NEAT, the two sites used the same
+container, policy configuration, route files, weather presets, and random seed (`RUN_SEED=2000`).
+Both the GPU and the driver differed between GIST and SLU, so their individual effects cannot be
+separated. The SLU launch scripts set a one-hour limit per job for TCP and NEAT. On GIST, 359 A100
+jobs recorded evaluator durations longer than 61 minutes.
+
+| Agent | route-evals (L40S) |
+|-------|-------------------:|
+| TCP | 5,930 |
+| NEAT | 3,027 |
+| LAV | 1,255 |
+
+The table compares driving scores for episodes matched on agent, route file, route ID, weather,
+and seed. Both full matched sets include Town01–Town07 and Town10.
+
+| Population | episodes | mean change (L40S − A100) | identical scores |
+|------------|---------:|--------------------------:|-----------------:|
+| TCP, all matched | 2,505 | +15.9 | 59% |
+| TCP, Towns 01–05 † | 2,014 | −0.05 | 73% |
+| NEAT, all matched | 1,516 | −0.7 | 70% |
+
+† The TCP comparison restricted to Towns 01–05 was added after the camera-ready. TCP's overall
+score shift was concentrated in Town07 (a suspected scoring anomaly) and Town06/Town10, where
+all A100 records were simulator crashes.
+
+None of TCP's 104 matched A100 simulator crashes recurred on L40S. For NEAT, all 105 recurred.
+Those 105 pairs scored zero on both stacks and count toward NEAT's 70% score agreement.
+
+In the four-route illumination comparison, NEAT's mean L40S driving scores at noon, sunset,
+and night were 75.9, 69.2, and 71.7, respectively. Its noon-to-night change was −4.2 points on
+L40S and −27.0 on A100. LAV's L40S means were 32.3, 33.7, and 29.5 (−2.8 points). A separate
+model of episode failure fitted to the full campaigns gave NEAT a darkness weight of 0.58 on
+A100 and 0.50 on L40S.
+
+Watchdog stall restarts on L40S: LAV 388, TCP 1, NEAT 0.
 
 ---
 
