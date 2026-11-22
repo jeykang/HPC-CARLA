@@ -30,12 +30,16 @@ Each job writes ``save_path/results.json`` where (mirrored verbatim from
 We enumerate the expected paths from the job records (NOT by walking the huge
 ``dataset/`` tree). Finished jobs are read from two state files:
 
-  * ``job_queue.json``       — the live queue (``completed`` + ``pending``).
-  * ``completed_jobs.json``  — the archive of FINISHED jobs, and the ONLY place
-    that records ``failed`` jobs. A failed job is reset to ``pending`` in the
-    queue for a future retry, so its per-route data is invisible unless we also
-    read ``completed_jobs.json`` (sibling of the queue file). This is the same
-    two-file union that ``tools/difficulty_validation.py::load_completed`` uses.
+  * ``job_queue.json``       — the live queue: each job's current status.
+  * ``completed_jobs.json``  — the archive (sibling of the queue file): one entry
+    per finished ATTEMPT, appended in order, so a retried job appears more than
+    once. It is needed for jobs whose queue record is no longer finished — a
+    failed job that ``retry`` reset to ``pending`` still has its per-route data
+    on disk, and only the archive remembers that it ran.
+
+Each job is labelled with the status of its LATEST finished attempt, because a
+retry replaces the job directory: the results.json on disk belongs to that
+attempt, not to an earlier one.
 
 RESULTS.JSON FORMAT (confirmed against real files on 2026-07-07)
 ---------------------------------------------------------------
@@ -126,9 +130,8 @@ def results_path_for(dataset_dir, job):
 
 # =============================================================================
 # Job loading — union job_queue.json + sibling completed_jobs.json, keep only
-# FINISHED jobs (status in {completed, failed}). The completed_jobs.json record
-# is authoritative for the finished status (a failed job reads as 'pending' in
-# the queue), so it wins on a per-id conflict.
+# FINISHED jobs (status in {completed, failed}), one record per job id carrying
+# the status of that job's latest finished attempt.
 # =============================================================================
 FINISHED = ("completed", "failed")
 
@@ -145,27 +148,33 @@ def _load_jobs(path):
 
 
 def load_finished_jobs(queue_path):
-    """Union of finished (completed|failed) jobs across the queue and its
-    sibling completed_jobs.json, deduped by id.
+    """Finished (completed|failed) jobs from the queue and its sibling
+    completed_jobs.json: one record per job id, with the status of the job's
+    latest finished attempt.
 
-    completed_jobs.json is authoritative (it is the only source of 'failed'),
-    so its record overrides a queue record for the same id.
+    * The archive is append-only, one entry per finished attempt in time order,
+      so for a job that was retried the LAST entry is the current one.
+    * A queue record that is itself finished is the live state and takes
+      precedence. (The two agree whenever both exist; the queue can be ahead
+      for a job recovered by `reclaim`.)
+    * A job whose queue record is pending/running again (reset by `retry`) is
+      taken from the archive.
     """
     queue_path = Path(queue_path)
     completed_path = queue_path.parent / "completed_jobs.json"
 
     by_id = {}
-    # completed_jobs.json first so its finished status is authoritative...
-    for src in (completed_path, queue_path):
+    without_id = []
+    for src in (completed_path, queue_path):      # archive first, queue overrides
         for job in _load_jobs(src):
             if job.get("status") not in FINISHED:
                 continue
             jid = job.get("id")
-            key = jid if jid is not None else id(job)
-            # ...but let a later 'completed' upgrade never be shadowed: only
-            # fill if absent, so the authoritative completed_jobs.json wins.
-            by_id.setdefault(key, job)
-    return list(by_id.values())
+            if jid is None:
+                without_id.append(job)
+            else:
+                by_id[jid] = job                  # later attempt / live state wins
+    return list(by_id.values()) + without_id
 
 
 # =============================================================================

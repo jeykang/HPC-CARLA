@@ -71,6 +71,14 @@ def classify_route(status):
     return "infra_fail"
 
 
+def is_driving_outcome(status):
+    """True if a route `status` is a scored driving result (the agent completed
+    the route or failed it by driving), False for a simulator crash, an agent
+    code/config error, or an unknown status. The failure-model tools use this to
+    keep infrastructure failures out of the 'agent failed' label."""
+    return classify_route(status) in ("valid_pass", "valid_fail")
+
+
 def classify_results(results):
     """Classify a parsed results.json dict.
 

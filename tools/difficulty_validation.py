@@ -48,6 +48,9 @@ import sys
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from classify_outcomes import is_driving_outcome  # noqa: E402
+
 # ---- optional acceleration / stats / plotting (ALL guarded) -----------------
 try:
     import numpy as _np  # noqa: F401
@@ -316,7 +319,7 @@ def _to_float(x):
         return None
 
 
-def load_per_route(csv_path):
+def load_per_route(csv_path, count_crashes=False, stats=None):
     """Load a harvested per-route CSV (tools/harvest_results.py output) as
     job-like dicts, so build_records() computes difficulty-vs-performance at
     PER-ROUTE granularity — one data point per route eval — instead of one
@@ -331,11 +334,24 @@ def load_per_route(csv_path):
     paired here with its own per-route score_composed. Rows without a numeric
     score_composed are dropped downstream by _has_score(). Returns [] on any
     read problem (mirrors load_completed's graceful failure).
+
+    Route records that are not driving outcomes — simulator crashes, agent
+    code/config errors — are skipped: their score of 0 reflects the
+    infrastructure, not how the agent drove under that difficulty. Pass
+    count_crashes=True to keep them (the pre-fix behaviour). A CSV with no
+    `status` column is not filtered. `stats`, if given, receives
+    stats["excluded_non_driving"].
     """
     jobs = []
+    excluded = 0
     try:
         with open(csv_path, newline="") as f:
-            for row in csv.DictReader(f):
+            reader = csv.DictReader(f)
+            filter_status = (not count_crashes) and "status" in (reader.fieldnames or [])
+            for row in reader:
+                if filter_status and not is_driving_outcome(row.get("status")):
+                    excluded += 1
+                    continue
                 weather = row.get("weather")
                 try:
                     weather = int(weather)
@@ -354,6 +370,8 @@ def load_per_route(csv_path):
                 })
     except Exception:
         return []
+    if stats is not None:
+        stats["excluded_non_driving"] = excluded
     return jobs
 
 
@@ -627,7 +645,7 @@ def _corr_row(label, n, sp, pe, note):
 
 
 def render_markdown(recs, result, backend_note, plot_path,
-                    granularity="completed file-level job"):
+                    granularity="completed file-level job", n_excluded=0):
     L = []
     A = L.append
     A("# Difficulty vs. Performance Validation")
@@ -640,6 +658,9 @@ def render_markdown(recs, result, backend_note, plot_path,
     A("")
     A(f"- Analysis unit: **{granularity}**")
     A(f"- Scored records analysed: **{result['n_scored']}**")
+    if n_excluded:
+        A(f"- Excluded as not driving outcomes (simulator crash / agent error): "
+          f"**{n_excluded}** (`--count-crashes-as-failures` keeps them)")
     A(f"- Stats backend: **{backend_note}**")
     A(f"- p-values: two-sided, Student-t approximation (df=n-2); reliable only "
       f"for n larger than ~10.")
@@ -810,6 +831,9 @@ def main(argv):
                          "When given, compute difficulty-vs-performance at PER-ROUTE "
                          "granularity (one point per route eval, far more data) from "
                          "this file instead of the default per-file completed jobs.")
+    ap.add_argument("--count-crashes-as-failures", action="store_true",
+                    help="with --per-route: keep simulator-crash / agent-error records "
+                         "(score 0) in the correlation, as before they were excluded")
     ap.add_argument("--no-write", action="store_true",
                     help="print the report only; do not write files")
     args = ap.parse_args(argv)
@@ -822,8 +846,10 @@ def main(argv):
     model = DifficultyModel(routes_dir, scenarios_dir)
     # Default: one point per completed FILE-level job. With --per-route: one
     # point per harvested route eval (far more data, incl. queue-'failed' jobs).
+    stats = {}
     if args.per_route:
-        jobs = load_per_route(args.per_route)
+        jobs = load_per_route(args.per_route, count_crashes=args.count_crashes_as_failures,
+                              stats=stats)
         granularity = "per-route eval (harvested)"
     else:
         jobs = load_completed(state_root)
@@ -838,7 +864,8 @@ def main(argv):
     if not args.no_write and recs:
         plot_path = make_scatter(recs, result, os.path.join(args.outdir, "difficulty_vs_score.png"))
 
-    md = render_markdown(recs, result, backend, plot_path, granularity)
+    md = render_markdown(recs, result, backend, plot_path, granularity,
+                         n_excluded=stats.get("excluded_non_driving", 0))
     print(md)
 
     if not args.no_write:
