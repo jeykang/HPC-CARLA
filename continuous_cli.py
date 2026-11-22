@@ -472,8 +472,17 @@ class ContinuousCLI:
         if _purged:
             print(f"[start] purged {_purged} stale __pycache__ dir(s)")
 
-        gpucomp = "/usr/lib/x86_64-linux-gnu/libnvidia-gpucomp.so.575.57.08"
-        binds = [f"{self.project_root}:/workspace", f"{gpucomp}:{gpucomp}"]
+        # libnvidia-gpucomp carries the driver version in its name, and the
+        # compute nodes' driver is not visible from the login node, so this
+        # cannot be detected here the way carla_server_manager._find_gpucomp does
+        # at launch. The default matches our nodes; set HPC_CARLA_GPUCOMP_LIB to
+        # the compute nodes' path on another cluster, or to "" to skip the bind.
+        gpucomp = os.environ.get(
+            'HPC_CARLA_GPUCOMP_LIB',
+            "/usr/lib/x86_64-linux-gnu/libnvidia-gpucomp.so.575.57.08").strip()
+        binds = [f"{self.project_root}:/workspace"]
+        if gpucomp:
+            binds.append(f"{gpucomp}:{gpucomp}")
         for var in ('SINGULARITY_BINDPATH', 'APPTAINER_BINDPATH'):
             cur = [b for b in os.environ.get(var, '').split(',') if b]
             for b in binds:
@@ -495,7 +504,7 @@ class ContinuousCLI:
         # (which supplies CHECKPOINT so each job writes its own results.json).
         os.environ['EVAL_CMD_TEMPLATE'] = (
             'singularity exec --nv --pwd /workspace \\\n'
-            f'  -B {gpucomp}:{gpucomp} \\\n'
+            + (f'  -B {gpucomp}:{gpucomp} \\\n' if gpucomp else '') +
             '  "${{CARLA_SIF}}" bash -lc \'\n'
             '  set -euo pipefail\n'
             '  export PYTHONPATH="/workspace:/workspace/leaderboard:/workspace/scenario_runner:${{PYTHONPATH:-}}"\n'
@@ -541,12 +550,19 @@ class ContinuousCLI:
         if use_slurm:
             print(f"Starting {mode_str} collection with SLURM...")
             
-            # Use dynamic script if SLURM config provided
-            if slurm_config and any([
-                slurm_config.nodes, slurm_config.nodelist, 
-                slurm_config.gpus_per_node, slurm_config.time,
-                slurm_config.partition, slurm_config.extra_directives
-            ]):
+            # Generate the submission script when any SLURM option was given. The
+            # check has to cover every option, or one passed on its own (say
+            # --slurm-account) is silently dropped. Persistent mode always
+            # generates: that coordinator carries no #SBATCH header of its own, so
+            # submitting it raw would request no GPUs at all.
+            if slurm_config and (self.persistent_mode or any([
+                slurm_config.nodes, slurm_config.nodelist, slurm_config.exclude,
+                slurm_config.gpus_per_node, slurm_config.gres, slurm_config.time,
+                slurm_config.partition, slurm_config.qos, slurm_config.account,
+                slurm_config.mem, slurm_config.cpus_per_task,
+                slurm_config.mail_type, slurm_config.mail_user,
+                slurm_config.extra_directives, not slurm_config.exclusive,
+            ])):
                 print("Generating dynamic SLURM script with custom configuration...")
                 script_to_submit = self.generate_slurm_script(slurm_config, agents, weather, routes)
                 print(f"Generated script: {script_to_submit}")
@@ -573,7 +589,7 @@ class ContinuousCLI:
                 job_id = result.stdout.strip().split()[-1]
                 print(f"✓ Job submitted: {job_id}")
                 print(f"✓ Mode: {mode_str}")
-                print(f"Monitor with: python continuous_cli.py monitor{' --persistent' if self.persistent_mode else ''}")
+                print(f"Monitor with: python continuous_cli.py{' --persistent' if self.persistent_mode else ''} monitor")
                 
                 # Save job ID for tracking
                 job_file = self.state_dir / 'current_slurm_job.txt'
@@ -597,7 +613,7 @@ class ContinuousCLI:
                 print(f"✓ Started with PID: {process.pid}")
                 print(f"✓ Mode: {mode_str}")
                 print(f"✓ Log file: {log_file}")
-                print(f"Monitor with: python continuous_cli.py monitor{' --persistent' if self.persistent_mode else ''}")
+                print(f"Monitor with: python continuous_cli.py{' --persistent' if self.persistent_mode else ''} monitor")
                 
                 # Save PID for later
                 pid_file = self.state_dir / 'coordinator.pid'
@@ -890,7 +906,6 @@ class ContinuousCLI:
                 log = _find_gpu_log(gpu_id)
                 if log is not None:
                     # Search for specific job in the consolidated log
-                    import subprocess
                     result = subprocess.run(
                         ['grep', '-A', '50', f'Job #{job_id}', str(log)],
                         capture_output=True, text=True
@@ -1001,8 +1016,10 @@ class ContinuousCLI:
 
             # Efficiency: useful GPU-time (sum of completed-job durations) over
             # total GPU busy-time. Only meaningful with both numbers present.
-            if total_gpu_time > 0 and durations:
-                efficiency = sum(durations) / total_gpu_time * 100
+            completed_durations = [j['duration'] for j in completed_data.get('jobs', [])
+                                   if j.get('duration') and j.get('status') == 'completed']
+            if total_gpu_time > 0 and completed_durations:
+                efficiency = sum(completed_durations) / total_gpu_time * 100
                 print(f"\nEfficiency: {efficiency:.1f}% (completed-job time / total GPU busy-time)")
 
             print("="*60)
@@ -1056,8 +1073,10 @@ def add_slurm_arguments(parser):
                             help='Memory per node (e.g., "128G")')
     slurm_group.add_argument('--slurm-cpus', type=int,
                             help='CPUs per task')
-    slurm_group.add_argument('--slurm-exclusive', action='store_false',
-                            help='Disable exclusive node allocation')
+    slurm_group.add_argument('--slurm-no-exclusive', '--slurm-exclusive',
+                            dest='slurm_exclusive', action='store_false',
+                            help='Disable exclusive node allocation '
+                                 '(--slurm-exclusive is the old spelling of the same switch)')
     slurm_group.add_argument('--slurm-mail-type', type=str,
                             help='Mail notifications (e.g., "BEGIN,END,FAIL")')
     slurm_group.add_argument('--slurm-mail-user', type=str,
@@ -1216,6 +1235,14 @@ Examples:
     # Cleanup command (persistent mode)
     subparsers.add_parser('cleanup', help='Clean up CARLA instances (persistent mode)')
     
+    # --persistent is a global flag, but `monitor --persistent` is the order
+    # people (and examples/run_cluster.sh) reach for; accept it after the
+    # subcommand too. SUPPRESS keeps a subparser from resetting a value given
+    # before the subcommand.
+    for sub_parser in subparsers.choices.values():
+        sub_parser.add_argument('--persistent', action='store_true',
+                                default=argparse.SUPPRESS, help=argparse.SUPPRESS)
+
     args = parser.parse_args()
     
     if not args.command:

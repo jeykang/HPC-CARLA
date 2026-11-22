@@ -103,12 +103,12 @@ case "${1:-help}" in
     ;;
 
   monitor)
-    python3 continuous_cli.py monitor --persistent
+    python3 continuous_cli.py --persistent monitor
     ;;
 
   summary)
     echo "== '$CLUSTER_NAME' comparison metrics =="
-    python3 continuous_cli.py summary --persistent 2>/dev/null || true
+    python3 continuous_cli.py --persistent summary 2>/dev/null || true
     echo "-- per-ROUTE evals harvested (the real metric: routes done, incl. from crashed/timed-out files) --"
     python3 tools/harvest_results.py 2>/dev/null || echo "   (tools/harvest_results.py not present)"
     echo "-- per-agent score & pass-rate --";      python3 tools/verification_report.py 2>/dev/null || true
