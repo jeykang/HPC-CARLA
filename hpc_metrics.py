@@ -169,12 +169,18 @@ class MetricsWriter:
         self._sys_file = self.metrics_dir / f"system{suffix}.jsonl"
 
     def _active_job_by_gpu(self):
-        # read all healthbeats and build (gpu->current_job) map
+        # read this node's healthbeats and build (gpu->current_job) map
         mapping = {}
+        me = node_name()
         if self.health_dir.exists():
             for p in self.health_dir.glob("*.json"):
                 try:
                     d = json.load(open(p))
+                    # health/ is shared by every node of the allocation and GPU
+                    # ids repeat per node, so another node's beat must not label
+                    # this node's samples.
+                    if d.get("node") not in (None, me):
+                        continue
                     gid = d.get("gpu_id")
                     if gid is not None:
                         mapping[int(gid)] = d.get("current_job")

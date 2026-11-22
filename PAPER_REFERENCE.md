@@ -173,12 +173,16 @@ queue writes across nodes.
 
 | File | Purpose |
 |------|---------|
-| `collection_state/job_queue.json` | Live queue (running + pending) |
-| `collection_state/completed_jobs.json` | Completed/failed job archive with scores |
+| `collection_state/job_queue.json` | Live queue: every job with its current status |
+| `collection_state/completed_jobs.json` | Archive with scores: one entry per finished attempt (a retried job appears more than once) |
 | `collection_state/runtime_estimates.json` | Empirical runtime estimates per (agent, route) |
 | `collection_state/gpu_status.json` | Per-GPU health snapshots |
 | `collection_state/health/<gpu>.json` | Per-GPU live status |
 | `collection_state/metrics/` | Node-level GPU/system utilisation time-series |
+
+The queue, archive, runtime, GPU-status and health files are replaced atomically (temp file +
+rename). The monitor, watchdog and coordinator read them without taking the scheduler lock, so an
+in-place write could hand them a truncated file.
 
 ---
 
@@ -783,9 +787,18 @@ current partial shard (< shard_size ticks). Crucially, **`results.json` stays a 
 `/scratch`** so the per-route harvester (§9) is unaffected. Reconstruct the classic per-frame layout
 with `tools/unpack_shards.py`.
 
+A job directory is shared by every route of the job's route file, and the leaderboard builds a new
+agent, and so a new stager, for each route. Shard numbering and `shard_manifest.json` continue
+from what is already in the directory. *(Until 2026-11-22 each route restarted at
+`shard_00000.tar`, so the routes of a multi-route job overwrote one another's shards; sensor data
+sharded before that date is affected, scores are not.)* When a job's evaluator exits, the worker
+removes any staging directory it left behind in `/dev/shm`.
+
 ### run_summary.json
 
-Written on `destroy()`. Contains:
+Written on `destroy()`, which the leaderboard calls at the end of **each route**. The file is
+therefore rewritten per route and describes the most recent one; it does not mean the job's route
+file is finished. Contains:
 
 ```json
 {
@@ -848,6 +861,13 @@ Each job entry in `job_queue.json`:
   "duration": int (seconds)
 }
 ```
+
+**Interrupted jobs.** A job still marked `running` when a new allocation starts has lost its
+worker. `manage_continuous.py reclaim` (run by the coordinator at start-up) records it as
+`completed` if its `results.json` shows the whole route file was evaluated (`entry_status`
+`Finished…` and `_checkpoint.progress = [N, N]`), and otherwise returns it to `pending`. A requeued
+job is a later attempt: it starts the route file from the first route and replaces the job
+directory. `tools/harvest_results.py` labels each job with the status of its latest attempt.
 
 ### Scheduling priority
 
@@ -954,6 +974,13 @@ per-route recovery is the enabling instrument; the negative result is a property
 model*, not of the measurement.
 
 ### Multi-axis difficulty and per-model sensitivity
+
+> **Outcome definition (changed 2026-11-22).** `tools/sensitivity_matrix.py`,
+> `tools/difficulty_model_comparison.py` and `tools/difficulty_validation.py --per-route` now use
+> driving outcomes only: a completed route is a success and a driving failure (timed out, blocked,
+> deviated) is a failure. Simulator-crash records and agent setup errors are left out. The numbers
+> in this section were computed before that change, when every non-`Completed` record counted as a
+> failure; `--count-crashes-as-failures` restores that labelling.
 
 A single scalar difficulty **washes out** against performance (pooled Spearman **+0.036**), a
 lesson echoing a sister project (illumination-difficulty for AV scene scoring). Two independent

@@ -7,8 +7,11 @@ does NOT show the new one is good. This tests the new one directly, on the real
 harvested data, with k-fold cross-validation so the multi-axis model's extra
 parameters can't win by overfitting.
 
-For each agent (and pooled), predict per-route FAILURE (status != Completed) with
-a noisy-OR model from two representations:
+For each agent (and pooled), predict per-route FAILURE with a noisy-OR model. Only
+driving outcomes are used (completed = success, driving failure = failure);
+simulator crashes and agent errors are left out, as in tools/sensitivity_matrix.py
+(--count-crashes-as-failures restores the old "status != Completed" label). The
+two representations compared:
   * SCALAR   : the old difficulty  = route_geom + scenario + weather_diff  (1 feature)
   * MULTI    : [geom, scen, illum_dark, precip, road_water, cloud, fog]     (7 features)
 and compare held-out log-loss (lower=better) and AUC (higher=better). A NULL model
@@ -19,6 +22,7 @@ Pure stdlib; reuses tools/sensitivity_matrix.py (fit) + weather_axes + difficult
 import argparse, csv, math, os, sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import weather_axes
+from classify_outcomes import is_driving_outcome
 from difficulty_validation import DifficultyModel, _WEATHER_DIFF
 from sensitivity_matrix import fit_noisy_or, WX_AXES
 
@@ -31,8 +35,9 @@ def _num(x):
     except (TypeError, ValueError): return None
 
 
-def load(csv_path, model):
+def load(csv_path, model, count_crashes=False, stats=None):
     rows = []
+    excluded = 0
     # Memoize the route/scenario difficulty (parses route XML) by route file and the
     # weather axes by index — both are O(distinct) not O(rows). Without this the parse
     # ran once per route-eval (13k×) and the tool timed out at full n; with ~27 route
@@ -41,6 +46,9 @@ def load(csv_path, model):
     _ax_cache = {}
     with open(csv_path, newline="") as f:
         for r in csv.DictReader(f):
+            if not count_crashes and not is_driving_outcome(r.get("status")):
+                excluded += 1
+                continue
             route = r.get("route_file", "")
             try: w = int(r.get("weather"))
             except (TypeError, ValueError): continue
@@ -60,6 +68,8 @@ def load(csv_path, model):
             key = f"{r.get('agent')}|{route}|w{w}|{r.get('route_id')}"
             fold = sum(ord(c) for c in key) % FOLDS      # deterministic CV fold
             rows.append({"agent": r.get("agent", "?"), "feat": feat, "fail": fail, "fold": fold})
+    if stats is not None:
+        stats["excluded_non_driving"] = excluded
     return rows
 
 
@@ -136,11 +146,21 @@ def main(argv):
     ap.add_argument("--routes-dir", default=os.path.join(proj, "leaderboard/data/training_routes"))
     ap.add_argument("--scenarios-dir", default=os.path.join(proj, "leaderboard/data/scenarios"))
     ap.add_argument("--min-n", type=int, default=40)
+    ap.add_argument("--count-crashes-as-failures", action="store_true",
+                    help="count every non-Completed record as a failure, including simulator "
+                         "crashes and agent errors (the behaviour before those were excluded)")
     args = ap.parse_args(argv)
 
     model = DifficultyModel(args.routes_dir, args.scenarios_dir)
-    rows = load(args.csv, model)
+    stats = {}
+    rows = load(args.csv, model, count_crashes=args.count_crashes_as_failures, stats=stats)
+    if not rows:
+        print("No usable rows in the CSV.", file=sys.stderr)
+        return 1
     normalize(rows, ["geom", "scen", "scalar"])   # weather axes already [0,1]
+    if stats.get("excluded_non_driving"):
+        print(f"Excluded {stats['excluded_non_driving']} route-evals that are not driving outcomes "
+              f"(simulator crash / agent error).")
     print(f"Loaded {len(rows)} route-evals.  Predicting FAILURE; 5-fold CV.")
     print("Lower log-loss = better; AUC 0.5 = no better than base rate.\n")
 

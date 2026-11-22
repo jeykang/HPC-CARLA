@@ -45,9 +45,14 @@ section for your cluster:
 roach`, `short_tiny`) — that's the A100 baseline, and equal inputs are what make the
 comparison fair.
 
-> **GPU driver:** you do **not** configure the driver. The server manager
-> auto-detects `libnvidia-gpucomp.so.<version>` for whatever driver your nodes run
-> (`carla_server_manager._find_gpucomp`), so L40S's driver is handled automatically.
+> **GPU driver:** the CARLA *server* launch auto-detects
+> `libnvidia-gpucomp.so.<version>` for whatever driver your nodes run
+> (`carla_server_manager._find_gpucomp`). The *evaluator* launch is assembled on the
+> login node, which cannot see the compute nodes' driver, so it binds a fixed path
+> (default: our nodes' `/usr/lib/x86_64-linux-gnu/libnvidia-gpucomp.so.575.57.08`).
+> If your compute nodes have a different driver version or library directory, export
+> `HPC_CARLA_GPUCOMP_LIB=/path/on/compute/node/libnvidia-gpucomp.so.<version>` before
+> `run_cluster.sh` (or `HPC_CARLA_GPUCOMP_LIB=""` to skip that bind).
 >
 > **`--gres` vs `--gpus-per-node`:** the CLI emits `--gpus-per-node=N`. If your SLURM
 > only accepts `--gres=gpu:N`, add it via `--slurm-extra` in `_slurm_args`, or use the
@@ -72,8 +77,16 @@ errors) do the real run:
 ```
 
 The run collects `agents × routes × weathers` on a shared queue drained by one
-CARLA server + one agent per GPU. It's **resumable**: if the allocation ends, just
-`run_cluster.sh run` again (it reuses completed work) or add nodes.
+CARLA server + one agent per GPU. It's **resumable**: if the allocation ends, continue
+with
+
+```bash
+./examples/run_cluster.sh resume   # same queue, new allocation
+```
+
+Finished jobs stay finished, and jobs that were cut off mid-run are put back in the
+queue. Do **not** use `run` for this: `run` builds a fresh queue, so every job would be
+scheduled again.
 
 ---
 

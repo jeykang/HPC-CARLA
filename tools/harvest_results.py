@@ -24,15 +24,22 @@ Each job writes ``save_path/results.json`` where (mirrored verbatim from
     save_path = <dataset>/<agent>/weather_<int(weather)>/map_<int(town):02d>/<Path(route).stem>
     checkpoint = save_path/results.json
 
+(a job carrying a ``repeat`` index — the repeat-variance study — gets
+``_rep<NN>`` appended to ``save_path``, one directory per repeat).
+
 We enumerate the expected paths from the job records (NOT by walking the huge
 ``dataset/`` tree). Finished jobs are read from two state files:
 
-  * ``job_queue.json``       — the live queue (``completed`` + ``pending``).
-  * ``completed_jobs.json``  — the archive of FINISHED jobs, and the ONLY place
-    that records ``failed`` jobs. A failed job is reset to ``pending`` in the
-    queue for a future retry, so its per-route data is invisible unless we also
-    read ``completed_jobs.json`` (sibling of the queue file). This is the same
-    two-file union that ``tools/difficulty_validation.py::load_completed`` uses.
+  * ``job_queue.json``       — the live queue: each job's current status.
+  * ``completed_jobs.json``  — the archive (sibling of the queue file): one entry
+    per finished ATTEMPT, appended in order, so a retried job appears more than
+    once. It is needed for jobs whose queue record is no longer finished — a
+    failed job that ``retry`` reset to ``pending`` still has its per-route data
+    on disk, and only the archive remembers that it ran.
+
+Each job is labelled with the status of its LATEST finished attempt, because a
+retry replaces the job directory: the results.json on disk belongs to that
+attempt, not to an earlier one.
 
 RESULTS.JSON FORMAT (confirmed against real files on 2026-07-07)
 ---------------------------------------------------------------
@@ -111,14 +118,20 @@ def results_path_for(dataset_dir, job):
         _label_map(job.get("town", "")),
         route_stem,
     )
+    # Repeat-variance jobs: manage_continuous.run_next_job suffixes the dir so
+    # seeded repeats of one (agent, route, weather) do not overwrite each other.
+    if job.get("repeat") is not None:
+        try:
+            save_path = "%s_rep%02d" % (save_path, int(job["repeat"]))
+        except (TypeError, ValueError):
+            pass
     return os.path.join(save_path, "results.json")
 
 
 # =============================================================================
 # Job loading — union job_queue.json + sibling completed_jobs.json, keep only
-# FINISHED jobs (status in {completed, failed}). The completed_jobs.json record
-# is authoritative for the finished status (a failed job reads as 'pending' in
-# the queue), so it wins on a per-id conflict.
+# FINISHED jobs (status in {completed, failed}), one record per job id carrying
+# the status of that job's latest finished attempt.
 # =============================================================================
 FINISHED = ("completed", "failed")
 
@@ -135,27 +148,33 @@ def _load_jobs(path):
 
 
 def load_finished_jobs(queue_path):
-    """Union of finished (completed|failed) jobs across the queue and its
-    sibling completed_jobs.json, deduped by id.
+    """Finished (completed|failed) jobs from the queue and its sibling
+    completed_jobs.json: one record per job id, with the status of the job's
+    latest finished attempt.
 
-    completed_jobs.json is authoritative (it is the only source of 'failed'),
-    so its record overrides a queue record for the same id.
+    * The archive is append-only, one entry per finished attempt in time order,
+      so for a job that was retried the LAST entry is the current one.
+    * A queue record that is itself finished is the live state and takes
+      precedence. (The two agree whenever both exist; the queue can be ahead
+      for a job recovered by `reclaim`.)
+    * A job whose queue record is pending/running again (reset by `retry`) is
+      taken from the archive.
     """
     queue_path = Path(queue_path)
     completed_path = queue_path.parent / "completed_jobs.json"
 
     by_id = {}
-    # completed_jobs.json first so its finished status is authoritative...
-    for src in (completed_path, queue_path):
+    without_id = []
+    for src in (completed_path, queue_path):      # archive first, queue overrides
         for job in _load_jobs(src):
             if job.get("status") not in FINISHED:
                 continue
             jid = job.get("id")
-            key = jid if jid is not None else id(job)
-            # ...but let a later 'completed' upgrade never be shadowed: only
-            # fill if absent, so the authoritative completed_jobs.json wins.
-            by_id.setdefault(key, job)
-    return list(by_id.values())
+            if jid is None:
+                without_id.append(job)
+            else:
+                by_id[jid] = job                  # later attempt / live state wins
+    return list(by_id.values()) + without_id
 
 
 # =============================================================================
@@ -275,10 +294,12 @@ class Counters:
 def harvest(jobs, dataset_dir):
     """Harvest per-route rows from every finished job's results.json.
 
-    Dedupe key: (agent, weather, town, route_file, route_id). When the same
-    route-eval recurs across resumes/retries (same condition -> same file, or a
-    retry that overwrote the file), keep the record from the FURTHEST-PROGRESSED
-    file (largest ``_checkpoint.progress[0]``), tie-broken by more records.
+    Dedupe key: (agent, weather, town, route_file, route_id, repeat). When the
+    same route-eval recurs across resumes/retries (same condition -> same file,
+    or a retry that overwrote the file), keep the record from the
+    FURTHEST-PROGRESSED file (largest ``_checkpoint.progress[0]``), tie-broken by
+    more records. ``repeat`` is None except for repeat-variance jobs, whose
+    repeats are distinct evals and must not collapse into one.
 
     Returns (rows, counters).
     """
@@ -319,7 +340,7 @@ def harvest(jobs, dataset_dir):
             row.update(_weather_cols(row["weather"]))
 
             key = (row["agent"], str(row["weather"]), str(row["town"]),
-                   row["route_file"], row["route_id"])
+                   row["route_file"], row["route_id"], job.get("repeat"))
             prev = by_key.get(key)
             if prev is None:
                 by_key[key] = {"progress": progress_done, "nrec": n_rec, "row": row}

@@ -14,7 +14,8 @@ Taxonomy
   agent_error  agent code/config broke (sensors invalid, setup, -> flagged
                crash, entry_status 'Rejected')                     (agent bug)
   infra_fail   no results.json; entry 'Started'/'Crashed';       -> EXCLUDED
-               missing route records; global_steps<=0               from scoring
+               route 'Failed - Simulation crashed'; missing         from scoring
+               route records; global_steps<=0
 
 Data sources (per run dir <agent>/weather_N/map_NN/<route>/):
   results.json     leaderboard checkpoint: entry_status, _checkpoint.records[]
@@ -23,7 +24,7 @@ Data sources (per run dir <agent>/weather_N/map_NN/<route>/):
                    (>0 = the agent ticked; <=0/empty = never ran = infra)
 
 Usage:
-  python3 tools/classify_outcomes.py [--dataset DIR] [--json OUT] [--annotate]
+  python3 tools/classify_outcomes.py [--dataset DIR] [--json OUT]
   python3 tools/classify_outcomes.py --paths results/simulation_results.2n16g.json
 """
 import argparse
@@ -39,6 +40,11 @@ CATEGORIES = ("valid_pass", "valid_fail", "agent_error", "infra_fail", "ran_no_m
 # failure (a valid evaluation the agent lost). Order matters: checked first.
 _AGENT_ERROR_MARKERS = ("agent crashed", "sensors were invalid", "couldn't be set up",
                         "could not be set up")
+
+# The leaderboard records a simulator/server crash as a route with status
+# 'Failed - Simulation crashed'. It starts with 'Failed' like a driving failure,
+# but it is the infrastructure that broke (VERIFICATION_PLAN.md, infra_fail row).
+_INFRA_MARKERS = ("simulation crashed",)
 
 
 def _read_json(path):
@@ -57,10 +63,20 @@ def classify_route(status):
         return "valid_pass"
     if any(m in low for m in _AGENT_ERROR_MARKERS):
         return "agent_error"
+    if any(m in low for m in _INFRA_MARKERS):
+        return "infra_fail"
     if low.startswith("failed"):
         return "valid_fail"   # timed out / got blocked / deviated / collision / ...
     # Unknown/empty status on a recorded route — treat conservatively as infra.
     return "infra_fail"
+
+
+def is_driving_outcome(status):
+    """True if a route `status` is a scored driving result (the agent completed
+    the route or failed it by driving), False for a simulator crash, an agent
+    code/config error, or an unknown status. The failure-model tools use this to
+    keep infrastructure failures out of the 'agent failed' label."""
+    return classify_route(status) in ("valid_pass", "valid_fail")
 
 
 def classify_results(results):

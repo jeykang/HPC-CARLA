@@ -16,6 +16,14 @@ validated on synthetic data with known ground truth: it recovers per-model axis
 sensitivity and cleanly separates, e.g., illumination-sensitive camera models
 from illumination-insensitive LiDAR models — the property a scalar cannot show.
 
+WHAT COUNTS AS A FAILURE. Only driving outcomes enter the fit: a route the agent
+completed (success) or failed by driving (timed out, blocked, deviated, ...).
+Route records that are simulator crashes or agent code/config errors say nothing
+about how difficulty affects driving and are left out (same split as
+tools/classify_outcomes.py). Earlier versions counted every non-Completed record
+as a failure; --count-crashes-as-failures restores that, to reproduce numbers
+computed before the change.
+
 IDENTIFIABILITY IS REPORTED FIRST. An axis with ~zero variance in the sample
 (e.g. illum_dark when every eval is at night) is UNIDENTIFIABLE and excluded from
 the fit. Axes that co-move almost perfectly (|r|>0.95, e.g. precip and fog when
@@ -35,6 +43,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import weather_axes  # noqa: E402
+from classify_outcomes import is_driving_outcome  # noqa: E402
 from difficulty_validation import DifficultyModel  # noqa: E402
 
 # Fit axes: route geometry + scenario density (from the route XML), then the
@@ -55,16 +64,25 @@ def _num(x):
         return None
 
 
-def load_rows(csv_path, model):
+def load_rows(csv_path, model, count_crashes=False, stats=None):
     """Read the harvested per-route CSV -> list of {agent, feat{axis:val}, fail}.
 
     geom/scen come from the route XML via DifficultyModel; the weather axes are
     read from the harvester's columns, falling back to recomputing from the
     weather index if an older CSV lacks them.
+
+    Rows that are not driving outcomes (simulator crash, agent error, unknown
+    status) are skipped unless count_crashes is set, in which case every
+    non-Completed row is a failure (the pre-fix behaviour). If a `stats` dict is
+    given, stats["excluded_non_driving"] receives the number skipped.
     """
     rows = []
+    excluded = 0
     with open(csv_path, newline="") as f:
         for r in csv.DictReader(f):
+            if not count_crashes and not is_driving_outcome(r.get("status")):
+                excluded += 1
+                continue
             route = r.get("route_file", "")
             feat = {
                 "geom": model.route_difficulty(route),
@@ -87,6 +105,8 @@ def load_rows(csv_path, model):
             status = (r.get("status") or "").strip().lower()
             fail = 0.0 if status.startswith("completed") else 1.0
             rows.append({"agent": r.get("agent", "?"), "feat": feat, "fail": fail})
+    if stats is not None:
+        stats["excluded_non_driving"] = excluded
     return rows
 
 
@@ -323,6 +343,10 @@ def main(argv):
                     help="markdown output (default: paper_artifacts/sensitivity_matrix.md)")
     ap.add_argument("--min-n", type=int, default=20,
                     help="skip agents with fewer than this many route-evals")
+    ap.add_argument("--count-crashes-as-failures", action="store_true",
+                    help="count every non-Completed record as a failure, including simulator "
+                         "crashes and agent errors (the behaviour before those were excluded; "
+                         "use it to reproduce earlier numbers)")
     ap.add_argument("--no-write", action="store_true", help="print only; do not write")
     args = ap.parse_args(argv)
 
@@ -331,7 +355,12 @@ def main(argv):
         return 2
 
     model = DifficultyModel(args.routes_dir, args.scenarios_dir)
-    rows = load_rows(args.csv, model)
+    stats = {}
+    rows = load_rows(args.csv, model, count_crashes=args.count_crashes_as_failures, stats=stats)
+    if stats.get("excluded_non_driving"):
+        print(f"Excluded {stats['excluded_non_driving']} route-evals that are not driving outcomes "
+              f"(simulator crash / agent error); --count-crashes-as-failures counts them as failures.",
+              file=sys.stderr)
     if not rows:
         print("No usable rows in the CSV.", file=sys.stderr)
         return 1

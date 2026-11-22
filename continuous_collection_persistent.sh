@@ -23,8 +23,9 @@ echo "[coordinator] node=$NODE_NAME id=$NODE_ID gpus=$GPUS_PER_NODE base_rpc=$BA
 # Reclaim orphaned 'running' jobs from a prior allocation before any worker
 # starts. At coordinator startup no workers exist yet, so ANY job still marked
 # running is a stale orphan (its worker/allocation was killed without recording a
-# terminal status); --stale-hours 0 clears them all (requeue if unfinished, or
-# mark completed if a run_summary exists). Master node only, to avoid duplicate work.
+# terminal status); --stale-hours 0 clears them all (mark completed if results.json
+# shows the whole route file was evaluated, otherwise requeue). Master node only,
+# to avoid duplicate work.
 if [[ "${NODE_ID}" -eq 0 ]]; then
   echo "[coordinator] reclaiming orphaned 'running' jobs from any prior allocation..."
   python3 "$PROJECT_ROOT/manage_continuous.py" reclaim --stale-hours 0 || true

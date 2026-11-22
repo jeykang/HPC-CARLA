@@ -19,7 +19,7 @@
 #   (A) RECOMMENDED for real/multi-node runs — from the LOGIN node, let the CLI
 #       generate and submit the SLURM job for you:
 #           python3 continuous_cli.py reset --smoke
-#           python3 continuous_cli.py --persistent start --slurm \
+#           python3 continuous_cli.py start --slurm \
 #               --slurm-nodes 2 --slurm-gpus 8 --slurm-time 96:00:00 \
 #               --slurm-nodelist hpc-pr-a-pod09,hpc-pr-a-pod17
 #       (do NOT sbatch that — `start --slurm` submits the job itself.)
@@ -80,11 +80,25 @@ if [ ! -f collection_state/job_queue.json ]; then
 fi
 
 # --- Launch -----------------------------------------------------------------
-# `--persistent start --local` runs the per-node coordinator in THIS allocation:
+# `start --local` runs the per-node coordinator in THIS allocation:
 #   sets up the container binds + EVAL_CMD_TEMPLATE, starts one CARLA per GPU,
-#   spawns one agent worker per GPU, and supervises until the queue drains.
+#   spawns one agent worker per GPU, and supervises until the queue drains
+#   (in the background -- see the wait loop below).
 # (Use `start --slurm` instead — from the login node, NOT here — for multi-node.)
-python3 continuous_cli.py --persistent start --local
+rm -f collection_state/coordinator.pid   # never wait on a pid left by an earlier run
+python3 continuous_cli.py start --local
+
+# `start --local` launches the coordinator in the background and returns at
+# once. Block here until the coordinator exits (queue drained): when this batch
+# script ends, SLURM ends the job and kills everything still running in it.
+if [ ! -f collection_state/coordinator.pid ]; then
+  echo "[job] coordinator did not start (see the messages above)"
+  exit 1
+fi
+coord_pid="$(cat collection_state/coordinator.pid)"
+while kill -0 "$coord_pid" 2>/dev/null; do
+  sleep 30
+done
 
 echo "[job] queue drained or walltime reached. Inspect results with:"
 echo "      python3 tools/classify_outcomes.py        # infra-vs-agent outcome summary"

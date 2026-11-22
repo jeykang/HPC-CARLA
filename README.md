@@ -88,7 +88,13 @@ because of a time limit or an error, the records already written can still be ha
 
 [`tools/harvest_results.py`](tools/harvest_results.py) collects these records in
 `per_route_results.csv`, one row per saved route evaluation. A row can describe a completed drive,
-a driving failure, or a simulator crash. The queue records the outcome of the enclosing job separately.
+a driving failure, or a simulator crash. The queue records the outcome of the enclosing job
+separately; for a job that ran more than once, its rows carry the status of the latest attempt.
+
+If an allocation ends while jobs are running, the next `start` puts those jobs back in the queue.
+The exception is a job whose `results.json` shows that its whole route file had already been
+evaluated, which is recorded as completed. A requeued job starts its route file from the first
+route again and replaces its job directory.
 
 ### Scheduling — job-first, hardest-first, coverage-aware
 `manage_continuous.py` sorts pending jobs by
@@ -132,15 +138,17 @@ From the **login node** — the CLI generates and submits the SLURM job (do not 
 python3 continuous_cli.py reset            # or: reset --smoke
 
 # 2. Launch persistent workers on SLURM (one CARLA server + one agent per GPU).
-python3 continuous_cli.py --persistent start --slurm \
+python3 continuous_cli.py start --slurm \
     --slurm-nodes 1 --slurm-gpus 8 --slurm-time 48:00:00 \
     --slurm-nodelist hpc-pr-a-pod17
 
 # 3. Watch it (the run keeps going if you stop watching).
-python3 continuous_cli.py --persistent monitor
+python3 continuous_cli.py monitor
 ```
 
 The run is **resumable** (rerun `start` to reuse completed work) and self-balances across agents.
+Persistent servers are the only mode. The `--persistent` flag that earlier versions required is
+still accepted and has no effect.
 
 **After / during a run — read the results:**
 ```bash
@@ -150,6 +158,9 @@ python3 tools/classify_outcomes.py      # agent-result vs infra-failure taxonomy
 python3 tools/sensitivity_matrix.py     # per-axis × per-agent difficulty sensitivity
 ```
 
+The outcome and failure-model tools treat a simulator crash as an infrastructure failure, not as
+the agent failing to drive (see [Changes since the paper](#changes-since-the-paper)).
+
 **Running on a different cluster (L40S)?** See [`examples/CLUSTER_SETUP.md`](examples/CLUSTER_SETUP.md)
 and the one-file launcher [`examples/run_cluster.sh`](examples/run_cluster.sh) — edit one config
 block, then `setup → smoke → run → export`.
@@ -157,6 +168,9 @@ block, then `setup → smoke → run → export`.
 ---
 
 ## Final campaign (paper numbers)
+
+The numbers in this section and the next were produced before the tooling changes listed under
+[Changes since the paper](#changes-since-the-paper).
 
 The GIST campaign ran on two nodes with eight A100 GPUs each. All 2,835 evaluation jobs
 (5 agents × 27 route files × 21 weather presets) reached a terminal state in 108.6 hours.
@@ -221,6 +235,32 @@ model of episode failure fitted to the full campaigns gave NEAT a darkness weigh
 A100 and 0.50 on L40S.
 
 Watchdog stall restarts on L40S: LAV 388, TCP 1, NEAT 0.
+
+---
+
+## Changes since the paper
+
+Fixes made on 2026-11-22 that matter when re-running the analysis or reusing collected data:
+
+- **Failure-model fits.** [`tools/sensitivity_matrix.py`](tools/sensitivity_matrix.py),
+  [`tools/difficulty_model_comparison.py`](tools/difficulty_model_comparison.py), and
+  `tools/difficulty_validation.py --per-route` now use driving outcomes only. A record with status
+  `Failed - Simulation crashed`, or an agent setup error, is left out instead of being counted as
+  a failure. The darkness weights quoted above predate this change. Pass
+  `--count-crashes-as-failures` to any of the three tools to get the earlier labelling.
+- **Outcome reports.** `tools/classify_outcomes.py` and `tools/verification_report.py` count a
+  simulator crash as an infrastructure failure. They used to count it as a driving failure.
+- **Job status of harvested rows.** `tools/harvest_results.py` labels a job by its latest attempt.
+  The set of route evaluations and the per-agent means are unchanged. The split between
+  `completed` and `failed` jobs changes only for jobs that ran more than once.
+- **Sensor shards.** Each route of a job used to restart shard numbering at `shard_00000.tar`, so
+  the routes of a multi-route job overwrote one another's sensor frames. This affects sensor data
+  written with sharding enabled, which has been the default since 2026-07-15. Driving scores in
+  `results.json` are not affected.
+- **Interrupted jobs.** With data collection on, `reclaim` used to record an interrupted job as
+  completed once one of its routes had finished. It now requeues the job unless the whole route
+  file was evaluated.
+- **Launcher.** The non-persistent ("original") mode and its two scripts were removed.
 
 ---
 
