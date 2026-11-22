@@ -38,7 +38,10 @@ def _read_state() -> Dict:
         return {"node": NODE_NAME, "servers": {}}
 
 def _write_state(state: Dict) -> None:
-    tmp = STATE_FILE.with_suffix(".tmp")
+    # Per-process temp name: every worker on the node runs `ensure` against this
+    # one file, and a shared temp name lets one writer rename another's file away
+    # (os.replace then raises, which start_one reports as a failed launch).
+    tmp = STATE_FILE.with_suffix(f".{os.getpid()}.tmp")
     with open(tmp, "w") as f:
         json.dump(state, f, indent=2)
     os.replace(tmp, STATE_FILE)
@@ -374,10 +377,11 @@ def start_pool(gpus: List[int], base: int, spacing: int, tm_off: int) -> Dict[st
 def stop_pool() -> None:
     state = _read_state()
     for rec in (state.get("servers") or {}).values():
-        pid = rec.get("pid")
+        # Signalling only the recorded pid (the `singularity run` session leader)
+        # leaves the CarlaUE4 child running, and that pid may be stale. Reuse the
+        # port-matched group kill the relaunch path uses instead.
         try:
-            if pid:
-                os.kill(int(pid), signal.SIGTERM)
+            _kill_gpu_server(int(rec["gpu"]), int(rec["rpc_port"]))
         except Exception:
             pass
     # State file left in place for health checks

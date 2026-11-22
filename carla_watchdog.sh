@@ -42,9 +42,30 @@ WATCHDOG_COOLDOWN=${WATCHDOG_COOLDOWN:-90}    # pause after a restart
 mkdir -p "$STATE_DIR/restart" "$LOG_DIR"
 log="$LOG_DIR/watchdog_${NODE_NAME}_gpu${GPU_ID}.log"
 
+# The stall signal is new sensor files appearing in the job dir. With data
+# collection switched off (same env switches consolidated_agent.py honours) a
+# healthy job writes nothing but its in-place results.json, so every job would
+# look stalled and be killed after WATCHDOG_STALL seconds. Stand down instead.
+# (A per-agent YAML `collect_data: false` is not visible from here; run with
+# WATCHDOG_ENABLED=0 in that case.)
+_falsy() { case "${1,,}" in 0|false|no|n|off) return 0 ;; *) return 1 ;; esac; }
+_truthy() { case "${1,,}" in 1|true|yes|y|on) return 0 ;; *) return 1 ;; esac; }
+collect_off=0
+if _truthy "${DISABLE_DATA_COLLECTION:-}"; then
+  collect_off=1
+elif _falsy "${HPC_CARLA_COLLECT_DATA:-}"; then
+  collect_off=1
+elif ! _truthy "${HPC_CARLA_COLLECT_DATA:-}" && _falsy "${COLLECT_DATA:-}"; then
+  collect_off=1
+fi
+if (( collect_off )); then
+  echo "[watchdog] node=$NODE_NAME gpu=$GPU_ID: data collection is disabled, so there is no on-disk progress signal; watchdog not started" | tee -a "$log"
+  exit 0
+fi
+
 # Print the SAVE_PATH of the job currently running on THIS node+GPU, or nothing.
 # Path layout mirrors manage_continuous.py:
-#   <DATASET>/<agent>/weather_<w>/map_<NN>/<route_stem>
+#   <DATASET>/<agent>/weather_<w>/map_<NN>/<route_stem>[_rep<NN>]
 _current_save_path() {
   python3 - "$QUEUE_FILE" "$NODE_NAME" "$GPU_ID" "$DATASET_DIR" <<'PY'
 import json, sys, os
@@ -65,7 +86,11 @@ for j in q.get('jobs', []):
     except Exception: wlabel = "weather_%s" % j.get('weather', 0)
     try:    mlabel = "map_%02d" % int(j.get('town'))
     except Exception: mlabel = "map_%s" % (j.get('town') or 'unknown')
-    print(os.path.join(ds, agent, wlabel, mlabel, stem))
+    path = os.path.join(ds, agent, wlabel, mlabel, stem)
+    if j.get('repeat') is not None:      # repeat-variance jobs get a suffixed dir
+        try:    path = "%s_rep%02d" % (path, int(j['repeat']))
+        except Exception: pass
+    print(path)
     break
 PY
 }
