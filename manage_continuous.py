@@ -284,6 +284,20 @@ class ContinuousManager:
         except Exception:
             return 0
 
+    def _purge_sensor_stage(self, save_path: str) -> None:
+        """Remove a finished job's node-local sensor staging dir (best-effort).
+
+        Path layout mirrors leaderboard/team_code/sensor_stager.py
+        (stage_root / _safe_name(save_path)).
+        """
+        try:
+            import shutil
+            root = os.environ.get('HPC_CARLA_STAGE_ROOT') or '/dev/shm/hpc_carla_stage'
+            name = str(save_path).strip('/').replace('/', '__').replace(' ', '_') or 'route'
+            shutil.rmtree(os.path.join(root, name), ignore_errors=True)
+        except Exception:
+            pass
+
     def _health_path(self, gpu_id: int) -> Path:
         return self.state_dir / 'health' / f"{self.node_name}_gpu{gpu_id}.json"
 
@@ -302,8 +316,7 @@ class ContinuousManager:
             "current_job": current_job,
             "last_heartbeat": datetime.utcnow().isoformat() + 'Z'
         })
-        with open(p, 'w') as f:
-            json.dump(data, f, indent=2)
+        _atomic_write_json(p, data)
 
     def _bump_gpu_stats(self, gpu_id: int, duration_s: int, completed_ok: bool):
         st = self._load_gpu_status()
@@ -313,8 +326,7 @@ class ContinuousManager:
         if completed_ok:
             gi["jobs_completed"] = int(gi.get("jobs_completed", 0)) + 1
         gi["total_runtime"] = int(gi.get("total_runtime", 0)) + max(0, int(duration_s))
-        with open(self.gpu_status_file, 'w') as f:
-            json.dump(st, f, indent=2)
+        _atomic_write_json(self.gpu_status_file, st)
 
         
     def reset_queue(self, agents: List[str] = None, weather: List[int] = None,
@@ -384,16 +396,13 @@ class ContinuousManager:
                     'duration': None
                 })
             
-            with open(self.queue_file, 'w') as f:
-                json.dump({'jobs': jobs, 'total': len(jobs), 'completed': 0}, f, indent=2)
+            _atomic_write_json(self.queue_file, {'jobs': jobs, 'total': len(jobs), 'completed': 0})
             
             # IMPORTANT: write an EMPTY gpu status skeleton (no fake login-node rows)
-            with open(self.gpu_status_file, 'w') as f:
-                json.dump(self._init_gpu_status_skeleton(), f, indent=2)
+            _atomic_write_json(self.gpu_status_file, self._init_gpu_status_skeleton())
             
             # Reset completed jobs
-            with open(self.completed_file, 'w') as f:
-                json.dump({'jobs': []}, f, indent=2)
+            _atomic_write_json(self.completed_file, {'jobs': []})
             
             # Initial runtime estimates (heuristic by route length)
             runtime_estimates = {'default': 3600, 'combinations': {}}
@@ -406,8 +415,7 @@ class ContinuousManager:
                         runtime_estimates['combinations'][key] = 5400
                     else:
                         runtime_estimates['combinations'][key] = 3600
-            with open(self.runtime_file, 'w') as f:
-                json.dump(runtime_estimates, f, indent=2)
+            _atomic_write_json(self.runtime_file, runtime_estimates)
             
             print(f"\nQueue reset with {len(jobs)} valid jobs")
             jobs_by_town = {}
@@ -466,6 +474,8 @@ class ContinuousManager:
                 weather_lbl = _label_weather(job.get('weather', 0))
                 map_lbl     = _label_map(job.get('town', ''))
                 save_path   = os.path.join(dataset_dir, job['agent'], weather_lbl, map_lbl, route_stem)
+                if job.get('repeat') is not None:  # same suffix run_next_job applies
+                    save_path = '%s_rep%02d' % (save_path, int(job['repeat']))
                 summary_path = Path(save_path) / 'run_summary.json'
 
                 if summary_path.exists():
@@ -498,8 +508,7 @@ class ContinuousManager:
                     job['end_time'] = None
                     reclaimed_pending += 1
 
-            with open(self.queue_file, 'w') as f:
-                json.dump(q, f, indent=2)
+            _atomic_write_json(self.queue_file, q)
 
             # Append newly-completed entries to completed_jobs.json
             if reclaimed_complete:
@@ -512,8 +521,7 @@ class ContinuousManager:
                 for job in q['jobs']:
                     if job.get('status') == 'completed' and job['id'] not in existing_ids:
                         comp['jobs'].append(dict(job))
-                with open(self.completed_file, 'w') as f:
-                    json.dump(comp, f, indent=2)
+                _atomic_write_json(self.completed_file, comp)
 
             print(f"Reclaimed {reclaimed_complete} completed + {reclaimed_pending} pending (was stale-running)")
             return reclaimed_complete, reclaimed_pending
@@ -530,8 +538,7 @@ class ContinuousManager:
                 if job['status'] == 'failed' and job['attempts'] < max_attempts:
                     job['status'] = 'pending'
                     retry_count += 1
-            with open(self.queue_file, 'w') as f:
-                json.dump(queue_data, f, indent=2)
+            _atomic_write_json(self.queue_file, queue_data)
             print(f"Reset {retry_count} failed jobs for retry")
             return retry_count
         return self._with_lock(_retry)
@@ -568,8 +575,7 @@ class ContinuousManager:
             
             queue_data['jobs'].extend(new_jobs)
             queue_data['total'] = len(queue_data['jobs'])
-            with open(self.queue_file, 'w') as f:
-                json.dump(queue_data, f, indent=2)
+            _atomic_write_json(self.queue_file, queue_data)
             
             with open(self.runtime_file, 'r') as f:
                 runtime_data = json.load(f)
@@ -582,8 +588,7 @@ class ContinuousManager:
                         runtime_data['combinations'][key] = 5400
                     else:
                         runtime_data['combinations'][key] = 3600
-            with open(self.runtime_file, 'w') as f:
-                json.dump(runtime_data, f, indent=2)
+            _atomic_write_json(self.runtime_file, runtime_data)
             
             print(f"Added {len(new_jobs)} new valid jobs for agent '{agent_name}'")
             return len(new_jobs)
@@ -599,8 +604,7 @@ class ContinuousManager:
                 if job['status'] == 'pending' and (agent_name is None or job['agent'] == agent_name):
                     job['status'] = 'cancelled'
                     cancel_count += 1
-            with open(self.queue_file, 'w') as f:
-                json.dump(queue_data, f, indent=2)
+            _atomic_write_json(self.queue_file, queue_data)
             if agent_name:
                 print(f"Cancelled {cancel_count} pending jobs for agent '{agent_name}'")
             else:
@@ -717,7 +721,8 @@ class ContinuousManager:
                 by_agent = {}
                 for job in completed_data['jobs']:
                     agent = job['agent']
-                    by_agent.setdefault(agent, []).append(job.get('duration', 0))
+                    # 'duration' is None for entries recovered by `reclaim`.
+                    by_agent.setdefault(agent, []).append(job.get('duration') or 0)
                 
                 results['by_agent'] = {
                     agent: {
@@ -733,7 +738,7 @@ class ContinuousManager:
                     town = job.get('town', 'unknown')
                     by_town.setdefault(town, {'completed': 0, 'total_time': 0})
                     by_town[town]['completed'] += 1
-                    by_town[town]['total_time'] += job.get('duration', 0)
+                    by_town[town]['total_time'] += job.get('duration') or 0
                 
                 results['by_town'] = by_town
             
@@ -834,8 +839,7 @@ class ContinuousManager:
                           f" (difficulty {d:.2f} < best {best[key]:.2f})")
 
             if not dry_run and pruned:
-                with open(self.queue_file, 'w') as f:
-                    json.dump(q, f, indent=2)
+                _atomic_write_json(self.queue_file, q)
 
             return pruned
 
@@ -873,8 +877,7 @@ class ContinuousManager:
                     updates += 1
                     print(f"Updated {key}: {old_estimate:.0f}s -> {new_estimate:.0f}s")
             
-            with open(self.runtime_file, 'w') as f:
-                json.dump(runtime_data, f, indent=2)
+            _atomic_write_json(self.runtime_file, runtime_data)
             print(f"Optimized {updates} runtime estimates")
             return updates
         return self._with_lock(_optimize)
@@ -983,13 +986,19 @@ class ContinuousManager:
         """
         extra_args = extra_args or []
 
+        _runtime_estimates = []   # loaded once; see _estimate_sec
+
         def _estimate_sec(job):
             # prefer longest first (your heuristic), but also prefer fewer attempts
-            try:
-                with open(self.runtime_file, 'r') as f:
-                    rt = json.load(f)
-            except Exception:
-                rt = {"default": 3600, "combinations": {}}
+            # This is evaluated inside the sort key, i.e. once per pending job while
+            # the scheduler lock is held, so read the estimates file only once.
+            if not _runtime_estimates:
+                try:
+                    with open(self.runtime_file, 'r') as f:
+                        _runtime_estimates.append(json.load(f))
+                except Exception:
+                    _runtime_estimates.append({"default": 3600, "combinations": {}})
+            rt = _runtime_estimates[0]
             key = f"{job['agent']}_{job['route']}"
             est = rt.get("combinations", {}).get(key, rt.get("default", 3600))
             return int(est)
@@ -1235,11 +1244,10 @@ class ContinuousManager:
             # stamp node+gpu so the monitor can correlate
             job['node'] = self.node_name
             # ensure gpu id exists even if GPU_ID wasn't exported
-            job['gpu'] = int(os.environ.get('GPU_ID')) if os.environ.get('GPU_ID') is not None else self._derive_gpu_id(port)
+            job['gpu'] = self._derive_gpu_id(port)
 
             job['start_time'] = datetime.utcnow().isoformat() + 'Z'
-            with open(self.queue_file, 'w') as f:
-                json.dump(q, f, indent=2)
+            _atomic_write_json(self.queue_file, q)
             return job
 
 
@@ -1285,8 +1293,7 @@ class ContinuousManager:
                         j['end_time'] = datetime.utcnow().isoformat() + 'Z'
                         j['duration'] = 0
                         break
-                with open(self.queue_file, 'w') as f:
-                    json.dump(q, f, indent=2)
+                _atomic_write_json(self.queue_file, q)
             self._with_lock(_fail)
             return 1
 
@@ -1340,17 +1347,6 @@ class ContinuousManager:
             'CHECKPOINT_ENDPOINT':  os.path.join(save_path, 'results.json'),
         })
 
-        # On retry (attempts > 1), wipe the previous run's artefacts so sensor
-        # frames from the failed attempt don't intermingle with the new run.
-        if job.get('attempts', 1) > 1 and Path(save_path).exists():
-            import shutil
-            shutil.rmtree(save_path)
-
-        # The leaderboard opens --checkpoint for writing at the very start of
-        # run() (clear_record), BEFORE the agent creates its save dir, so the
-        # parent must exist now or the evaluator dies with FileNotFoundError.
-        os.makedirs(save_path, exist_ok=True)
-
         # --- Reproducibility: fixed, recorded seeds ---
         # A single RUN_SEED determines both the scenario-spawn RNG
         # (CarlaDataProvider) and the traffic-manager device seed, so every agent
@@ -1362,10 +1358,6 @@ class ContinuousManager:
         # 'seed' -> the fixed reproducible seed is used exactly as before.
         if job.get('seed') is not None:
             seed = int(job['seed'])
-
-        # Provenance manifest next to results.json: exactly what produced this run.
-        self._write_manifest(save_path, job, agent_cfg, routes_file, scenarios_file,
-                             weather_idx, save_path, seed, gpu=job.get('gpu'))
 
         if 'WEATHER_PRESET' in os.environ and os.environ['WEATHER_PRESET'].strip():
             env['WEATHER_PRESET'] = os.environ['WEATHER_PRESET'].strip()
@@ -1483,8 +1475,7 @@ class ContinuousManager:
                         j['attempts'] = max(0, int(j.get('attempts', 1)) - 1)
                         j['start_time'] = None
                         break
-                with open(self.queue_file, 'w') as f:
-                    json.dump(q, f, indent=2)
+                _atomic_write_json(self.queue_file, q)
             self._with_lock(_requeue)
             # Request a server restart: the persistent CARLA servers segfault over
             # time (cluster render/glibc instability) and nothing else brings them
@@ -1504,6 +1495,24 @@ class ContinuousManager:
                                rpc_port=int(port), tm_port=int(tm_port), current_job=None)
             time.sleep(float(os.environ.get('DEAD_SERVER_BACKOFF_SEC', '20')))
             return 3
+
+        # Prepare the output dir only now that the server answered: a job skipped
+        # above must not have its previous attempt's results wiped for nothing.
+        #
+        # On retry (attempts > 1), wipe the previous run's artefacts so sensor
+        # frames from the failed attempt don't intermingle with the new run.
+        if job.get('attempts', 1) > 1 and Path(save_path).exists():
+            import shutil
+            shutil.rmtree(save_path)
+
+        # The leaderboard opens --checkpoint for writing at the very start of
+        # run() (clear_record), BEFORE the agent creates its save dir, so the
+        # parent must exist now or the evaluator dies with FileNotFoundError.
+        os.makedirs(save_path, exist_ok=True)
+
+        # Provenance manifest next to results.json: exactly what produced this run.
+        self._write_manifest(save_path, job, agent_cfg, routes_file, scenarios_file,
+                             weather_idx, save_path, seed, gpu=job.get('gpu'))
 
         # --- Launch with a hard wall-clock cap ---
         # The leaderboard's route timeout is measured in *game* time; on a node
@@ -1550,6 +1559,12 @@ class ContinuousManager:
             rc = 130
         end_ts = time.time()
 
+        # An evaluator that was killed (timeout, watchdog, crash) never reaches
+        # the agent's destroy(), so its last partial sensor shard is left in the
+        # node-local staging dir. That dir defaults to /dev/shm -- RAM -- and is
+        # otherwise only cleared if this same job reruns on this node.
+        self._purge_sensor_stage(save_path)
+
         def _finish():
             duration = int(end_ts - start_ts)
             with open(self.queue_file, 'r') as f:
@@ -1560,8 +1575,7 @@ class ContinuousManager:
                     j['end_time'] = datetime.utcnow().isoformat() + 'Z'
                     j['duration'] = duration
                     break
-            with open(self.queue_file, 'w') as f:
-                json.dump(q, f, indent=2)
+            _atomic_write_json(self.queue_file, q)
 
             if self.completed_file.exists():
                 with open(self.completed_file, 'r') as f:
@@ -1590,8 +1604,7 @@ class ContinuousManager:
                 pass  # results.json absent or malformed; scores omitted
 
             comp['jobs'].append(entry)
-            with open(self.completed_file, 'w') as f:
-                json.dump(comp, f, indent=2)
+            _atomic_write_json(self.completed_file, comp)
 
             gpu_id_for_display = job.get('gpu')
             if gpu_id_for_display is None:
@@ -1602,8 +1615,8 @@ class ContinuousManager:
                 gpu_id=gpu_id_for_display,
                 status="idle",
                 message=f"last job {job['id']} rc={rc} dur={duration}s",
-                rpc_port=port,
-                tm_port=tm_port,
+                rpc_port=int(port),
+                tm_port=int(tm_port),
                 current_job=None
             )
 
@@ -1616,6 +1629,21 @@ def _safe_read_json(path: Path):
             return json.load(f)
     except Exception:
         return {}
+
+def _atomic_write_json(path, obj) -> None:
+    """Write shared state via a temp file + rename.
+
+    The queue/health files are read without the scheduler lock (monitor,
+    watchdog, coordinator supervisor), and a worker can be killed mid-write
+    when the allocation ends. Writing in place would expose a truncated file
+    to those readers and could leave the queue itself corrupt; a rename swaps
+    the complete file in atomically.
+    """
+    path = Path(path)
+    tmp = path.with_name(f"{path.name}.{os.getpid()}.tmp")
+    with open(tmp, 'w') as f:
+        json.dump(obj, f, indent=2)
+    os.replace(tmp, path)
 
 def main():
     parser = argparse.ArgumentParser(description='Manage continuous data collection')
