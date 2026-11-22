@@ -24,6 +24,9 @@ Each job writes ``save_path/results.json`` where (mirrored verbatim from
     save_path = <dataset>/<agent>/weather_<int(weather)>/map_<int(town):02d>/<Path(route).stem>
     checkpoint = save_path/results.json
 
+(a job carrying a ``repeat`` index — the repeat-variance study — gets
+``_rep<NN>`` appended to ``save_path``, one directory per repeat).
+
 We enumerate the expected paths from the job records (NOT by walking the huge
 ``dataset/`` tree). Finished jobs are read from two state files:
 
@@ -111,6 +114,13 @@ def results_path_for(dataset_dir, job):
         _label_map(job.get("town", "")),
         route_stem,
     )
+    # Repeat-variance jobs: manage_continuous.run_next_job suffixes the dir so
+    # seeded repeats of one (agent, route, weather) do not overwrite each other.
+    if job.get("repeat") is not None:
+        try:
+            save_path = "%s_rep%02d" % (save_path, int(job["repeat"]))
+        except (TypeError, ValueError):
+            pass
     return os.path.join(save_path, "results.json")
 
 
@@ -275,10 +285,12 @@ class Counters:
 def harvest(jobs, dataset_dir):
     """Harvest per-route rows from every finished job's results.json.
 
-    Dedupe key: (agent, weather, town, route_file, route_id). When the same
-    route-eval recurs across resumes/retries (same condition -> same file, or a
-    retry that overwrote the file), keep the record from the FURTHEST-PROGRESSED
-    file (largest ``_checkpoint.progress[0]``), tie-broken by more records.
+    Dedupe key: (agent, weather, town, route_file, route_id, repeat). When the
+    same route-eval recurs across resumes/retries (same condition -> same file,
+    or a retry that overwrote the file), keep the record from the
+    FURTHEST-PROGRESSED file (largest ``_checkpoint.progress[0]``), tie-broken by
+    more records. ``repeat`` is None except for repeat-variance jobs, whose
+    repeats are distinct evals and must not collapse into one.
 
     Returns (rows, counters).
     """
@@ -319,7 +331,7 @@ def harvest(jobs, dataset_dir):
             row.update(_weather_cols(row["weather"]))
 
             key = (row["agent"], str(row["weather"]), str(row["town"]),
-                   row["route_file"], row["route_id"])
+                   row["route_file"], row["route_id"], job.get("repeat"))
             prev = by_key.get(key)
             if prev is None:
                 by_key[key] = {"progress": progress_done, "nrec": n_rec, "row": row}
