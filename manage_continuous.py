@@ -431,15 +431,19 @@ class ContinuousManager:
     def reclaim_stale(self, stale_hours: float = 6.0):
         """Recover jobs stuck in 'running' state whose workers are no longer alive.
 
-        A job is considered stale if it has been running longer than `stale_hours`
-        with no active health beacon.  For each stale job:
-          - If a run_summary.json exists at the expected save_path, the worker
-            finished successfully but _finish() never ran; mark completed and
-            write a best-effort entry to completed_jobs.json.
-          - Otherwise, reset to pending so the job gets retried.
-        """
-        import shutil as _shutil
+        A job is considered stale once it has been 'running' for longer than
+        `stale_hours`. For each stale job:
+          - If its results.json shows the leaderboard evaluated the whole route
+            file, the evaluation finished but _finish() never recorded it: mark
+            the job completed and add an entry to completed_jobs.json.
+          - Otherwise reset it to pending so it is retried. (The retry starts the
+            route file from its first route again and, being a later attempt,
+            replaces the job directory.)
 
+        run_summary.json is deliberately not the completion signal: the agent
+        writes it at the end of every route (and only when data collection is
+        on), so it exists as soon as a single route has finished.
+        """
         def _label_weather(idx):
             try: return f"weather_{int(idx)}"
             except: return f"weather_{idx}"
@@ -448,6 +452,25 @@ class ContinuousManager:
             try: return f"map_{int(tn):02d}"
             except: return f"map_{tn or 'unknown'}"
 
+        def _read_checkpoint(results_path):
+            """(whole_file_done, _checkpoint dict) from a leaderboard results.json.
+
+            The evaluator advances _checkpoint.progress = [done, total] after each
+            route and writes entry_status 'Finished...' only after the last one,
+            which is the same condition under which it exits 0.
+            """
+            try:
+                with open(results_path) as rf:
+                    lb = json.load(rf)
+                cp = lb.get('_checkpoint') or {}
+                progress = cp.get('progress') or []
+                all_routes = (len(progress) == 2 and int(progress[1]) > 0
+                              and int(progress[0]) >= int(progress[1]))
+                finished = str(lb.get('entry_status') or '').startswith('Finished')
+                return (all_routes and finished), cp
+            except Exception:
+                return False, {}
+
         def _reclaim():
             with open(self.queue_file, 'r') as f:
                 q = json.load(f)
@@ -455,8 +478,8 @@ class ContinuousManager:
             dataset_dir = os.environ.get('DATASET_DIR',
                 str(self.project_root / 'dataset'))
             now = datetime.utcnow()
-            reclaimed_complete = 0
-            reclaimed_pending  = 0
+            newly_completed = []
+            reclaimed_pending = 0
 
             for job in q['jobs']:
                 if job.get('status') != 'running':
@@ -476,24 +499,19 @@ class ContinuousManager:
                 save_path   = os.path.join(dataset_dir, job['agent'], weather_lbl, map_lbl, route_stem)
                 if job.get('repeat') is not None:  # same suffix run_next_job applies
                     save_path = '%s_rep%02d' % (save_path, int(job['repeat']))
-                summary_path = Path(save_path) / 'run_summary.json'
 
-                if summary_path.exists():
-                    # Worker finished — mark completed and record in completed_jobs.json
+                whole_file_done, cp = _read_checkpoint(Path(save_path) / 'results.json')
+                if whole_file_done:
+                    # The evaluation finished — mark completed and archive it.
                     job['status']   = 'completed'
                     job['end_time'] = job.get('end_time') or now.isoformat() + 'Z'
                     try:
-                        with open(summary_path) as sf:
-                            sm = json.load(sf)
-                        job['global_steps'] = sm.get('global_steps')
+                        with open(Path(save_path) / 'run_summary.json') as sf:
+                            job['global_steps'] = json.load(sf).get('global_steps')
                     except Exception:
                         pass
-                    # Try to read leaderboard scores if results.json was written
-                    results_path = Path(save_path) / 'results.json'
                     try:
-                        with open(results_path) as rf:
-                            lb = json.load(rf)
-                        records = lb.get('_checkpoint', {}).get('records', [])
+                        records = cp.get('records', [])
                         if records:
                             composed  = [r['scores']['score_composed'] for r in records if 'scores' in r]
                             route_pct = [r['scores']['score_route']    for r in records if 'scores' in r]
@@ -502,7 +520,7 @@ class ContinuousManager:
                             job['score_n_routes'] = len(records)
                     except Exception:
                         pass
-                    reclaimed_complete += 1
+                    newly_completed.append(job)
                 else:
                     job['status']   = 'pending'
                     job['end_time'] = None
@@ -510,19 +528,19 @@ class ContinuousManager:
 
             _atomic_write_json(self.queue_file, q)
 
-            # Append newly-completed entries to completed_jobs.json
-            if reclaimed_complete:
+            # Archive the recovered completions. Appended even if the job already
+            # has an entry from an earlier failed attempt, so the archive's latest
+            # entry for a job always reflects its latest finished attempt.
+            if newly_completed:
                 if self.completed_file.exists():
                     with open(self.completed_file) as f:
                         comp = json.load(f)
                 else:
                     comp = {'jobs': []}
-                existing_ids = {j['id'] for j in comp['jobs']}
-                for job in q['jobs']:
-                    if job.get('status') == 'completed' and job['id'] not in existing_ids:
-                        comp['jobs'].append(dict(job))
+                comp['jobs'].extend(dict(job) for job in newly_completed)
                 _atomic_write_json(self.completed_file, comp)
 
+            reclaimed_complete = len(newly_completed)
             print(f"Reclaimed {reclaimed_complete} completed + {reclaimed_pending} pending (was stale-running)")
             return reclaimed_complete, reclaimed_pending
 
@@ -1432,8 +1450,8 @@ class ContinuousManager:
             ]
 
 
-        # Emit header in the same shape continuous_collection.sh writes, so
-        # `manage_continuous.py logs --job N --gpu G` greps work in persistent mode too.
+        # Emit a per-job header ("[GPU g] Starting Job #N") into the worker log;
+        # `continuous_cli.py logs --job N --gpu G` greps for it.
         print("=" * 42)
         print(f"[GPU {job.get('gpu', '?')}] Starting Job #{job['id']}")
         print(f"Agent: {agent_name}")
@@ -1690,7 +1708,7 @@ def main():
 
     reclaim_parser = subparsers.add_parser('reclaim', help='Recover jobs stuck in running state after worker crash')
     reclaim_parser.add_argument('--stale-hours', type=float, default=6.0,
-                                help='Hours without health beacon before a running job is considered stale (default: 6)')
+                                help='Hours in the running state before a job is considered stale (default: 6)')
     
     default_state_dir = os.path.join(
         os.environ.get('PROJECT_ROOT', os.getcwd()),
