@@ -19,7 +19,7 @@
 #   (A) RECOMMENDED for real/multi-node runs — from the LOGIN node, let the CLI
 #       generate and submit the SLURM job for you:
 #           python3 continuous_cli.py reset --smoke
-#           python3 continuous_cli.py --persistent start --slurm \
+#           python3 continuous_cli.py start --slurm \
 #               --slurm-nodes 2 --slurm-gpus 8 --slurm-time 96:00:00 \
 #               --slurm-nodelist hpc-pr-a-pod09,hpc-pr-a-pod17
 #       (do NOT sbatch that — `start --slurm` submits the job itself.)
@@ -32,7 +32,7 @@
 #   cd /path/to/HPC-CARLA-persistent          # the repo root
 #   python3 continuous_cli.py reset --smoke   # build a tiny ~1h validation queue
 #   sbatch examples/example_slurm_job.sh      # submit this job
-#   python3 continuous_cli.py --persistent monitor   # watch progress (from the login node)
+#   python3 continuous_cli.py monitor         # watch progress (from the login node)
 # =============================================================================
 
 # --- SLURM directives --------------------------------------------------------
@@ -80,13 +80,13 @@ if [ ! -f collection_state/job_queue.json ]; then
 fi
 
 # --- Launch -----------------------------------------------------------------
-# `--persistent start --local` runs the per-node coordinator in THIS allocation:
+# `start --local` runs the per-node coordinator in THIS allocation:
 #   sets up the container binds + EVAL_CMD_TEMPLATE, starts one CARLA per GPU,
 #   spawns one agent worker per GPU, and supervises until the queue drains
 #   (in the background -- see the wait loop below).
 # (Use `start --slurm` instead — from the login node, NOT here — for multi-node.)
 rm -f collection_state/coordinator.pid   # never wait on a pid left by an earlier run
-python3 continuous_cli.py --persistent start --local
+python3 continuous_cli.py start --local
 
 # `start --local` launches the coordinator in the background and returns at
 # once. Block here until the coordinator exits (queue drained): when this batch

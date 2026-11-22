@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """
-Unified command-line interface for continuous data collection system
-Supports both original (restart-per-job) and persistent CARLA modes
-Includes dynamic SLURM configuration
+Unified command-line interface for the continuous collection system.
+
+Runs one persistent CARLA server per GPU and a worker per GPU draining a shared
+job queue; generates and submits the SLURM job for it.
 """
 
 import os
@@ -131,12 +132,11 @@ class SLURMConfig:
 
 
 class ContinuousCLI:
-    def __init__(self, project_root: str = None, persistent_mode: bool = False):
+    def __init__(self, project_root: str = None):
         self.project_root = Path(project_root or os.environ.get('PROJECT_ROOT', os.getcwd()))
         self.state_dir = self.project_root / 'collection_state'
         self.log_dir = self.project_root / 'logs'
         self.dataset_dir = self.project_root / 'dataset'
-        self.persistent_mode = persistent_mode
         
         # Set environment variables for child processes
         os.environ['PROJECT_ROOT'] = str(self.project_root)
@@ -144,45 +144,29 @@ class ContinuousCLI:
         os.environ['LOG_DIR'] = str(self.log_dir)
         os.environ['DATASET_DIR'] = str(self.dataset_dir)
         
-        # Script paths - choose based on mode
-        if self.persistent_mode:
-            self.coordinator_script = self.project_root / 'continuous_collection_persistent.sh'
-            self.monitor_script = self.project_root / 'carla_health_manager.py'
-            self.worker_script = self.project_root / 'persistent_carla_worker.sh'
-        else:
-            self.coordinator_script = self.project_root / 'continuous_collection.sh'
-            # Original mode has no dedicated monitor script; monitor() loops `status` instead.
-            self.monitor_script = None
-            self.worker_script = None
-        
+        # Script paths
+        self.coordinator_script = self.project_root / 'continuous_collection_persistent.sh'
+        self.monitor_script = self.project_root / 'carla_health_manager.py'
+        self.worker_script = self.project_root / 'persistent_carla_worker.sh'
         self.manager_script = self.project_root / 'manage_continuous.py'
         
         # Create state directories
         self.state_dir.mkdir(parents=True, exist_ok=True)
         self.log_dir.mkdir(parents=True, exist_ok=True)
         
-        if self.persistent_mode:
-            (self.state_dir / 'health').mkdir(parents=True, exist_ok=True)
+        (self.state_dir / 'health').mkdir(parents=True, exist_ok=True)
     
     def check_prerequisites(self) -> bool:
-        """Check if required files exist for the selected mode"""
+        """Check if the required files exist"""
         required_files = [
             'carla_official.sif',
             'leaderboard/team_code/consolidated_agent.py',
-            self.manager_script
+            self.manager_script,
+            'continuous_collection_persistent.sh',
+            'persistent_carla_worker.sh',
+            'carla_server_manager.py',
+            'carla_health_manager.py',
         ]
-        
-        if self.persistent_mode:
-            required_files.extend([
-                'continuous_collection_persistent.sh',
-                'persistent_carla_worker.sh',
-                'carla_health_manager.py'
-            ])
-        else:
-            required_files.extend([
-                'continuous_collection.sh',
-                'generate_single_job.sh'
-            ])
         
         missing = []
         for file in required_files:
@@ -190,12 +174,12 @@ class ContinuousCLI:
                 missing.append(file)
         
         if missing:
-            print(f"❌ Missing required files for {'persistent' if self.persistent_mode else 'original'} mode:")
+            print("❌ Missing required files:")
             for file in missing:
                 print(f"  - {file}")
             return False
         
-        print(f"✓ All prerequisites found for {'persistent' if self.persistent_mode else 'original'} mode")
+        print("✓ All prerequisites found")
         return True
     
     def generate_slurm_script(self, slurm_config: SLURMConfig, 
@@ -203,8 +187,8 @@ class ContinuousCLI:
                         routes: list = None) -> Path:
         """Generate a dynamic SLURM submission script."""
         
-        # Set defaults based on mode
-        mode_str = "persistent" if self.persistent_mode else "original"
+        # Kept in the job/file names so `stop` and existing logs still match.
+        mode_str = "persistent"
         
         if not slurm_config.job_name:
             slurm_config.job_name = f"carla_collection_{mode_str}"
@@ -391,18 +375,17 @@ class ContinuousCLI:
             "",
         ])
         
-        # For persistent mode, need to handle multi-node CARLA servers
-        if self.persistent_mode:
-            script_parts.extend([
-                '# Multi-node persistent CARLA server management',
-                'if [ "$IS_MASTER" == "true" ]; then',
-                '    echo "Master node: Will coordinate multi-node setup"',
-                'else',
-                '    echo "Worker node $NODE_ID: Waiting for master initialization"',
-                '    sleep 10',
-                'fi',
-                "",
-            ])
+        # Multi-node CARLA server management
+        script_parts.extend([
+            '# Multi-node persistent CARLA server management',
+            'if [ "$IS_MASTER" == "true" ]; then',
+            '    echo "Master node: Will coordinate multi-node setup"',
+            'else',
+            '    echo "Worker node $NODE_ID: Waiting for master initialization"',
+            '    sleep 10',
+            'fi',
+            "",
+        ])
         
         # Add the main logic
         # If multi-node, launch one coordinator per node via srun; else inline
@@ -531,8 +514,6 @@ class ContinuousCLI:
         # Check prerequisites
         if not self.check_prerequisites():
             print("\nPlease ensure all required files are in place.")
-            print("For persistent mode, you need the persistent CARLA scripts.")
-            print("For original mode, you need the standard collection scripts.")
             return False
         
         # Initialize queue if needed
@@ -545,42 +526,21 @@ class ContinuousCLI:
             use_slurm = subprocess.run(['which', 'sbatch'], 
                                      capture_output=True).returncode == 0
         
-        mode_str = "persistent CARLA" if self.persistent_mode else "original"
-        
         if use_slurm:
-            print(f"Starting {mode_str} collection with SLURM...")
+            print("Starting collection with SLURM...")
             
-            # Generate the submission script when any SLURM option was given. The
-            # check has to cover every option, or one passed on its own (say
-            # --slurm-account) is silently dropped. Persistent mode always
-            # generates: that coordinator carries no #SBATCH header of its own, so
-            # submitting it raw would request no GPUs at all.
-            if slurm_config and (self.persistent_mode or any([
-                slurm_config.nodes, slurm_config.nodelist, slurm_config.exclude,
-                slurm_config.gpus_per_node, slurm_config.gres, slurm_config.time,
-                slurm_config.partition, slurm_config.qos, slurm_config.account,
-                slurm_config.mem, slurm_config.cpus_per_task,
-                slurm_config.mail_type, slurm_config.mail_user,
-                slurm_config.extra_directives, not slurm_config.exclusive,
-            ])):
-                print("Generating dynamic SLURM script with custom configuration...")
-                script_to_submit = self.generate_slurm_script(slurm_config, agents, weather, routes)
-                print(f"Generated script: {script_to_submit}")
-                
-                # Show configuration
-                print("\nSLURM Configuration:")
-                for directive in slurm_config.to_directives():
-                    print(f"  {directive}")
-                print()
-            else:
-                # Use existing script
-                script_to_submit = self.coordinator_script
-                
-                # Make scripts executable for persistent mode
-                if self.persistent_mode:
-                    for script in [self.coordinator_script, self.worker_script]:
-                        if script and script.exists():
-                            script.chmod(0o755)
+            # Always submit a generated script. The coordinator carries no #SBATCH
+            # header of its own, so submitting it raw would request no GPUs; the
+            # generator applies every --slurm-* option on top of its defaults.
+            slurm_config = slurm_config or SLURMConfig()
+            script_to_submit = self.generate_slurm_script(slurm_config, agents, weather, routes)
+            print(f"Generated script: {script_to_submit}")
+            
+            # Show configuration
+            print("\nSLURM Configuration:")
+            for directive in slurm_config.to_directives():
+                print(f"  {directive}")
+            print()
             
             # Submit the job
             result = subprocess.run(['sbatch', str(script_to_submit)], 
@@ -588,8 +548,7 @@ class ContinuousCLI:
             if result.returncode == 0:
                 job_id = result.stdout.strip().split()[-1]
                 print(f"✓ Job submitted: {job_id}")
-                print(f"✓ Mode: {mode_str}")
-                print(f"Monitor with: python continuous_cli.py{' --persistent' if self.persistent_mode else ''} monitor")
+                print("Monitor with: python continuous_cli.py monitor")
                 
                 # Save job ID for tracking
                 job_file = self.state_dir / 'current_slurm_job.txt'
@@ -600,20 +559,20 @@ class ContinuousCLI:
                 print(f"✗ Failed to submit job: {result.stderr}")
                 return False
         else:
-            print(f"Starting {mode_str} collection locally...")
+            print("Starting collection locally...")
             log_file = self.log_dir / f'continuous_{datetime.now():%Y%m%d_%H%M%S}.log'
             
-            # Set environment for number of GPUs
+            # The coordinator starts one worker per GPU from GPUS_PER_NODE;
+            # --slurm-gpus sets it for a local run too.
             if slurm_config and slurm_config.gpus_per_node:
-                os.environ['NUM_GPUS'] = str(slurm_config.gpus_per_node)
+                os.environ['GPUS_PER_NODE'] = str(slurm_config.gpus_per_node)
             
             with open(log_file, 'w') as log:
                 process = subprocess.Popen(['bash', str(self.coordinator_script)],
                                          stdout=log, stderr=subprocess.STDOUT)
                 print(f"✓ Started with PID: {process.pid}")
-                print(f"✓ Mode: {mode_str}")
                 print(f"✓ Log file: {log_file}")
-                print(f"Monitor with: python continuous_cli.py{' --persistent' if self.persistent_mode else ''} monitor")
+                print("Monitor with: python continuous_cli.py monitor")
                 
                 # Save PID for later
                 pid_file = self.state_dir / 'coordinator.pid'
@@ -655,29 +614,29 @@ class ContinuousCLI:
             except Exception as e:
                 print(f"Error cancelling SLURM job: {e}")
         
-        # Try to find and stop SLURM job by name
-        job_name = 'carla_collection_persistent' if self.persistent_mode else 'carla_collection_original'
-        result = subprocess.run(['squeue', '-n', job_name, '-h', '-o', '%A'],
-                              capture_output=True, text=True)
-        if result.stdout.strip():
-            job_ids = result.stdout.strip().split('\n')
-            for job_id in job_ids:
-                subprocess.run(['scancel', job_id])
-                print(f"✓ Cancelled SLURM job {job_id}")
+        # Try to find and stop SLURM job by name (skipped where SLURM is absent,
+        # e.g. after a `start --local` on a workstation)
+        job_name = 'carla_collection_persistent'
+        try:
+            result = subprocess.run(['squeue', '-n', job_name, '-h', '-o', '%A'],
+                                  capture_output=True, text=True)
+            if result.stdout.strip():
+                job_ids = result.stdout.strip().split('\n')
+                for job_id in job_ids:
+                    subprocess.run(['scancel', job_id])
+                    print(f"✓ Cancelled SLURM job {job_id}")
+        except FileNotFoundError:
+            pass
         
-        # For persistent mode, clean up CARLA instances
-        if self.persistent_mode and force:
+        # On a forced stop, also clear the per-GPU health state
+        if force:
             print("Cleaning up persistent CARLA instances...")
             self.cleanup_carla()
         
         return True
     
     def cleanup_carla(self):
-        """Clean up persistent CARLA instances (persistent mode only)"""
-        if not self.persistent_mode:
-            print("Cleanup is only for persistent mode")
-            return
-        
+        """Clean up the per-GPU health state of the persistent CARLA instances"""
         # Try to use health manager if available
         health_manager = self.project_root / 'carla_health_manager.py'
         if health_manager.exists():
@@ -691,29 +650,14 @@ class ContinuousCLI:
             print("✓ Cleaned up health files")
     
     def monitor(self, once: bool = False):
-        """Launch monitoring dashboard"""
-        if self.persistent_mode:
-            # Use health manager for persistent mode
-            cmd = ['python3', str(self.monitor_script)]
-            if once:
-                cmd.append('status')
-            else:
-                cmd.extend(['monitor', '--interval', '30'])
-            try:
-                subprocess.run(cmd)
-            except KeyboardInterrupt:
-                pass
-            return
-
-        # Original mode: loop manage_continuous.py status (no dedicated monitor binary).
+        """Launch the per-GPU health dashboard"""
+        cmd = ['python3', str(self.monitor_script)]
+        if once:
+            cmd.append('status')
+        else:
+            cmd.extend(['monitor', '--interval', '30'])
         try:
-            if once:
-                subprocess.run(['python3', str(self.manager_script), 'status'])
-            else:
-                while True:
-                    os.system('clear')
-                    subprocess.run(['python3', str(self.manager_script), 'status'])
-                    time.sleep(30)
+            subprocess.run(cmd)
         except KeyboardInterrupt:
             pass
     
@@ -728,22 +672,24 @@ class ContinuousCLI:
             print(f"\nCurrent SLURM job: {job_id}")
             
             # Get job details including node info
-            result = subprocess.run(['scontrol', 'show', 'job', job_id],
-                                capture_output=True, text=True)
-            if result.returncode == 0:
+            try:
+                result = subprocess.run(['scontrol', 'show', 'job', job_id],
+                                    capture_output=True, text=True)
+            except FileNotFoundError:   # no SLURM on this machine
+                result = None
+            if result is not None and result.returncode == 0:
                 # Parse and show key details
                 for line in result.stdout.split('\n'):
                     if any(keyword in line for keyword in ['JobState=', 'RunTime=', 'TimeLimit=', 'NodeList=']):
                         print(f"  {line.strip()}")
         
-        # For persistent mode, also show health status with nodes
-        if self.persistent_mode:
-            print("\n" + "="*40)
-            print("CARLA INSTANCE HEALTH:")
-            print("="*40)
-            health_manager = self.project_root / 'carla_health_manager.py'
-            if health_manager.exists():
-                subprocess.run(['python3', str(health_manager), 'status'])
+        # Per-GPU health, with nodes
+        print("\n" + "="*40)
+        print("CARLA INSTANCE HEALTH:")
+        print("="*40)
+        health_manager = self.project_root / 'carla_health_manager.py'
+        if health_manager.exists():
+            subprocess.run(['python3', str(health_manager), 'status'])
     
     def reset(self, agents: list = None, weather: list = None, routes: list = None,
               smoke: bool = False, limit: int = None):
@@ -859,15 +805,10 @@ class ContinuousCLI:
         subprocess.run(['python3', str(self.manager_script), 'analyze'])
     
     def health(self, gpu_id: Optional[int] = None):
-        """Show CARLA health status (persistent mode only)"""
-        if not self.persistent_mode:
-            print("Health monitoring is only available in persistent mode")
-            print("Use --persistent flag to enable persistent CARLA mode")
-            return
-        
+        """Show CARLA health status"""
         health_manager = self.project_root / 'carla_health_manager.py'
         if not health_manager.exists():
-            print("Health manager not found. Is persistent mode properly installed?")
+            print("Health manager (carla_health_manager.py) not found")
             return
         
         if gpu_id is not None:
@@ -876,11 +817,7 @@ class ContinuousCLI:
             subprocess.run(['python3', str(health_manager), 'status'])
     
     def restart_gpu(self, gpu_id: int):
-        """Restart a specific GPU worker (persistent mode only)"""
-        if not self.persistent_mode:
-            print("GPU restart is only available in persistent mode")
-            return
-        
+        """Request a CARLA restart for one GPU"""
         health_manager = self.project_root / 'carla_health_manager.py'
         if health_manager.exists():
             subprocess.run(['python3', str(health_manager), 'restart', str(gpu_id)])
@@ -890,24 +827,24 @@ class ContinuousCLI:
     def logs(self, tail: bool = False, job_id: Optional[int] = None, 
         gpu_id: Optional[int] = None):
         """View logs"""
-        # Resolve a GPU's log file across naming schemes:
-        #   continuous_collection.sh   -> node_<NODE>_gpu<id>_consolidated.log
-        #   persistent_carla_worker.sh -> worker_<NODE>_gpu<id>.log
+        # Resolve a GPU's worker log (persistent_carla_worker.sh writes
+        # worker_<NODE>_gpu<id>.log), falling back to any log for that GPU.
         def _find_gpu_log(gid):
-            for pattern in (f'*gpu{gid}_consolidated.log', f'worker_*_gpu{gid}.log', f'*gpu{gid}*.log'):
+            for pattern in (f'worker_*_gpu{gid}.log', f'*gpu{gid}*.log'):
                 matches = sorted(self.log_dir.glob(pattern), key=lambda p: p.stat().st_mtime, reverse=True)
                 if matches:
                     return matches[0]
             return None
 
         if job_id is not None:
-            # For specific job, grep from consolidated log
+            # For a specific job, grep it out of the GPU's worker log
             if gpu_id is not None:
                 log = _find_gpu_log(gpu_id)
                 if log is not None:
-                    # Search for specific job in the consolidated log
+                    # Search for the job's header in the worker log
+                    # Anchor the id so job 5 does not also match jobs 50-59, 500, ...
                     result = subprocess.run(
-                        ['grep', '-A', '50', f'Job #{job_id}', str(log)],
+                        ['grep', '-A', '50', '-E', f'Job #{job_id}($|[^0-9])', str(log)],
                         capture_output=True, text=True
                     )
                     if result.stdout:
@@ -916,7 +853,7 @@ class ContinuousCLI:
                     else:
                         print(f"Job {job_id} not found in GPU {gpu_id} log ({log.name})")
                 else:
-                    print(f"No consolidated log found for GPU {gpu_id}")
+                    print(f"No log found for GPU {gpu_id}")
             else:
                 print("Please specify GPU ID to search for job")
 
@@ -956,7 +893,7 @@ class ContinuousCLI:
                 gpu_status = json.load(f)
             
             print("\n" + "="*60)
-            print(f"CONTINUOUS COLLECTION SUMMARY ({'Persistent' if self.persistent_mode else 'Original'} Mode)")
+            print("CONTINUOUS COLLECTION SUMMARY")
             print("="*60)
 
             # Overall statistics — derive from job statuses (the stored
@@ -1030,23 +967,15 @@ class ContinuousCLI:
             print(f"Error generating summary: {e}")
     
     def check_mode(self):
-        """Check and display current mode settings"""
-        print(f"\nCurrent Configuration:")
-        print(f"  Mode: {'Persistent CARLA' if self.persistent_mode else 'Original (Restart per job)'}")
+        """Display the current configuration"""
+        print("\nCurrent Configuration:")
         print(f"  Project root: {self.project_root}")
         print(f"  Coordinator script: {self.coordinator_script.name}")
-        
-        if self.persistent_mode:
-            print(f"\nPersistent Mode Features:")
-            print(f"  ✓ One CARLA instance per GPU")
-            print(f"  ✓ No restarts between jobs")
-            print(f"  ✓ Health monitoring via shared files (heartbeats)")
-            print(f"  ✓ Recovery via `reclaim` (stuck jobs) and `restart-gpu` (manual)")
-        else:
-            print(f"\nOriginal Mode Features:")
-            print(f"  • CARLA restarts for each job")
-            print(f"  • Simple architecture")
-            print(f"  • No health monitoring needed")
+        print("\nPersistent CARLA servers:")
+        print("  ✓ One CARLA instance per GPU")
+        print("  ✓ No restarts between jobs")
+        print("  ✓ Health monitoring via shared files (heartbeats)")
+        print("  ✓ Recovery via `reclaim` (stuck jobs) and `restart-gpu` (manual)")
 
 
 def add_slurm_arguments(parser):
@@ -1092,7 +1021,7 @@ def main():
         epilog="""
 Examples:
   # Start with custom SLURM configuration
-  python continuous_cli.py --persistent start --slurm \\
+  python continuous_cli.py start --slurm \\
       --slurm-nodes 2 --slurm-gpus 4 --slurm-time 48:00:00
   
   # Use specific nodes
@@ -1100,7 +1029,7 @@ Examples:
       --slurm-nodelist "node[01-02]" --slurm-partition gpu_large
   
   # Start with email notifications
-  python continuous_cli.py --persistent start --slurm \\
+  python continuous_cli.py start --slurm \\
       --slurm-mail-type "BEGIN,END,FAIL" --slurm-mail-user me@example.com
   
   # Custom memory and CPU allocation
@@ -1117,8 +1046,10 @@ Examples:
     default_project_root = os.environ.get('PROJECT_ROOT', os.getcwd())
     parser.add_argument('--project-root', default=default_project_root,
                        help='Project root directory')
-    parser.add_argument('--persistent', action='store_true',
-                       help='Use persistent CARLA mode (one instance per GPU)')
+    # Persistent CARLA (one server per GPU) is the only mode. The flag that used
+    # to select it is still accepted, before or after the subcommand, so existing
+    # commands and scripts keep working; it has no effect.
+    parser.add_argument('--persistent', action='store_true', help=argparse.SUPPRESS)
     
     subparsers = parser.add_subparsers(dest='command', help='Commands')
     
@@ -1156,14 +1087,14 @@ Examples:
     subparsers.add_parser('status', help='Show status')
     
     # Check-mode command
-    subparsers.add_parser('check-mode', help='Show current mode configuration')
+    subparsers.add_parser('check-mode', help='Show current configuration')
     
-    # Health command (persistent mode)
-    health_parser = subparsers.add_parser('health', help='Show CARLA health (persistent mode)')
+    # Health command
+    health_parser = subparsers.add_parser('health', help='Show CARLA health')
     health_parser.add_argument('gpu_id', nargs='?', type=int, help='GPU ID for detailed info')
     
-    # Restart-gpu command (persistent mode)
-    restart_parser = subparsers.add_parser('restart-gpu', help='Restart GPU worker (persistent mode)')
+    # Restart-gpu command
+    restart_parser = subparsers.add_parser('restart-gpu', help='Request a CARLA restart for one GPU')
     restart_parser.add_argument('gpu_id', type=int, help='GPU ID to restart')
     
     # Reset command
@@ -1232,13 +1163,11 @@ Examples:
     # Summary command
     subparsers.add_parser('summary', help='Show summary')
     
-    # Cleanup command (persistent mode)
-    subparsers.add_parser('cleanup', help='Clean up CARLA instances (persistent mode)')
+    # Cleanup command
+    subparsers.add_parser('cleanup', help='Clear per-GPU CARLA health state')
     
-    # --persistent is a global flag, but `monitor --persistent` is the order
-    # people (and examples/run_cluster.sh) reach for; accept it after the
-    # subcommand too. SUPPRESS keeps a subparser from resetting a value given
-    # before the subcommand.
+    # Accept the no-op --persistent after the subcommand too (see above).
+    # SUPPRESS keeps a subparser from adding/resetting the attribute.
     for sub_parser in subparsers.choices.values():
         sub_parser.add_argument('--persistent', action='store_true',
                                 default=argparse.SUPPRESS, help=argparse.SUPPRESS)
@@ -1249,8 +1178,7 @@ Examples:
         parser.print_help()
         return
     
-    # Create CLI instance with mode setting
-    cli = ContinuousCLI(args.project_root, args.persistent)
+    cli = ContinuousCLI(args.project_root)
     
     # Execute commands
     if args.command == 'start':
@@ -1275,8 +1203,10 @@ Examples:
             cli.reset(args.agents, args.weather, args.routes,
                       smoke=getattr(args, 'smoke', False), limit=getattr(args, 'limit', None))
 
-        # Create SLURM config from arguments
-        slurm_config = SLURMConfig.from_args(args) if use_slurm else None
+        # Always build the SLURM config: SLURM may still be auto-detected in
+        # start() (neither --slurm nor --local given), and a local run reads the
+        # GPU count from it.
+        slurm_config = SLURMConfig.from_args(args)
 
         cli.start(use_slurm, args.agents, args.weather, args.routes, slurm_config)
     
@@ -1340,10 +1270,7 @@ Examples:
         cli.summary()
     
     elif args.command == 'cleanup':
-        if not cli.persistent_mode:
-            print("Cleanup is only for persistent mode. Use --persistent flag.")
-        else:
-            cli.cleanup_carla()
+        cli.cleanup_carla()
 
 
 if __name__ == '__main__':

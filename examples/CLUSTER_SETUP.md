@@ -77,8 +77,16 @@ errors) do the real run:
 ```
 
 The run collects `agents × routes × weathers` on a shared queue drained by one
-CARLA server + one agent per GPU. It's **resumable**: if the allocation ends, just
-`run_cluster.sh run` again (it reuses completed work) or add nodes.
+CARLA server + one agent per GPU. It's **resumable**: if the allocation ends, continue
+with
+
+```bash
+./examples/run_cluster.sh resume   # same queue, new allocation
+```
+
+Finished jobs stay finished, and jobs that were cut off mid-run are put back in the
+queue. Do **not** use `run` for this: `run` builds a fresh queue, so every job would be
+scheduled again.
 
 ---
 

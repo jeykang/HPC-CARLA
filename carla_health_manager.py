@@ -216,11 +216,11 @@ def cmd_restart(args):
     print(f"Requested restart for {node} GPU {gpu_id}: {flag}")
 
 def cmd_log(args):
-    """Tail the worker log for one GPU. Searches both persistent and original-mode names."""
+    """Tail the worker log for one GPU (worker_<node>_gpu<id>.log, else any log for that GPU)."""
     log_dir = Path(os.environ.get('LOG_DIR', PROJECT_ROOT / 'logs'))
     gpu_id = int(args.gpu_id)
     candidates = []
-    for pattern in (f'worker_*_gpu{gpu_id}.log', f'*gpu{gpu_id}_consolidated.log', f'*gpu{gpu_id}*.log'):
+    for pattern in (f'worker_*_gpu{gpu_id}.log', f'*gpu{gpu_id}*.log'):
         candidates.extend(sorted(log_dir.glob(pattern), key=lambda p: p.stat().st_mtime, reverse=True))
     seen = set(); ordered = []
     for p in candidates:

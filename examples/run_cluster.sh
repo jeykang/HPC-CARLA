@@ -6,7 +6,8 @@
 #
 #   ./examples/run_cluster.sh setup     # check prerequisites (SIF, weights, configs)
 #   ./examples/run_cluster.sh smoke     # tiny ~1h validation run  <-- DO THIS FIRST
-#   ./examples/run_cluster.sh run       # the real comparison run
+#   ./examples/run_cluster.sh run       # the real comparison run (builds a NEW queue)
+#   ./examples/run_cluster.sh resume    # continue the existing queue in a new allocation
 #   ./examples/run_cluster.sh monitor   # watch progress (from the login node)
 #   ./examples/run_cluster.sh summary   # print this cluster's comparison metrics
 #   ./examples/run_cluster.sh export    # write a labeled results bundle to share
@@ -87,7 +88,7 @@ case "${1:-help}" in
   smoke)
     mapfile -t SA < <(_slurm_args)
     echo "== SMOKE on '$CLUSTER_NAME' ($SLURM_NODES node × $SLURM_GPUS_PER_NODE GPU) =="
-    python3 continuous_cli.py --persistent start --slurm --reset --smoke \
+    python3 continuous_cli.py start --slurm --reset --smoke \
       --agents "${AGENTS[@]}" "${SA[@]}"
     echo "watch with: ./examples/run_cluster.sh monitor"
     ;;
@@ -97,18 +98,28 @@ case "${1:-help}" in
     R="$(_routes)"
     echo "== RUN on '$CLUSTER_NAME': agents=[${AGENTS[*]}] routes=$ROUTES_KIND nodes=$SLURM_NODES gpus/node=$SLURM_GPUS_PER_NODE =="
     # shellcheck disable=SC2086
-    python3 continuous_cli.py --persistent start --slurm --reset \
+    python3 continuous_cli.py start --slurm --reset \
       --agents "${AGENTS[@]}" ${R:+--routes $R} "${SA[@]}"
     echo "watch with: ./examples/run_cluster.sh monitor"
     ;;
 
+  resume)
+    # `run` rebuilds the queue (--reset) and so forgets which jobs are done. To
+    # carry on after an allocation ends, submit again WITHOUT a reset: finished
+    # jobs stay finished and jobs cut off mid-run are requeued by the coordinator.
+    mapfile -t SA < <(_slurm_args)
+    echo "== RESUME on '$CLUSTER_NAME' (existing queue; $SLURM_NODES node × $SLURM_GPUS_PER_NODE GPU) =="
+    python3 continuous_cli.py start --slurm "${SA[@]}"
+    echo "watch with: ./examples/run_cluster.sh monitor"
+    ;;
+
   monitor)
-    python3 continuous_cli.py --persistent monitor
+    python3 continuous_cli.py monitor
     ;;
 
   summary)
     echo "== '$CLUSTER_NAME' comparison metrics =="
-    python3 continuous_cli.py --persistent summary 2>/dev/null || true
+    python3 continuous_cli.py summary 2>/dev/null || true
     echo "-- per-ROUTE evals harvested (the real metric: routes done, incl. from crashed/timed-out files) --"
     python3 tools/harvest_results.py 2>/dev/null || echo "   (tools/harvest_results.py not present)"
     echo "-- per-agent score & pass-rate --";      python3 tools/verification_report.py 2>/dev/null || true
@@ -139,6 +150,6 @@ case "${1:-help}" in
     ;;
 
   *)
-    sed -n '2,18p' "$0"   # print the header/usage
+    sed -n '2,19p' "$0"   # print the header/usage
     ;;
 esac
