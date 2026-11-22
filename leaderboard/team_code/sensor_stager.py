@@ -28,13 +28,21 @@ On-disk result under a route's `/scratch` dir:
     shards/shard_00001.tar
     ...
     shard_manifest.json           # index: shard_size, n_shards, per-shard file counts
+
+One job dir is shared by every route of a route file, and the leaderboard builds
+a fresh agent (hence a fresh stager) per route. Shard numbering and the manifest
+therefore continue from whatever is already in the dir instead of restarting at
+0, which would overwrite the earlier routes' shards.
 Unpack with `tools/unpack_shards.py` (reconstructs the original per-frame layout).
 """
 
 import os
+import re
 import json
 import shutil
 import tarfile
+
+_SHARD_RE = re.compile(r"^shard_(\d+)\.tar(\.gz)?$")
 
 
 def _safe_name(path):
@@ -60,6 +68,7 @@ class SensorStager:
             shutil.rmtree(self.stage, ignore_errors=True)
             os.makedirs(self.stage, exist_ok=True)
             os.makedirs(self.shard_dir, exist_ok=True)
+            self._shard_idx = self._next_shard_index()
             self.enabled = True
             self._log("[stager] enabled: stage=%s shard_size=%d -> %s"
                       % (self.stage, self.shard_size, self.shard_dir))
@@ -67,6 +76,16 @@ class SensorStager:
             self._log("[stager] disabled (stage setup failed: %s); "
                       "falling back to direct /scratch writes" % exc)
             self.enabled = False
+
+    # -- first free shard number in shard_dir -------------------------------
+    def _next_shard_index(self):
+        """One past the highest shard already present (0 for a fresh dir)."""
+        highest = -1
+        for name in os.listdir(self.shard_dir):
+            m = _SHARD_RE.match(name)
+            if m:
+                highest = max(highest, int(m.group(1)))
+        return highest + 1
 
     # -- directory handed to the per-sensor writer --------------------------
     def dir_for(self, folder_name):
@@ -124,15 +143,29 @@ class SensorStager:
         if not self.enabled:
             return
         self._roll()
+        manifest_path = os.path.join(self.final_dir, "shard_manifest.json")
+        # Earlier routes of this job already indexed their shards here; extend
+        # that index (dropping entries whose shard is gone) rather than replace it.
+        prior_shards, prior_ticks = [], 0
+        try:
+            with open(manifest_path) as f:
+                prior = json.load(f)
+            prior_shards = [e for e in prior.get("shards", [])
+                            if isinstance(e, dict) and os.path.exists(
+                                os.path.join(self.shard_dir, str(e.get("shard"))))]
+            prior_ticks = int(prior.get("total_ticks", 0)) if prior_shards else 0
+        except (OSError, ValueError, TypeError, AttributeError):
+            pass
+        shards = prior_shards + self._manifest
         manifest = {
             "shard_size": self.shard_size,
             "compress": self.compress,
-            "n_shards": self._shard_idx,
-            "total_ticks": self._tick,
-            "shards": self._manifest,
+            "n_shards": len(shards),
+            "total_ticks": prior_ticks + self._tick,
+            "shards": shards,
         }
         try:
-            with open(os.path.join(self.final_dir, "shard_manifest.json"), "w") as f:
+            with open(manifest_path, "w") as f:
                 json.dump(manifest, f, indent=2)
         except OSError as exc:
             self._log("[stager] manifest write failed: %s" % exc)

@@ -5,13 +5,14 @@ ones are opt-in inside the container.
 
 ## Tier 1 — fast, dependency-light (runs anywhere, incl. the login node)
 
-Pure-Python pipeline-engine contract + config-contract checks. Needs only the
-stdlib and `pyyaml`. No torch/CARLA/GPU.
+Pure-Python pipeline-engine contract + config-contract + sensor-shard checks.
+Needs only the stdlib and `pyyaml`. No torch/CARLA/GPU.
 
 ```bash
 # without pytest:
 python3 tests/test_pipeline_engine.py
 python3 tests/test_config_schema.py
+python3 tests/test_sensor_stager.py
 
 # or with pytest (runs tier-1 only by default):
 pytest
@@ -20,6 +21,10 @@ pytest
 `test_config_schema.py` statically validates every agent YAML (pipeline/sensor
 shape) and that each step's class actually exists in `pipeline_modules.py` —
 catching typo'd/renamed steps without importing anything heavy.
+
+`test_sensor_stager.py` drives `SensorStager` the way a multi-route job does (one
+new stager per route, all writing into one job directory) and checks that later
+routes add to the earlier routes' tar shards and manifest instead of replacing them.
 
 ## Tier 2 — heavy, in-container (`heavy` marker, excluded by default)
 
