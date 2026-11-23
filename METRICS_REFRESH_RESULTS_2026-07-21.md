@@ -1,5 +1,11 @@
 # Metrics refresh — results from the finished full sweep
 
+> **Note added 2026-11-23.** Sections B1 to B3 count simulator-crash records as failures, as the
+> tools did when this file was written. Those records are now excluded by default; pass
+> `--count-crashes-as-failures` to reproduce the numbers here, or see "Changes since the paper" in
+> the README for the recomputed values and the resulting change in agent rank order by darkness
+> weight.
+
 *Answers the METRICS_REFRESH_REQUEST against the completed 2,835-job stratified sweep
 (job 167271, pod09+pod17, 2026-07-16→07-21). Harvest snapshot: **2026-07-21**. The
 data-built numbers here **supersede** `PAPER_OFFLINE_ANALYSIS_2026-07-15.md` (1,648/86%).

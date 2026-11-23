@@ -976,11 +976,14 @@ model*, not of the measurement.
 ### Multi-axis difficulty and per-model sensitivity
 
 > **Outcome definition (changed 2026-11-22).** `tools/sensitivity_matrix.py`,
-> `tools/difficulty_model_comparison.py` and `tools/difficulty_validation.py --per-route` now use
-> driving outcomes only: a completed route is a success and a driving failure (timed out, blocked,
-> deviated) is a failure. Simulator-crash records and agent setup errors are left out. The numbers
-> in this section were computed before that change, when every non-`Completed` record counted as a
-> failure; `--count-crashes-as-failures` restores that labelling.
+> `tools/difficulty_model_comparison.py`, and `tools/difficulty_validation.py --per-route` now use
+> driving outcomes only, counting completed routes as successes, driving failures (timed out,
+> blocked, deviated) as failures, and excluding simulator-crash records and agent setup errors. The
+> numbers in this section predate that change and count every non-`Completed` record as a failure;
+> pass `--count-crashes-as-failures` to restore that labelling. On the final A100 campaign,
+> excluding the 525 crash records shifts λ(illum_dark) from 0.58 to 0.47 for NEAT, from 0.46 to
+> 0.59 for Roach, and by at most 0.01 for the other three agents (see "Changes since the paper" in
+> the README for the full comparison).
 
 A single scalar difficulty **washes out** against performance (pooled Spearman **+0.036**), a
 lesson echoing a sister project (illumination-difficulty for AV scene scoring). Two independent

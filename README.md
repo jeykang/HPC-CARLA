@@ -89,12 +89,12 @@ because of a time limit or an error, the records already written can still be ha
 [`tools/harvest_results.py`](tools/harvest_results.py) collects these records in
 `per_route_results.csv`, one row per saved route evaluation. A row can describe a completed drive,
 a driving failure, or a simulator crash. The queue records the outcome of the enclosing job
-separately; for a job that ran more than once, its rows carry the status of the latest attempt.
+separately; if a job ran more than once, its rows carry the status of the latest attempt.
 
-If an allocation ends while jobs are running, the next `start` puts those jobs back in the queue.
-The exception is a job whose `results.json` shows that its whole route file had already been
-evaluated, which is recorded as completed. A requeued job starts its route file from the first
-route again and replaces its job directory.
+If an allocation ends while jobs are running, the next `start` requeues them unless `results.json`
+shows that the whole route file was already evaluated, in which case the job is recorded as
+completed. A requeued job restarts its route file from the first route and replaces its job
+directory.
 
 ### Scheduling — job-first, hardest-first, coverage-aware
 `manage_continuous.py` sorts pending jobs by
@@ -147,8 +147,8 @@ python3 continuous_cli.py monitor
 ```
 
 The run is **resumable** (rerun `start` to reuse completed work) and self-balances across agents.
-Persistent servers are the only mode. The `--persistent` flag that earlier versions required is
-still accepted and has no effect.
+Servers always run in persistent mode; the `--persistent` flag required by earlier versions is
+still accepted as a no-op.
 
 **After / during a run — read the results:**
 ```bash
@@ -158,8 +158,8 @@ python3 tools/classify_outcomes.py      # agent-result vs infra-failure taxonomy
 python3 tools/sensitivity_matrix.py     # per-axis × per-agent difficulty sensitivity
 ```
 
-The outcome and failure-model tools treat a simulator crash as an infrastructure failure, not as
-the agent failing to drive (see [Changes since the paper](#changes-since-the-paper)).
+The outcome and failure-model tools classify a simulator crash as an infrastructure failure rather
+than an agent driving failure (see [Changes since the paper](#changes-since-the-paper)).
 
 **Running on a different cluster (L40S)?** See [`examples/CLUSTER_SETUP.md`](examples/CLUSTER_SETUP.md)
 and the one-file launcher [`examples/run_cluster.sh`](examples/run_cluster.sh) — edit one config
@@ -168,9 +168,6 @@ block, then `setup → smoke → run → export`.
 ---
 
 ## Final campaign (paper numbers)
-
-The numbers in this section and the next were produced before the tooling changes listed under
-[Changes since the paper](#changes-since-the-paper).
 
 The GIST campaign ran on two nodes with eight A100 GPUs each. All 2,835 evaluation jobs
 (5 agents × 27 route files × 21 weather presets) reached a terminal state in 108.6 hours.
@@ -232,7 +229,9 @@ In the four-route illumination comparison, NEAT's mean L40S driving scores at no
 and night were 75.9, 69.2, and 71.7, respectively. Its noon-to-night change was −4.2 points on
 L40S and −27.0 on A100. LAV's L40S means were 32.3, 33.7, and 29.5 (−2.8 points). A separate
 model of episode failure fitted to the full campaigns gave NEAT a darkness weight of 0.58 on
-A100 and 0.50 on L40S.
+A100 and 0.50 on L40S. Both values come from the original fit, which counted simulator-crash
+records as failures. Excluding those crash records lowers the A100 weight to 0.47 (95% CI 0.26 to
+0.67); the L40S weight has not been recomputed.
 
 Watchdog stall restarts on L40S: LAV 388, TCP 1, NEAT 0.
 
@@ -240,27 +239,54 @@ Watchdog stall restarts on L40S: LAV 388, TCP 1, NEAT 0.
 
 ## Changes since the paper
 
-Fixes made on 2026-11-22 that matter when re-running the analysis or reusing collected data:
+Fixes from 2026-11-22 that affect re-running the analysis or reusing collected data:
 
 - **Failure-model fits.** [`tools/sensitivity_matrix.py`](tools/sensitivity_matrix.py),
   [`tools/difficulty_model_comparison.py`](tools/difficulty_model_comparison.py), and
-  `tools/difficulty_validation.py --per-route` now use driving outcomes only. A record with status
-  `Failed - Simulation crashed`, or an agent setup error, is left out instead of being counted as
-  a failure. The darkness weights quoted above predate this change. Pass
-  `--count-crashes-as-failures` to any of the three tools to get the earlier labelling.
+  `tools/difficulty_validation.py --per-route` now use driving outcomes only, excluding records with
+  status `Failed - Simulation crashed` and agent setup errors instead of counting them as failures.
+  Pass `--count-crashes-as-failures` to any of the three tools to restore the earlier labelling; the
+  table below shows the effect on the A100 campaign.
 - **Outcome reports.** `tools/classify_outcomes.py` and `tools/verification_report.py` count a
   simulator crash as an infrastructure failure. They used to count it as a driving failure.
-- **Job status of harvested rows.** `tools/harvest_results.py` labels a job by its latest attempt.
-  The set of route evaluations and the per-agent means are unchanged. The split between
-  `completed` and `failed` jobs changes only for jobs that ran more than once.
-- **Sensor shards.** Each route of a job used to restart shard numbering at `shard_00000.tar`, so
-  the routes of a multi-route job overwrote one another's sensor frames. This affects sensor data
-  written with sharding enabled, which has been the default since 2026-07-15. Driving scores in
-  `results.json` are not affected.
-- **Interrupted jobs.** With data collection on, `reclaim` used to record an interrupted job as
-  completed once one of its routes had finished. It now requeues the job unless the whole route
+- **Job status of harvested rows.** `tools/harvest_results.py` labels each job by its latest
+  attempt, leaving the set of route evaluations and the per-agent means unchanged. The split between
+  `completed` and `failed` jobs can shift only for jobs that ran more than once, and in the A100
+  campaign it stays the same: the harvest marks 511 jobs `completed`, the same number as the queue,
+  and 12,316 of the 13,059 route evaluations come from `failed` jobs.
+- **Sensor shards.** Each route of a job previously restarted shard numbering at `shard_00000.tar`,
+  causing routes in a multi-route job to overwrite one another's sensor frames. Sensor data written
+  with sharding enabled (the default since 2026-07-15) is affected, while driving scores in
+  `results.json` are not.
+- **Interrupted jobs.** With data collection enabled, `reclaim` previously marked an interrupted
+  job as completed once a single route had finished; it now requeues the job unless the whole route
   file was evaluated.
-- **Launcher.** The non-persistent ("original") mode and its two scripts were removed.
+- **Launcher.** Removed the non-persistent ("original") mode and its two scripts.
+
+### Effect of excluding simulator crashes (A100 campaign)
+
+The A100 campaign contains 525 simulator-crash records (105 per agent, all in Town06 and Town10).
+Using the same harvested data, the table below compares the two labellings; the first column
+reproduces the values in
+[`METRICS_REFRESH_RESULTS_2026-07-21.md`](METRICS_REFRESH_RESULTS_2026-07-21.md).
+
+| Quantity | Crashes counted as failures | Driving outcomes only |
+|---|---:|---:|
+| Route evaluations used | 13,059 | 12,534 |
+| Darkness weight, CILRS | 1.07 [0.81, 1.33] | 1.06 [0.80, 1.33] |
+| Darkness weight, InterFuser | 0.61 [0.35, 0.88] | 0.61 [0.34, 0.88] |
+| Darkness weight, NEAT | 0.58 [0.38, 0.79] | 0.47 [0.26, 0.67] |
+| Darkness weight, Roach | 0.46 [0.29, 0.63] | 0.59 [0.40, 0.77] |
+| Darkness weight, TCP | 0.47 [0.30, 0.63] | 0.47 [0.29, 0.64] |
+| Scalar difficulty vs. driving score, pooled Spearman ρ | +0.443 | +0.436 |
+| Held-out AUC, scalar difficulty | 0.456 | 0.465 |
+| Held-out AUC, multi-axis model | 0.523 | 0.522 |
+
+Brackets denote 95% confidence intervals. Under both labellings, the darkness weight is
+significantly above zero for all five agents, and the intervals for InterFuser, NEAT, Roach, and
+TCP overlap one another. Agent rank order changes, however: Roach rises from the lowest weight to
+third highest, while NEAT drops from third to tie with TCP for lowest. The L40S fits have not been
+recomputed.
 
 ---
 
